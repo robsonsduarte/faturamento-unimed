@@ -18,19 +18,22 @@ import {
   Stethoscope,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import type { Profile } from '@/lib/types'
 
-const navItems = [
-  { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', exact: true },
-  { href: '/dashboard/guias', icon: FileText, label: 'Guias' },
-  { href: '/dashboard/lotes', icon: Package, label: 'Lotes' },
-  { href: '/dashboard/xml', icon: Code2, label: 'XML TISS' },
-  { href: '/dashboard/cobrancas', icon: CreditCard, label: 'Cobrancas' },
-  { href: '/dashboard/tokens', icon: Fingerprint, label: 'Tokens' },
-  { href: '/dashboard/relatorios', icon: BarChart3, label: 'Relatorios' },
-  { href: '/dashboard/configuracoes', icon: Settings, label: 'Configuracoes' },
+type UserRole = Profile['role']
+
+const allNavItems = [
+  { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', exact: true, roles: ['admin', 'operador'] as UserRole[] },
+  { href: '/dashboard/guias', icon: FileText, label: 'Guias', roles: ['admin', 'operador', 'visualizador'] as UserRole[] },
+  { href: '/dashboard/lotes', icon: Package, label: 'Lotes', roles: ['admin', 'operador'] as UserRole[] },
+  { href: '/dashboard/xml', icon: Code2, label: 'XML TISS', roles: ['admin', 'operador'] as UserRole[] },
+  { href: '/dashboard/cobrancas', icon: CreditCard, label: 'Cobrancas', roles: ['admin', 'operador'] as UserRole[] },
+  { href: '/dashboard/tokens', icon: Fingerprint, label: 'Tokens', roles: ['admin', 'operador'] as UserRole[] },
+  { href: '/dashboard/relatorios', icon: BarChart3, label: 'Relatorios', roles: ['admin', 'operador'] as UserRole[] },
+  { href: '/dashboard/configuracoes', icon: Settings, label: 'Configuracoes', roles: ['admin'] as UserRole[] },
 ]
 
-export function Sidebar() {
+export function Sidebar({ role = 'visualizador' }: { role?: UserRole }) {
   const [collapsed, setCollapsed] = useState(false)
   const pathname = usePathname()
 
@@ -67,12 +70,12 @@ export function Sidebar() {
       </div>
 
       <nav className="flex-1 py-4 space-y-1 px-2">
-        {navItems.map(({ href, icon: Icon, label, exact }) => {
+        {allNavItems.filter((item) => item.roles.includes(role)).map(({ href, icon: Icon, label, exact }) => {
           const active = exact ? pathname === href : pathname.startsWith(href)
           return (
             <Link
               key={href}
-              href={href}
+              href={href as never}
               className={cn(
                 'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
                 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]',

@@ -149,3 +149,35 @@ export interface PaginatedResponse<T> {
   page: number
   pageSize: number
 }
+
+export interface Integracao {
+  id: string
+  slug: string
+  nome: string
+  config: Record<string, string>
+  ativo: boolean
+  updated_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface SawConfig {
+  api_url: string
+  login_url: string
+  usuario: string
+  senha: string
+  cookie_key: string
+}
+
+export interface CproConfig {
+  api_url: string
+  api_key: string
+  company: string
+}
+
+export interface ImportLog {
+  timestamp: string
+  type: 'info' | 'success' | 'error' | 'processing'
+  message: string
+  guide_number?: string
+}

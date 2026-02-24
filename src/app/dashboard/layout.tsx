@@ -25,7 +25,7 @@ export default async function DashboardLayout({
 
   return (
     <div className="flex h-screen bg-[var(--color-background)] overflow-hidden">
-      <Sidebar />
+      <Sidebar role={profile?.role} />
       <div className="flex flex-col flex-1 overflow-hidden">
         <Header profile={profile} />
         <main className="flex-1 overflow-y-auto p-6">

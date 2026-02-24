@@ -1,0 +1,784 @@
+{
+  "name": "FASE 03. Gerador XML TISS",
+  "nodes": [
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "1zYIhYUXLGyfUdeG7LD7YZbX3W0BgKCYD1V4vn1mXBCc",
+          "mode": "list",
+          "cachedResultName": "Guias Unimed",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1zYIhYUXLGyfUdeG7LD7YZbX3W0BgKCYD1V4vn1mXBCc/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1981686986,
+          "mode": "list",
+          "cachedResultName": "FATURAMENTO_TISS",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1zYIhYUXLGyfUdeG7LD7YZbX3W0BgKCYD1V4vn1mXBCc/edit#gid=1981686986"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Status": "faturada",
+            "Nº Guia Operadora": "={{ $json.numeroGuiaOperadora}}"
+          },
+          "matchingColumns": [
+            "Nº Guia Operadora"
+          ],
+          "schema": [
+            {
+              "id": "Referencia",
+              "displayName": "Referencia",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Nº Guia Operadora",
+              "displayName": "Nº Guia Operadora",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Nº Guia Prestador",
+              "displayName": "Nº Guia Prestador",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Data Autorização",
+              "displayName": "Data Autorização",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Senha",
+              "displayName": "Senha",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Validade Senha",
+              "displayName": "Validade Senha",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Nº Carteira",
+              "displayName": "Nº Carteira",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Nome Beneficiário",
+              "displayName": "Nome Beneficiário",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Data Solicitação",
+              "displayName": "Data Solicitação",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Código Prestador",
+              "displayName": "Código Prestador",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Nome Prestador",
+              "displayName": "Nome Prestador",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "CNES",
+              "displayName": "CNES",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Nome Profissional",
+              "displayName": "Nome Profissional",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Conselho",
+              "displayName": "Conselho",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Nº Conselho",
+              "displayName": "Nº Conselho",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "UF",
+              "displayName": "UF",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "CBOS",
+              "displayName": "CBOS",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Tipo Atendimento",
+              "displayName": "Tipo Atendimento",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Indicação Acidente",
+              "displayName": "Indicação Acidente",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Indicação Clínica",
+              "displayName": "Indicação Clínica",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "value",
+              "displayName": "value",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Data Importação",
+              "displayName": "Data Importação",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "type",
+              "displayName": "type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "cadastrada",
+              "displayName": "cadastrada",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1376,
+        336
+      ],
+      "id": "208186bc-fa59-4d90-8aab-d852efbfdaeb",
+      "name": "ATUALIZA STATUS DA GUIA - FATURADA",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "B5d0D32wrWm8oiu0",
+          "name": "Google Sheets robsonsduarte"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1zYIhYUXLGyfUdeG7LD7YZbX3W0BgKCYD1V4vn1mXBCc",
+          "mode": "list",
+          "cachedResultName": "Guias Unimed",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1zYIhYUXLGyfUdeG7LD7YZbX3W0BgKCYD1V4vn1mXBCc/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1285323633,
+          "mode": "list",
+          "cachedResultName": "PROCEDIMENTOS_TISS",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1zYIhYUXLGyfUdeG7LD7YZbX3W0BgKCYD1V4vn1mXBCc/edit#gid=1285323633"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "Nº Guia Operadora",
+              "lookupValue": "={{ $json.numeroGuiaOperadora }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        752,
+        528
+      ],
+      "id": "d7d8ec9c-51ea-44a1-9845-97b0f3612431",
+      "name": "Pega todos os procedimentos da guia",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "B5d0D32wrWm8oiu0",
+          "name": "Google Sheets robsonsduarte"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1zYIhYUXLGyfUdeG7LD7YZbX3W0BgKCYD1V4vn1mXBCc",
+          "mode": "list",
+          "cachedResultName": "Guias Unimed",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1zYIhYUXLGyfUdeG7LD7YZbX3W0BgKCYD1V4vn1mXBCc/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1981686986,
+          "mode": "list",
+          "cachedResultName": "FATURAMENTO_TISS",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1zYIhYUXLGyfUdeG7LD7YZbX3W0BgKCYD1V4vn1mXBCc/edit#gid=1981686986"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "Status",
+              "lookupValue": "Importado"
+            },
+            {
+              "lookupColumn": "type",
+              "lookupValue": "={{ $item(\"0\").$node[\"Configurar Parâmetros\"].json[\"type\"] }}"
+            },
+            {
+              "lookupColumn": "cadastrada",
+              "lookupValue": "SIM"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        704,
+        112
+      ],
+      "id": "909369ad-9bb5-4da4-af37-9151014447e8",
+      "name": "Pega No máximo 100 guias por Vez",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "B5d0D32wrWm8oiu0",
+          "name": "Google Sheets robsonsduarte"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "name": "FIM DO FLUXO",
+      "typeVersion": 1,
+      "position": [
+        1376,
+        160
+      ],
+      "id": "10fdb08e-03e7-4611-8125-29dbf566f2a9"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ========================================\n// NODE: GERA XML PARTE 01 - TISS 4.02.00\n// ========================================\n\nconst CONSTANTS = {\n  REGISTRO_ANS: '339679',\n  CODIGO_PRESTADOR: '97498504',\n  NOME_PRESTADOR: 'DEDICARE SERVICOS DE FONOAUDIOLOGIA PSICOLOGIA E NUTRICAO',\n  CNES: '9794220',\n  PADRAO_TISS: '4.02.00'\n};\n\nfunction formatarData(data) {\n  if (!data) return null;\n  if (/^\\d{4}-\\d{2}-\\d{2}$/.test(data)) return data;\n  if (/^\\d{2}\\/\\d{2}\\/\\d{4}$/.test(data)) {\n    const [dia, mes, ano] = data.split('/');\n    return `${ano}-${mes}-${dia}`;\n  }\n  const d = new Date(data);\n  if (!isNaN(d.getTime())) {\n    return d.toISOString().split('T')[0];\n  }\n  return null;\n}\n\nfunction formatarValor(valor) {\n  if (!valor) return '0.00';\n  let valorLimpo = String(valor).replace(/[^\\d,.-]/g, '').replace(',', '.');\n  const numero = parseFloat(valorLimpo);\n  return isNaN(numero) ? '0.00' : numero.toFixed(2);\n}\n\nconst parametros = $('Configurar Parâmetros').first().json;\nconst numeroLote = parametros.numeroLote || Math.floor(Date.now() / 1000);\n\nconst agora = new Date();\nconst dataTransacao = agora.toISOString().split('T')[0];\nconst horaTransacao = agora.toTimeString().split(' ')[0];\n\nconsole.log(`📦 Número do Lote: ${numeroLote}`);\nconsole.log(`📅 Data/Hora: ${dataTransacao} ${horaTransacao}`);\n\nconst resultado = [];\n\nfor (const item of $input.all()) {\n  const guia = item.json;\n  \n  if (!guia['Nº Guia Operadora']) {\n    console.log('⚠️ Guia sem número da operadora, pulando...');\n    continue;\n  }\n  \n  const guiaProcessada = {\n    numeroLote: numeroLote,\n    dataTransacao: dataTransacao,\n    horaTransacao: horaTransacao,\n    registroANS: CONSTANTS.REGISTRO_ANS,\n    padraoTISS: CONSTANTS.PADRAO_TISS,\n    \n    numeroGuiaOperadora: String(guia['Nº Guia Operadora']).trim(),\n    numeroGuiaPrestador: String(guia['Nº Guia Prestador'] || '').trim(),\n    dataAutorizacao: formatarData(guia['Data Autorização']),\n    senha: String(guia['Senha'] || '').trim(),\n    dataValidadeSenha: formatarData(guia['Validade Senha']),\n    numeroCarteira: String(guia['Nº Carteira'] || '').trim(),\n    nomeBeneficiario: String(guia['Nome Beneficiário'] || '').trim(),\n    dataSolicitacao: formatarData(guia['Data Solicitação']),\n    codigoPrestador: guia['Código Prestador'] || CONSTANTS.CODIGO_PRESTADOR,\n    nomePrestador: guia['Nome Prestador'] || CONSTANTS.NOME_PRESTADOR,\n    cnes: guia['CNES'] || CONSTANTS.CNES,\n    nomeProfissional: String(guia['Nome Profissional'] || '').trim().toUpperCase(),\n    conselho: String(guia['Conselho'] || '09').padStart(2, '0'),\n    numeroConselho: String(guia['Nº Conselho'] || '').trim(),\n    uf: String(guia['UF'] || '29'),\n    cbos: String(guia['CBOS'] || '251510'),\n    tipoAtendimento: String(guia['Tipo Atendimento'] || '03').padStart(2, '0'),\n    indicacaoAcidente: guia['Indicação Acidente'] || '9',\n    indicacaoClinica: String(guia['Indicação Clínica'] || 'Não informado').toUpperCase(),\n    valorTotalGuia: formatarValor(guia['Valor Total Geral'])\n  };\n  \n  resultado.push({ json: guiaProcessada });\n}\n\nconsole.log(`=== LOTE ${numeroLote} (TISS 4.02.00) ===`);\nconsole.log(`Total de guias: ${resultado.length}`);\nconsole.log(`Data/Hora: ${dataTransacao} ${horaTransacao}`);\nconsole.log(`======================`);\n\nreturn resultado;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1136,
+        112
+      ],
+      "id": "47fe106b-8c7e-4263-a85e-257f9b6c66c5",
+      "name": "GERA XML PARTE 01"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "name": "Replace Me",
+      "typeVersion": 1,
+      "position": [
+        1376,
+        528
+      ],
+      "id": "185de04e-53d5-43ec-9737-deccae209bac"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        288,
+        112
+      ],
+      "id": "6ca2a372-8d33-4335-8470-fbb9fd9f1417",
+      "name": "When clicking 'Execute workflow'"
+    },
+    {
+      "parameters": {
+        "maxItems": "={{ $('Configurar Parâmetros').item.json.limit }}"
+      },
+      "type": "n8n-nodes-base.limit",
+      "typeVersion": 1,
+      "position": [
+        912,
+        112
+      ],
+      "id": "609de54e-162d-4587-8424-4a780e2cb089",
+      "name": "Limit"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        304,
+        512
+      ],
+      "id": "4a0e262c-12e5-4b40-8093-b63304f5eba1",
+      "name": "Split in Batches"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "82350805-398f-474a-b8e8-f962124f7923",
+              "name": "numeroLote",
+              "value": "628",
+              "type": "string"
+            },
+            {
+              "id": "b0235465-e2b6-4c93-94e5-cd6a3a50d543",
+              "name": "type",
+              "value": "Intercambio",
+              "type": "string"
+            },
+            {
+              "id": "706bda6b-297a-4d08-a8e8-84701e2441b4",
+              "name": "limit",
+              "value": "100",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        496,
+        112
+      ],
+      "id": "08ee751c-ddd7-4792-9146-23ac8066037d",
+      "name": "Configurar Parâmetros"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================================\n// CODE-3: MONTAR XML FINAL - TISS 4.02.00\n// ============================================================================\n\n// FUNÇÃO MD5 NATIVA (sem require crypto)\nfunction md5(string) {\n  function rotateLeft(value, shift) {\n    return (value << shift) | (value >>> (32 - shift));\n  }\n  \n  function addUnsigned(x, y) {\n    const lsw = (x & 0xFFFF) + (y & 0xFFFF);\n    const msw = (x >> 16) + (y >> 16) + (lsw >> 16);\n    return (msw << 16) | (lsw & 0xFFFF);\n  }\n  \n  function F(x, y, z) { return (x & y) | ((~x) & z); }\n  function G(x, y, z) { return (x & z) | (y & (~z)); }\n  function H(x, y, z) { return x ^ y ^ z; }\n  function I(x, y, z) { return y ^ (x | (~z)); }\n  \n  function FF(a, b, c, d, x, s, ac) {\n    a = addUnsigned(a, addUnsigned(addUnsigned(F(b, c, d), x), ac));\n    return addUnsigned(rotateLeft(a, s), b);\n  }\n  \n  function GG(a, b, c, d, x, s, ac) {\n    a = addUnsigned(a, addUnsigned(addUnsigned(G(b, c, d), x), ac));\n    return addUnsigned(rotateLeft(a, s), b);\n  }\n  \n  function HH(a, b, c, d, x, s, ac) {\n    a = addUnsigned(a, addUnsigned(addUnsigned(H(b, c, d), x), ac));\n    return addUnsigned(rotateLeft(a, s), b);\n  }\n  \n  function II(a, b, c, d, x, s, ac) {\n    a = addUnsigned(a, addUnsigned(addUnsigned(I(b, c, d), x), ac));\n    return addUnsigned(rotateLeft(a, s), b);\n  }\n  \n  function convertToWordArray(string) {\n    let lWordCount;\n    const lMessageLength = string.length;\n    const lNumberOfWords_temp1 = lMessageLength + 8;\n    const lNumberOfWords_temp2 = (lNumberOfWords_temp1 - (lNumberOfWords_temp1 % 64)) / 64;\n    const lNumberOfWords = (lNumberOfWords_temp2 + 1) * 16;\n    const lWordArray = Array(lNumberOfWords - 1);\n    let lBytePosition = 0;\n    let lByteCount = 0;\n    while (lByteCount < lMessageLength) {\n      lWordCount = (lByteCount - (lByteCount % 4)) / 4;\n      lBytePosition = (lByteCount % 4) * 8;\n      lWordArray[lWordCount] = (lWordArray[lWordCount] | (string.charCodeAt(lByteCount) << lBytePosition));\n      lByteCount++;\n    }\n    lWordCount = (lByteCount - (lByteCount % 4)) / 4;\n    lBytePosition = (lByteCount % 4) * 8;\n    lWordArray[lWordCount] = lWordArray[lWordCount] | (0x80 << lBytePosition);\n    lWordArray[lNumberOfWords - 2] = lMessageLength << 3;\n    lWordArray[lNumberOfWords - 1] = lMessageLength >>> 29;\n    return lWordArray;\n  }\n  \n  function wordToHex(lValue) {\n    let wordToHexValue = \"\", wordToHexValue_temp = \"\", lByte, lCount;\n    for (lCount = 0; lCount <= 3; lCount++) {\n      lByte = (lValue >>> (lCount * 8)) & 255;\n      wordToHexValue_temp = \"0\" + lByte.toString(16);\n      wordToHexValue = wordToHexValue + wordToHexValue_temp.substr(wordToHexValue_temp.length - 2, 2);\n    }\n    return wordToHexValue;\n  }\n  \n  const x = convertToWordArray(string);\n  let a = 0x67452301, b = 0xEFCDAB89, c = 0x98BADCFE, d = 0x10325476;\n  \n  for (let k = 0; k < x.length; k += 16) {\n    const AA = a, BB = b, CC = c, DD = d;\n    a = FF(a, b, c, d, x[k + 0], 7, 0xD76AA478);\n    d = FF(d, a, b, c, x[k + 1], 12, 0xE8C7B756);\n    c = FF(c, d, a, b, x[k + 2], 17, 0x242070DB);\n    b = FF(b, c, d, a, x[k + 3], 22, 0xC1BDCEEE);\n    a = FF(a, b, c, d, x[k + 4], 7, 0xF57C0FAF);\n    d = FF(d, a, b, c, x[k + 5], 12, 0x4787C62A);\n    c = FF(c, d, a, b, x[k + 6], 17, 0xA8304613);\n    b = FF(b, c, d, a, x[k + 7], 22, 0xFD469501);\n    a = FF(a, b, c, d, x[k + 8], 7, 0x698098D8);\n    d = FF(d, a, b, c, x[k + 9], 12, 0x8B44F7AF);\n    c = FF(c, d, a, b, x[k + 10], 17, 0xFFFF5BB1);\n    b = FF(b, c, d, a, x[k + 11], 22, 0x895CD7BE);\n    a = FF(a, b, c, d, x[k + 12], 7, 0x6B901122);\n    d = FF(d, a, b, c, x[k + 13], 12, 0xFD987193);\n    c = FF(c, d, a, b, x[k + 14], 17, 0xA679438E);\n    b = FF(b, c, d, a, x[k + 15], 22, 0x49B40821);\n    a = GG(a, b, c, d, x[k + 1], 5, 0xF61E2562);\n    d = GG(d, a, b, c, x[k + 6], 9, 0xC040B340);\n    c = GG(c, d, a, b, x[k + 11], 14, 0x265E5A51);\n    b = GG(b, c, d, a, x[k + 0], 20, 0xE9B6C7AA);\n    a = GG(a, b, c, d, x[k + 5], 5, 0xD62F105D);\n    d = GG(d, a, b, c, x[k + 10], 9, 0x2441453);\n    c = GG(c, d, a, b, x[k + 15], 14, 0xD8A1E681);\n    b = GG(b, c, d, a, x[k + 4], 20, 0xE7D3FBC8);\n    a = GG(a, b, c, d, x[k + 9], 5, 0x21E1CDE6);\n    d = GG(d, a, b, c, x[k + 14], 9, 0xC33707D6);\n    c = GG(c, d, a, b, x[k + 3], 14, 0xF4D50D87);\n    b = GG(b, c, d, a, x[k + 8], 20, 0x455A14ED);\n    a = GG(a, b, c, d, x[k + 13], 5, 0xA9E3E905);\n    d = GG(d, a, b, c, x[k + 2], 9, 0xFCEFA3F8);\n    c = GG(c, d, a, b, x[k + 7], 14, 0x676F02D9);\n    b = GG(b, c, d, a, x[k + 12], 20, 0x8D2A4C8A);\n    a = HH(a, b, c, d, x[k + 5], 4, 0xFFFA3942);\n    d = HH(d, a, b, c, x[k + 8], 11, 0x8771F681);\n    c = HH(c, d, a, b, x[k + 11], 16, 0x6D9D6122);\n    b = HH(b, c, d, a, x[k + 14], 23, 0xFDE5380C);\n    a = HH(a, b, c, d, x[k + 1], 4, 0xA4BEEA44);\n    d = HH(d, a, b, c, x[k + 4], 11, 0x4BDECFA9);\n    c = HH(c, d, a, b, x[k + 7], 16, 0xF6BB4B60);\n    b = HH(b, c, d, a, x[k + 10], 23, 0xBEBFBC70);\n    a = HH(a, b, c, d, x[k + 13], 4, 0x289B7EC6);\n    d = HH(d, a, b, c, x[k + 0], 11, 0xEAA127FA);\n    c = HH(c, d, a, b, x[k + 3], 16, 0xD4EF3085);\n    b = HH(b, c, d, a, x[k + 6], 23, 0x4881D05);\n    a = HH(a, b, c, d, x[k + 9], 4, 0xD9D4D039);\n    d = HH(d, a, b, c, x[k + 12], 11, 0xE6DB99E5);\n    c = HH(c, d, a, b, x[k + 15], 16, 0x1FA27CF8);\n    b = HH(b, c, d, a, x[k + 2], 23, 0xC4AC5665);\n    a = II(a, b, c, d, x[k + 0], 6, 0xF4292244);\n    d = II(d, a, b, c, x[k + 7], 10, 0x432AFF97);\n    c = II(c, d, a, b, x[k + 14], 15, 0xAB9423A7);\n    b = II(b, c, d, a, x[k + 5], 21, 0xFC93A039);\n    a = II(a, b, c, d, x[k + 12], 6, 0x655B59C3);\n    d = II(d, a, b, c, x[k + 3], 10, 0x8F0CCC92);\n    c = II(c, d, a, b, x[k + 10], 15, 0xFFEFF47D);\n    b = II(b, c, d, a, x[k + 1], 21, 0x85845DD1);\n    a = II(a, b, c, d, x[k + 8], 6, 0x6FA87E4F);\n    d = II(d, a, b, c, x[k + 15], 10, 0xFE2CE6E0);\n    c = II(c, d, a, b, x[k + 6], 15, 0xA3014314);\n    b = II(b, c, d, a, x[k + 13], 21, 0x4E0811A1);\n    a = II(a, b, c, d, x[k + 4], 6, 0xF7537E82);\n    d = II(d, a, b, c, x[k + 11], 10, 0xBD3AF235);\n    c = II(c, d, a, b, x[k + 2], 15, 0x2AD7D2BB);\n    b = II(b, c, d, a, x[k + 9], 21, 0xEB86D391);\n    a = addUnsigned(a, AA);\n    b = addUnsigned(b, BB);\n    c = addUnsigned(c, CC);\n    d = addUnsigned(d, DD);\n  }\n  \n  return (wordToHex(a) + wordToHex(b) + wordToHex(c) + wordToHex(d)).toLowerCase();\n}\n\n// ============================================================================\n// INÍCIO DO PROCESSAMENTO\n// ============================================================================\n\nconst todasGuias = $input.first().json.data;\n\nconsole.log(`📦 Total de guias recebidas: ${todasGuias.length}`);\n\nconst primeiraGuia = todasGuias[0];\n\nconst numeroLote = primeiraGuia.numeroLote;\nconst dataTransacao = primeiraGuia.dataTransacao;\nconst horaTransacao = primeiraGuia.horaTransacao;\nconst registroANS = primeiraGuia.registroANS;\nconst codigoPrestador = primeiraGuia.codigoPrestador;\nconst padraoTISS = primeiraGuia.padraoTISS;\n\nconst blocosGuias = todasGuias\n  .map(guia => guia.xmlGuia)\n  .join('\\n');\n\nconst valorTotalLote = todasGuias\n  .reduce((sum, guia) => sum + parseFloat(guia.valorTotalGuia), 0)\n  .toFixed(2);\n\nconsole.log(`💰 Valor total do lote: R$ ${valorTotalLote}`);\n\n// XML TISS 4.02.00 - com standalone=\"yes\" e xmlns:ds\nconst xmlCompleto = `<?xml version=\"1.0\" encoding=\"ISO-8859-1\" standalone=\"yes\"?>\n<ans:mensagemTISS xmlns:ans=\"http://www.ans.gov.br/padroes/tiss/schemas\" xmlns:ds=\"http://www.w3.org/2000/09/xmldsig#\">\n    <ans:cabecalho>\n        <ans:identificacaoTransacao>\n            <ans:tipoTransacao>ENVIO_LOTE_GUIAS</ans:tipoTransacao>\n            <ans:sequencialTransacao>${numeroLote}</ans:sequencialTransacao>\n            <ans:dataRegistroTransacao>${dataTransacao}</ans:dataRegistroTransacao>\n            <ans:horaRegistroTransacao>${horaTransacao}</ans:horaRegistroTransacao>\n        </ans:identificacaoTransacao>\n        <ans:origem>\n            <ans:identificacaoPrestador>\n                <ans:codigoPrestadorNaOperadora>${codigoPrestador}</ans:codigoPrestadorNaOperadora>\n            </ans:identificacaoPrestador>\n        </ans:origem>\n        <ans:destino>\n            <ans:registroANS>${registroANS}</ans:registroANS>\n        </ans:destino>\n        <ans:Padrao>${padraoTISS}</ans:Padrao>\n    </ans:cabecalho>\n    <ans:prestadorParaOperadora>\n        <ans:loteGuias>\n            <ans:numeroLote>${numeroLote}</ans:numeroLote>\n            <ans:guiasTISS>\n${blocosGuias}\n            </ans:guiasTISS>\n        </ans:loteGuias>\n    </ans:prestadorParaOperadora>\n    <ans:epilogo>\n        <ans:hash>PLACEHOLDER_HASH</ans:hash>\n    </ans:epilogo>\n</ans:mensagemTISS>`;\n\nconst hash = md5(xmlCompleto);\nconst xmlFinal = xmlCompleto.replace('PLACEHOLDER_HASH', hash);\nconst nomeArquivo = `${codigoPrestador}${numeroLote}_${hash}.xml`;\n\nreturn [{\n  json: {\n    dataHoraGeracao: `${dataTransacao} ${horaTransacao}`,\n    quantidadeGuias: todasGuias.length,\n    valorTotal: valorTotalLote,\n    hash: hash,\n    nomeArquivo: nomeArquivo,\n    xmlCompleto: xmlFinal,\n    guiasProcessadas: todasGuias.map(g => ({\n      numeroGuiaOperadora: g.numeroGuiaOperadora,\n      nomeBeneficiario: g.nomeBeneficiario,\n      valor: g.valorTotalGuia\n    })),\n    status: 'sucesso'\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        752,
+        336
+      ],
+      "id": "022bf23d-13f9-4e48-9abd-9dabd386fe86",
+      "name": "MONTAR XML FINAL"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.item.json;\n\nconst response = await this.helpers.httpRequest({\n  method: 'POST',\n  url: 'https://177.136.241.79/service/api/v1/xml/upload',\n  headers: {\n    'X-API-Key': 'e877ba1c49319300be89bee57a9f11581c0b65c3326ddaf9121b414bafed5960',\n    'Content-Type': 'application/json',\n    'Host': 'consultoriopro.com.br'\n  },\n  body: {\n    filename: item.nomeArquivo,\n    content: item.xmlCompleto\n  },\n  skipSslCertificateValidation: true,\n});\n\n// Retornar objeto corretamente\nreturn [{ \n  json: {\n    upload: response.data || response,\n    filename: item.nomeArquivo\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1168,
+        336
+      ],
+      "id": "700d9b1d-cd67-4246-9420-813b799481ca",
+      "name": "Enviae XML Cpro Download"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ========================================\n// NODE: PREPARAR DOWNLOAD XML - TISS 4.02.00\n// ========================================\n\nconst dados = $input.first().json;\n\nconst resultado = {\n  numeroLote: dados.numeroLote,\n  quantidadeGuias: dados.quantidadeGuias,\n  valorTotal: dados.valorTotal,\n  hashMD5: dados.hash,\n  nomeArquivo: dados.nomeArquivo,\n  dataGeracao: dados.dataHoraGeracao,\n  versaoTISS: '4.02.00',\n  \n  xmlCompleto: dados.xmlCompleto,\n  guias: dados.guiasProcessadas,\n  \n  instrucoes: {\n    comoBaixar: [\n      \"1. Clique no node 'Salvar XML'\",\n      \"2. Vá na aba 'Output'\",\n      \"3. Clique no ícone de download ao lado do fileName\",\n      \"4. O arquivo será baixado como: \" + dados.nomeArquivo\n    ],\n    localizacao: \"Arquivo salvo em: /home/n8n/.n8n/files/\" + dados.nomeArquivo,\n    observacao: \"Você também pode copiar o XML abaixo e salvar manualmente\"\n  },\n  \n  validacao: {\n    validarXML: \"https://www.xmlvalidation.com/\",\n    validarMD5: \"https://www.md5hashgenerator.com/\",\n    hashGerado: dados.hash\n  }\n};\n\nconsole.log('=== ARQUIVO PRONTO PARA DOWNLOAD (TISS 4.02.00) ===');\nconsole.log(`Arquivo: ${dados.nomeArquivo}`);\nconsole.log(`Hash MD5: ${dados.hash}`);\nconsole.log(`Guias: ${dados.quantidadeGuias}`);\nconsole.log(`Valor Total: R$ ${dados.valorTotal}`);\nconsole.log('====================================================');\n\nreturn [{ json: resultado }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        336
+      ],
+      "id": "fb2732c0-5230-49cc-8a93-ae6ac80c7313",
+      "name": "PREPARAR DOWNLOAD XML"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ========================================\n// NODE: ADD PROCEDIMENTOS E GERA XML GUIASP-SADT - TISS 4.02.00\n// ========================================\n\nfunction formatarData(data) {\n  if (!data) return null;\n  if (/^\\d{4}-\\d{2}-\\d{2}$/.test(data)) return data;\n  if (/^\\d{2}\\/\\d{2}\\/\\d{4}$/.test(data)) {\n    const [dia, mes, ano] = data.split('/');\n    return `${ano}-${mes}-${dia}`;\n  }\n  const d = new Date(data);\n  if (!isNaN(d.getTime())) {\n    return d.toISOString().split('T')[0];\n  }\n  return null;\n}\n\nfunction formatarHora(hora) {\n  if (!hora) return '00:00:00';\n  if (/^\\d{2}:\\d{2}:\\d{2}$/.test(hora)) return hora;\n  if (/^\\d{2}:\\d{2}$/.test(hora)) return `${hora}:00`;\n  return '00:00:00';\n}\n\nfunction formatarValor(valor) {\n  if (!valor) return '0.00';\n  if (typeof valor === 'number') return valor.toFixed(2);\n  const numero = String(valor).replace(/[^\\d,.-]/g, '').replace(',', '.');\n  return parseFloat(numero || 0).toFixed(2);\n}\n\nfunction escaparXML(texto) {\n  if (!texto) return '';\n  return String(texto)\n    .replace(/&/g, '&amp;')\n    .replace(/</g, '&lt;')\n    .replace(/>/g, '&gt;')\n    .replace(/\"/g, '&quot;')\n    .replace(/'/g, '&apos;');\n}\n\n// ===== PEGAR DADOS DA GUIA E PROCEDIMENTOS =====\nconst splitNode = $('Split in Batches');\nconst guiaAtual = splitNode ? splitNode.item.json : null;\n\nconsole.log('=== DEBUG CODE-2 (TISS 4.02.00) ===');\nconsole.log('Guia:', guiaAtual ? guiaAtual.numeroGuiaOperadora : 'NULL');\n\nif (!guiaAtual || !guiaAtual.numeroGuiaOperadora) {\n  throw new Error('Não foi possível obter dados da guia. Verifique a conexão do Split in Batches.');\n}\n\nconst procedimentosRaw = $input.all().map(item => item.json);\n\nconst procedimentos = procedimentosRaw.filter(proc => \n  String(proc['Nº Guia Operadora']).trim() === String(guiaAtual.numeroGuiaOperadora).trim()\n);\n\nconsole.log(`=== PROCESSANDO GUIA ===`);\nconsole.log(`Nº Guia: ${guiaAtual.numeroGuiaOperadora}`);\nconsole.log(`Beneficiário: ${guiaAtual.nomeBeneficiario}`);\nconsole.log(`Procedimentos: ${procedimentos.length}`);\n\nif (procedimentos.length === 0) {\n  console.log(`⚠️ Guia ${guiaAtual.numeroGuiaOperadora} sem procedimentos!`);\n  return [{\n    json: {\n      ...guiaAtual,\n      xmlGuia: '',\n      valorTotalGuia: '0.00',\n      quantidadeProcedimentos: 0,\n      statusProcessamento: 'sem_procedimentos'\n    }\n  }];\n}\n\n// ============================================\n// BUSCAR DADOS DO EXECUTANTE\n// ============================================\nlet executante = {\n  cpf: '00000000000',\n  nome: '',\n  conselho: '09',\n  numeroConselho: '',\n  uf: '29',\n  cbos: ''\n};\n\nif (procedimentos.length > 0) {\n  const primeiroProc = procedimentos[0];\n  \n  if (primeiroProc['Nome Profissional']) {\n    executante.nome = String(primeiroProc['Nome Profissional']).trim();\n    executante.conselho = String(primeiroProc['Conselho'] || '09').padStart(2, '0');\n    executante.numeroConselho = String(primeiroProc['Nº Conselho'] || '');\n    executante.uf = String(primeiroProc['UF'] || '29');\n    executante.cbos = String(primeiroProc['CBOS'] || '');\n    \n    console.log(`✅ Dados do executante da PLANILHA: ${executante.nome}`);\n  }\n}\n\ntry {\n  console.log('🔍 Buscando dados completos na API...');\n  \n  const execResponse = await this.helpers.httpRequest({\n    method: 'GET',\n    url: `https://177.136.241.79/service/api/v1/executions/by-guide-number/${guiaAtual.numeroGuiaOperadora}`,\n    qs: {\n      company: 1\n    },\n    headers: {\n      'X-API-Key': 'e877ba1c49319300be89bee57a9f11581c0b65c3326ddaf9121b414bafed5960',\n      'Content-Type': 'application/json',\n      'Host': 'consultoriopro.com.br'\n    },\n    skipSslCertificateValidation: true,\n  });\n  \n  const primeiroAtendimento = execResponse.data?.attendances?.[0];\n  const professional = primeiroAtendimento?.professional;\n  \n  if (professional) {\n    if (professional.cpf) {\n      executante.cpf = professional.cpf.replace(/\\D/g, '');\n      console.log(`✅ CPF da API: ${executante.cpf}`);\n    }\n    \n    if (!executante.nome && professional.name) {\n      executante.nome = professional.name.trim();\n      console.log(`✅ Nome da API: ${executante.nome}`);\n    }\n    \n    console.log(`✅ Dados do executante completos!`);\n  } else {\n    console.log(`⚠️ API não retornou dados do profissional`);\n  }\n  \n} catch (error) {\n  console.log(`⚠️ Erro ao buscar API: ${error.message}`);\n  console.log(`Continuando com dados da planilha...`);\n}\n\nconsole.log('=== DADOS FINAIS DO EXECUTANTE ===');\nconsole.log(`CPF: ${executante.cpf}`);\nconsole.log(`Nome: ${executante.nome}`);\nconsole.log(`Conselho: ${executante.conselho} - ${executante.numeroConselho}`);\nconsole.log(`UF: ${executante.uf} | CBOS: ${executante.cbos}`);\nconsole.log('==================================');\n\n// Gerar XML dos procedimentos - TISS 4.02.00\nlet procedimentosXML = '';\nlet valorTotalGeral = 0;\nlet sequencial = 1;\n\nfor (const proc of procedimentos) {\n  const valorUnitario = formatarValor(proc['Valor Unitário'] || 0);\n  const quantidadeExecutada = parseInt(proc['Quantidade Executada'] || 1);\n  const valorTotal = (parseFloat(valorUnitario) * quantidadeExecutada).toFixed(2);\n  \n  valorTotalGeral += parseFloat(valorTotal);\n  \n  // reducaoAcrescimo: formato 1.0 na 4.02.00 (era 1.00 na 4.01.00)\n  const reducaoAcrescimo = proc['Redução/Acréscimo'] || '1.0';\n  \n  procedimentosXML += `                        <ans:procedimentoExecutado>\n                            <ans:sequencialItem>${sequencial}</ans:sequencialItem>\n                            <ans:dataExecucao>${formatarData(proc['Data Execução'])}</ans:dataExecucao>\n                            <ans:horaInicial>${formatarHora(proc['Hora Início'])}</ans:horaInicial>\n                            <ans:horaFinal>${formatarHora(proc['Hora Fim'])}</ans:horaFinal>\n                            <ans:procedimento>\n                                <ans:codigoTabela>${proc['Código Tabela'] || '22'}</ans:codigoTabela>\n                                <ans:codigoProcedimento>${proc['Código Procedimento']}</ans:codigoProcedimento>\n                                <ans:descricaoProcedimento>${escaparXML(proc['Descrição Procedimento'])}</ans:descricaoProcedimento>\n                            </ans:procedimento>\n                            <ans:quantidadeExecutada>${quantidadeExecutada}</ans:quantidadeExecutada>\n                            <ans:viaAcesso>${proc['Via Acesso'] || '1'}</ans:viaAcesso>\n                            <ans:tecnicaUtilizada>${proc['Técnica Utilizada'] || '1'}</ans:tecnicaUtilizada>\n                            <ans:reducaoAcrescimo>${reducaoAcrescimo}</ans:reducaoAcrescimo>\n                            <ans:valorUnitario>${valorUnitario}</ans:valorUnitario>\n                            <ans:valorTotal>${valorTotal}</ans:valorTotal>\n                            <ans:equipeSadt>\n                                <ans:grauPart>12</ans:grauPart>\n                                <ans:codProfissional>\n                                    <ans:cpfContratado>${executante.cpf}</ans:cpfContratado>\n                                </ans:codProfissional>\n                                <ans:nomeProf>${escaparXML(executante.nome)}</ans:nomeProf>\n                                <ans:conselho>${executante.conselho}</ans:conselho>\n                                <ans:numeroConselhoProfissional>${executante.numeroConselho}</ans:numeroConselhoProfissional>\n                                <ans:UF>${executante.uf}</ans:UF>\n                                <ans:CBOS>${executante.cbos}</ans:CBOS>\n                            </ans:equipeSadt>\n                        </ans:procedimentoExecutado>\n`;\n  \n  sequencial++;\n}\n\nvalorTotalGeral = valorTotalGeral.toFixed(2);\n\n// XML da guia completa - TISS 4.02.00\nconst xmlGuia = `                <ans:guiaSP-SADT>\n                    <ans:cabecalhoGuia>\n                        <ans:registroANS>${guiaAtual.registroANS}</ans:registroANS>\n                        <ans:numeroGuiaPrestador>${guiaAtual.numeroGuiaPrestador}</ans:numeroGuiaPrestador>\n                    </ans:cabecalhoGuia>\n                    <ans:dadosAutorizacao>\n                        <ans:numeroGuiaOperadora>${guiaAtual.numeroGuiaOperadora}</ans:numeroGuiaOperadora>\n                        <ans:dataAutorizacao>${guiaAtual.dataAutorizacao}</ans:dataAutorizacao>\n                        <ans:senha>${guiaAtual.senha}</ans:senha>\n                        <ans:dataValidadeSenha>${guiaAtual.dataValidadeSenha}</ans:dataValidadeSenha>\n                    </ans:dadosAutorizacao>\n                    <ans:dadosBeneficiario>\n                        <ans:numeroCarteira>${guiaAtual.numeroCarteira}</ans:numeroCarteira>\n                        <ans:atendimentoRN>N</ans:atendimentoRN>\n                    </ans:dadosBeneficiario>\n                    <ans:dadosSolicitante>\n                        <ans:contratadoSolicitante>\n                            <ans:codigoPrestadorNaOperadora>${guiaAtual.codigoPrestador}</ans:codigoPrestadorNaOperadora>\n                        </ans:contratadoSolicitante>\n                        <ans:nomeContratadoSolicitante>${escaparXML(guiaAtual.nomePrestador)}</ans:nomeContratadoSolicitante>\n                        <ans:profissionalSolicitante>\n                            <ans:nomeProfissional>${escaparXML((guiaAtual.nomeProfissional || '').toUpperCase())}</ans:nomeProfissional>\n                            <ans:conselhoProfissional>${guiaAtual.conselho}</ans:conselhoProfissional>\n                            <ans:numeroConselhoProfissional>${guiaAtual.numeroConselho}</ans:numeroConselhoProfissional>\n                            <ans:UF>${guiaAtual.uf}</ans:UF>\n                            <ans:CBOS>${guiaAtual.cbos}</ans:CBOS>\n                        </ans:profissionalSolicitante>\n                    </ans:dadosSolicitante>\n                    <ans:dadosSolicitacao>\n                        <ans:dataSolicitacao>${guiaAtual.dataSolicitacao}</ans:dataSolicitacao>\n                        <ans:caraterAtendimento>1</ans:caraterAtendimento>\n                        <ans:indicacaoClinica>${escaparXML(guiaAtual.indicacaoClinica)}</ans:indicacaoClinica>\n                    </ans:dadosSolicitacao>\n                    <ans:dadosExecutante>\n                        <ans:contratadoExecutante>\n                            <ans:codigoPrestadorNaOperadora>${guiaAtual.codigoPrestador}</ans:codigoPrestadorNaOperadora>\n                        </ans:contratadoExecutante>\n                        <ans:CNES>${guiaAtual.cnes}</ans:CNES>\n                    </ans:dadosExecutante>\n                    <ans:dadosAtendimento>\n                        <ans:tipoAtendimento>${guiaAtual.tipoAtendimento}</ans:tipoAtendimento>\n                        <ans:indicacaoAcidente>${guiaAtual.indicacaoAcidente}</ans:indicacaoAcidente>\n                        <ans:tipoConsulta>2</ans:tipoConsulta>\n                        <ans:regimeAtendimento>01</ans:regimeAtendimento>\n                    </ans:dadosAtendimento>\n                    <ans:procedimentosExecutados>\n${procedimentosXML}\n                    </ans:procedimentosExecutados>\n                    <ans:valorTotal>\n                        <ans:valorProcedimentos>${valorTotalGeral}</ans:valorProcedimentos>\n                        <ans:valorDiarias>0.00</ans:valorDiarias>\n                        <ans:valorTaxasAlugueis>0.00</ans:valorTaxasAlugueis>\n                        <ans:valorMateriais>0.00</ans:valorMateriais>\n                        <ans:valorMedicamentos>0.00</ans:valorMedicamentos>\n                        <ans:valorOPME>0.00</ans:valorOPME>\n                        <ans:valorGasesMedicinais>0.00</ans:valorGasesMedicinais>\n                        <ans:valorTotalGeral>${valorTotalGeral}</ans:valorTotalGeral>\n                    </ans:valorTotal>\n                </ans:guiaSP-SADT>`;\n\nconsole.log(`✅ XML gerado para guia ${guiaAtual.numeroGuiaOperadora} (TISS 4.02.00)`);\nconsole.log(`Valor total: R$ ${valorTotalGeral}`);\n\nreturn [{\n  json: {\n    numeroLote: guiaAtual.numeroLote,\n    dataTransacao: guiaAtual.dataTransacao,\n    horaTransacao: guiaAtual.horaTransacao,\n    registroANS: guiaAtual.registroANS,\n    codigoPrestador: guiaAtual.codigoPrestador,\n    padraoTISS: guiaAtual.padraoTISS,\n    numeroGuiaOperadora: guiaAtual.numeroGuiaOperadora,\n    numeroGuiaPrestador: guiaAtual.numeroGuiaPrestador,\n    nomeBeneficiario: guiaAtual.nomeBeneficiario,\n    xmlGuia: xmlGuia,\n    valorTotalGuia: valorTotalGeral,\n    quantidadeProcedimentos: procedimentos.length,\n    statusProcessamento: 'xml_gerado',\n    executanteUtilizado: executante\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        528
+      ],
+      "id": "3a58a806-3d60-49b9-a5aa-6030b39e3586",
+      "name": "ADD PROCEDIMENTOS E GERA XML GUIASP-SADT"
+    },
+    {
+      "parameters": {
+        "amount": 2
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        544,
+        528
+      ],
+      "id": "03f97a40-40d8-4847-801d-0fdac471c529",
+      "name": "Wait",
+      "webhookId": "429f3944-5c74-4db5-a429-cf1fddfd3785"
+    },
+    {
+      "parameters": {
+        "amount": 2
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1168,
+        528
+      ],
+      "id": "487973bb-81b7-4374-9473-39bfab086af1",
+      "name": "Wait1",
+      "webhookId": "1695b2fc-5b3a-4cbd-8881-2764cef0e5fd"
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        544,
+        336
+      ],
+      "id": "ac82562a-65e3-4fc0-acfc-c9566bcd85d2",
+      "name": "Aggregate"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Pega todos os procedimentos da guia": {
+      "main": [
+        [
+          {
+            "node": "ADD PROCEDIMENTOS E GERA XML GUIASP-SADT",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pega No máximo 100 guias por Vez": {
+      "main": [
+        [
+          {
+            "node": "Limit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GERA XML PARTE 01": {
+      "main": [
+        [
+          {
+            "node": "Split in Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Replace Me": {
+      "main": [
+        [
+          {
+            "node": "Split in Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When clicking 'Execute workflow'": {
+      "main": [
+        [
+          {
+            "node": "Configurar Parâmetros",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Limit": {
+      "main": [
+        [
+          {
+            "node": "GERA XML PARTE 01",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split in Batches": {
+      "main": [
+        [
+          {
+            "node": "Aggregate",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Configurar Parâmetros": {
+      "main": [
+        [
+          {
+            "node": "Pega No máximo 100 guias por Vez",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "MONTAR XML FINAL": {
+      "main": [
+        [
+          {
+            "node": "PREPARAR DOWNLOAD XML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "Pega todos os procedimentos da guia",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait1": {
+      "main": [
+        [
+          {
+            "node": "ATUALIZA STATUS DA GUIA - FATURADA",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Replace Me",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PREPARAR DOWNLOAD XML": {
+      "main": [
+        [
+          {
+            "node": "Enviae XML Cpro Download",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ADD PROCEDIMENTOS E GERA XML GUIASP-SADT": {
+      "main": [
+        [
+          {
+            "node": "Wait1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviae XML Cpro Download": {
+      "main": [
+        [
+          {
+            "node": "FIM DO FLUXO",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate": {
+      "main": [
+        [
+          {
+            "node": "MONTAR XML FINAL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "5a82bc33-b3e2-44c9-a4b2-ddb0aec61289",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "029f270710926d9ad97c0718d62a3f1453ee90afe444562138c25165861e429a"
+  },
+  "id": "ETq6ztYMg3nkohVc",
+  "tags": []
+}

@@ -1,0 +1,30 @@
+services:
+  faturamento:
+    build:
+      context: .
+      args:
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL}
+    container_name: faturamento-unimed
+    restart: unless-stopped
+    env_file: .env.production
+    environment:
+      - NODE_ENV=production
+      - BROWSERLESS_WS_URL=ws://browserless:3000
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.faturamento.rule=Host(`faturamento.consultoriopro.com.br`)"
+      - "traefik.http.routers.faturamento.entrypoints=websecure"
+      - "traefik.http.routers.faturamento.tls.certresolver=letsencrypt"
+      - "traefik.http.services.faturamento.loadbalancer.server.port=3000"
+      #- "traefik.http.routers.faturamento.middlewares=secure-headers@file"
+    networks:
+      - traefik-public
+      - n8n_default
+
+networks:
+  traefik-public:
+    external: true
+  n8n_default:
+    external: true

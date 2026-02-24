@@ -1,0 +1,383 @@
+{
+  "name": "SAW - Login com Cache Redis",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "e7c55a22-5e62-409e-ad0e-6ca44b5b1313",
+      "name": "Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [
+        -1392,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "propertyName": "value",
+        "key": "saw_session_cookies",
+        "options": {}
+      },
+      "id": "1a8f1078-dfff-40f2-9b6f-3a2d98b3ca80",
+      "name": "Redis GET Cookies",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        -1184,
+        384
+      ],
+      "credentials": {
+        "redis": {
+          "id": "pUEskKGAyyCSTV1N",
+          "name": "Redis N8N - CPro"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Verificar se existem cookies válidos\nconst redisResult = $json;\nconst cookiesStr = redisResult.value;\n\nif (!cookiesStr || cookiesStr === '' || cookiesStr === 'null') {\n  return [{ json: { temCookies: false, cookies: null } }];\n}\n\ntry {\n  const parsed = JSON.parse(cookiesStr);\n  // Suporta { cookies: [...], timestamp: ... } ou [...] direto\n  const cookies = parsed.cookies || parsed;\n  \n  if (!cookies || !Array.isArray(cookies) || cookies.length === 0) {\n    return [{ json: { temCookies: false, cookies: null } }];\n  }\n  \n  return [{ json: { temCookies: true, cookies: cookies, timestamp: parsed.timestamp } }];\n} catch (e) {\n  return [{ json: { temCookies: false, cookies: null, erro: e.message } }];\n}"
+      },
+      "id": "175d68a2-3bbf-4bc4-a35c-6914e498a268",
+      "name": "Parse Redis",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -992,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.temCookies === false }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "notEquals"
+              },
+              "id": "fcb9ef90-298d-4d86-b6a4-9f665c8d992a"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "80a66543-23e6-4549-804b-4c1ef74330f9",
+      "name": "Cookies Existem?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -800,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://puppeteer-api:3001/saw/testar-sessao",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ cookies: $json.cookies }) }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "881ba641-28e3-44b4-a73d-14e6f721735f",
+      "name": "Testar Sessão",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -592,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.valida }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "4d52b192-d451-464c-abcf-b6e69fdb01fe",
+      "name": "Sessão Válida?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -400,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Retornar cookies do cache\nconst parseResult = $('Parse Redis').first().json;\n\nreturn [{ \n  json: { \n    success: true, \n    cookies: parseResult.cookies, \n    source: 'cache',\n    timestamp: parseResult.timestamp\n  } \n}];"
+      },
+      "id": "8ddb90e0-f85e-4ac9-97be-0e0e78a6d80a",
+      "name": "Retornar Cache",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -208,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://puppeteer-api:3001/saw/login",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"usuario\": \"cnu.robson.duarte\",\n  \"senha\": \"Cam$81Mar03*\"\n}",
+        "options": {
+          "timeout": 90000
+        }
+      },
+      "id": "21e9c662-4db5-4222-8c20-ca5007f9195d",
+      "name": "Fazer Login",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -496,
+        592
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.success }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "f53ecfb5-ce25-41de-89a6-e1b4fbc5b24c",
+      "name": "Login OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -304,
+        592
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "set",
+        "key": "saw_session_cookies",
+        "value": "={{ JSON.stringify({ cookies: $json.cookies, timestamp: new Date().toISOString() }) }}",
+        "expire": true,
+        "ttl": 43200
+      },
+      "id": "ee0aee73-7ffa-4b63-b49f-c8db26504736",
+      "name": "Redis SET Cookies",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        -112,
+        496
+      ],
+      "credentials": {
+        "redis": {
+          "id": "pUEskKGAyyCSTV1N",
+          "name": "Redis N8N - CPro"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Retornar cookies do login\nconst loginResult = $('Fazer Login').first().json;\n\nreturn [{ \n  json: { \n    success: true, \n    cookies: loginResult.cookies, \n    source: 'fresh_login',\n    timestamp: new Date().toISOString()\n  } \n}];"
+      },
+      "id": "a74298cc-95ab-4e3d-aefa-c09f5883ae02",
+      "name": "Retornar Novo Login",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        80,
+        496
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { success: false, erro: 'Falha no login SAW', cookies: null } }];"
+      },
+      "id": "6677b851-3f24-478b-b6a8-bb88cdd8c874",
+      "name": "Retornar Erro",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -112,
+        688
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Trigger": {
+      "main": [
+        [
+          {
+            "node": "Redis GET Cookies",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Redis GET Cookies": {
+      "main": [
+        [
+          {
+            "node": "Parse Redis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Redis": {
+      "main": [
+        [
+          {
+            "node": "Cookies Existem?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cookies Existem?": {
+      "main": [
+        [
+          {
+            "node": "Testar Sessão",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Fazer Login",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Testar Sessão": {
+      "main": [
+        [
+          {
+            "node": "Sessão Válida?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sessão Válida?": {
+      "main": [
+        [
+          {
+            "node": "Retornar Cache",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Fazer Login",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fazer Login": {
+      "main": [
+        [
+          {
+            "node": "Login OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Login OK?": {
+      "main": [
+        [
+          {
+            "node": "Redis SET Cookies",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Retornar Erro",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Redis SET Cookies": {
+      "main": [
+        [
+          {
+            "node": "Retornar Novo Login",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "590a19dc-7f4c-4c74-a0b9-7feb70beff12",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "029f270710926d9ad97c0718d62a3f1453ee90afe444562138c25165861e429a"
+  },
+  "id": "NRU7fFF7wyUAfwhX66wKk",
+  "tags": []
+}

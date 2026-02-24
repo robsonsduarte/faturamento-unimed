@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { getSawClient } from '@/lib/saw/client'
+import type { SawCookie } from '@/lib/saw/client'
 
 export async function POST(request: NextRequest) {
   try {
@@ -10,23 +12,57 @@ export async function POST(request: NextRequest) {
 
     if (!user) return NextResponse.json({ error: 'Nao autenticado' }, { status: 401 })
 
-    const sawApiUrl = process.env.SAW_API_URL
-    if (!sawApiUrl) return NextResponse.json({ error: 'SAW_API_URL nao configurada' }, { status: 500 })
+    const { data: integracao, error: integracaoError } = await supabase
+      .from('integracoes')
+      .select('config, ativo')
+      .eq('slug', 'saw')
+      .single()
+
+    if (integracaoError || !integracao) {
+      return NextResponse.json({ error: 'Configuracao SAW nao encontrada' }, { status: 500 })
+    }
+
+    if (!integracao.ativo) {
+      return NextResponse.json({ error: 'Integracao SAW esta desativada' }, { status: 400 })
+    }
+
+    const { data: session } = await supabase
+      .from('saw_sessions')
+      .select('cookies')
+      .eq('valida', true)
+      .gte('expires_at', new Date().toISOString())
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single()
+
+    if (!session?.cookies) {
+      return NextResponse.json(
+        { error: 'Sessao SAW nao encontrada. Faca login primeiro.' },
+        { status: 401 }
+      )
+    }
 
     const body = await request.json() as { guide_number: string }
 
-    const res = await fetch(`${sawApiUrl}/ler-guia`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(30000),
-    })
+    if (!body.guide_number) {
+      return NextResponse.json({ error: 'guide_number e obrigatorio' }, { status: 400 })
+    }
 
-    if (!res.ok) return NextResponse.json({ error: 'Erro ao ler guia do SAW' }, { status: 502 })
+    const cookies = session.cookies as SawCookie[]
+    const result = await getSawClient().readGuide(cookies, body.guide_number)
 
-    const data = await res.json() as Record<string, unknown>
-    return NextResponse.json(data)
+    if (!result.success) {
+      return NextResponse.json(
+        { error: result.error ?? 'Erro ao ler guia no SAW' },
+        { status: 502 }
+      )
+    }
+
+    return NextResponse.json(result.data)
   } catch (err) {
-    return NextResponse.json({ error: err instanceof Error ? err.message : 'Erro interno' }, { status: 500 })
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : 'Erro interno' },
+      { status: 500 }
+    )
   }
 }

@@ -39,5 +39,39 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
+  // Block self-registration — only admin can create users
+  if (request.nextUrl.pathname === '/auth/register') {
+    const url = request.nextUrl.clone()
+    url.pathname = '/auth/login'
+    return NextResponse.redirect(url)
+  }
+
+  // Role-based route protection for visualizador
+  if (user && request.nextUrl.pathname.startsWith('/dashboard')) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single()
+
+    if (profile?.role === 'visualizador') {
+      const path = request.nextUrl.pathname
+
+      // Block bulk import page for visualizador
+      if (path === '/dashboard/guias/importar') {
+        const url = request.nextUrl.clone()
+        url.pathname = '/dashboard/guias'
+        return NextResponse.redirect(url)
+      }
+
+      const allowed = path === '/dashboard/guias' || path.startsWith('/dashboard/guias/')
+      if (!allowed) {
+        const url = request.nextUrl.clone()
+        url.pathname = '/dashboard/guias'
+        return NextResponse.redirect(url)
+      }
+    }
+  }
+
   return supabaseResponse
 }

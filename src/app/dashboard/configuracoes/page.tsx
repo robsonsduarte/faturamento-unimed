@@ -32,7 +32,7 @@ export default function ConfiguracoesPage() {
         {items.map(({ href, icon: Icon, title, description }) => (
           <Link
             key={href}
-            href={href}
+            href={href as never}
             className="flex items-center gap-4 p-5 bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl hover:border-[var(--color-primary)]/50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]"
           >
             <div className="w-10 h-10 rounded-lg bg-[var(--color-primary)]/10 flex items-center justify-center shrink-0">

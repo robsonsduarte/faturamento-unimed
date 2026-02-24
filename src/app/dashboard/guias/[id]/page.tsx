@@ -1,9 +1,10 @@
 'use client'
 
-import { use } from 'react'
+import { use, useState } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, RefreshCw, CheckCircle } from 'lucide-react'
+import { ArrowLeft, RefreshCw, CheckCircle, RotateCw } from 'lucide-react'
 import { useGuia, useUpdateGuiaStatus } from '@/hooks/use-guias'
+import { useProfile } from '@/hooks/use-profile'
 import { StatusBadge } from '@/components/shared/status-badge'
 import { Skeleton } from '@/components/shared/loading-skeleton'
 import { PageHeader } from '@/components/shared/page-header'
@@ -17,8 +18,49 @@ interface Props {
 
 export default function GuiaDetailPage({ params }: Props) {
   const { id } = use(params)
-  const { data: guia, isLoading, error } = useGuia(id)
+  const { data: guia, isLoading, error, refetch } = useGuia(id)
   const updateStatus = useUpdateGuiaStatus()
+  const { data: profile } = useProfile()
+  const isVisualizador = profile?.role === 'visualizador'
+  const [reimporting, setReimporting] = useState(false)
+  const [reimportMsg, setReimportMsg] = useState<string | null>(null)
+
+  const handleReimport = async () => {
+    if (!guia || reimporting) return
+    setReimporting(true)
+    setReimportMsg('Atualizando dados da guia...')
+    try {
+      const res = await fetch('/api/guias/importar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ guide_numbers: [guia.guide_number] }),
+      })
+      const reader = res.body?.getReader()
+      const decoder = new TextDecoder()
+      let lastMsg = ''
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          const text = decoder.decode(value, { stream: true })
+          const lines = text.split('\n').filter((l) => l.startsWith('data: '))
+          for (const line of lines) {
+            try {
+              const parsed = JSON.parse(line.replace('data: ', ''))
+              lastMsg = parsed.message ?? ''
+            } catch { /* ignore */ }
+          }
+        }
+      }
+      setReimportMsg(lastMsg || 'Dados atualizados')
+      refetch()
+    } catch (err) {
+      setReimportMsg(err instanceof Error ? err.message : 'Erro ao atualizar')
+    } finally {
+      setReimporting(false)
+      setTimeout(() => setReimportMsg(null), 5000)
+    }
+  }
 
   if (isLoading) {
     return (
@@ -65,27 +107,68 @@ export default function GuiaDetailPage({ params }: Props) {
 
       {/* Status pipeline */}
       <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-5">
-        <h2 className="text-sm font-semibold text-[var(--color-text)] mb-4">Pipeline de Status</h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-sm font-semibold text-[var(--color-text)]">Pipeline de Status</h2>
+          {isVisualizador && guia.status !== 'COMPLETA' && (
+            <button
+              onClick={handleReimport}
+              disabled={reimporting}
+              className={cn(
+                'inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
+                'bg-[var(--color-primary)] text-white hover:bg-[var(--color-primary-hover)]',
+                'disabled:opacity-50 disabled:cursor-not-allowed',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]'
+              )}
+            >
+              <RotateCw className={cn('w-3.5 h-3.5', reimporting && 'animate-spin')} />
+              {reimporting ? 'Atualizando...' : 'Atualizar dados'}
+            </button>
+          )}
+        </div>
+        {reimportMsg && (
+          <p className={cn(
+            'text-xs mb-3 px-3 py-2 rounded-lg',
+            reimporting
+              ? 'bg-blue-500/10 text-blue-400'
+              : 'bg-[var(--color-success)]/10 text-[var(--color-success)]'
+          )}>
+            {reimportMsg}
+          </p>
+        )}
         <div className="flex items-center gap-1 overflow-x-auto pb-2">
           {GUIDE_STATUS_FLOW.map((s, i) => {
             const isActive = s === guia.status
             const isDone = i < statusIndex
             return (
               <div key={s} className="flex items-center gap-1 shrink-0">
-                <button
-                  onClick={() => updateStatus.mutate({ id: guia.id, status: s as GuideStatus })}
-                  disabled={updateStatus.isPending}
-                  className={cn(
-                    'px-3 py-1.5 rounded-full text-xs font-medium transition-colors',
-                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]',
-                    isActive && 'bg-[var(--color-primary)] text-white',
-                    isDone && !isActive && 'bg-[var(--color-success)]/20 text-[var(--color-success)]',
-                    !isActive && !isDone && 'bg-[var(--color-surface)] text-[var(--color-text-muted)] hover:bg-[var(--color-card)]'
-                  )}
-                >
-                  {isDone && <CheckCircle className="w-3 h-3 inline mr-1" />}
-                  {s}
-                </button>
+                {isVisualizador ? (
+                  <span
+                    className={cn(
+                      'px-3 py-1.5 rounded-full text-xs font-medium',
+                      isActive && 'bg-[var(--color-primary)] text-white',
+                      isDone && !isActive && 'bg-[var(--color-success)]/20 text-[var(--color-success)]',
+                      !isActive && !isDone && 'bg-[var(--color-surface)] text-[var(--color-text-muted)]'
+                    )}
+                  >
+                    {isDone && <CheckCircle className="w-3 h-3 inline mr-1" />}
+                    {s}
+                  </span>
+                ) : (
+                  <button
+                    onClick={() => updateStatus.mutate({ id: guia.id, status: s as GuideStatus })}
+                    disabled={updateStatus.isPending}
+                    className={cn(
+                      'px-3 py-1.5 rounded-full text-xs font-medium transition-colors',
+                      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]',
+                      isActive && 'bg-[var(--color-primary)] text-white',
+                      isDone && !isActive && 'bg-[var(--color-success)]/20 text-[var(--color-success)]',
+                      !isActive && !isDone && 'bg-[var(--color-surface)] text-[var(--color-text-muted)] hover:bg-[var(--color-card)]'
+                    )}
+                  >
+                    {isDone && <CheckCircle className="w-3 h-3 inline mr-1" />}
+                    {s}
+                  </button>
+                )}
                 {i < GUIDE_STATUS_FLOW.length - 1 && (
                   <div className={cn('w-6 h-0.5', isDone ? 'bg-[var(--color-success)]' : 'bg-[var(--color-border)]')} />
                 )}

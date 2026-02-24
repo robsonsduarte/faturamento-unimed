@@ -1,9 +1,9 @@
 import type { NextConfig } from 'next'
 
 const nextConfig: NextConfig = {
-  experimental: {
-    typedRoutes: true,
-  },
+  output: 'standalone',
+  typedRoutes: true,
+  serverExternalPackages: ['puppeteer-core'],
 }
 
 export default nextConfig

@@ -4,6 +4,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { Plus, Search, Filter, RefreshCw } from 'lucide-react'
 import { useGuias } from '@/hooks/use-guias'
+import { useProfile } from '@/hooks/use-profile'
 import { StatusBadge } from '@/components/shared/status-badge'
 import { EmptyState } from '@/components/shared/empty-state'
 import { TableSkeleton } from '@/components/shared/loading-skeleton'
@@ -13,6 +14,8 @@ import { GUIDE_STATUS_FLOW } from '@/lib/constants'
 import type { GuideStatus } from '@/lib/constants'
 
 export default function GuiasPage() {
+  const { data: profile } = useProfile()
+  const isVisualizador = profile?.role === 'visualizador'
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState<string>('')
   const [page, setPage] = useState(1)
@@ -34,19 +37,21 @@ export default function GuiasPage() {
         title="Guias"
         description={`${total} guia${total !== 1 ? 's' : ''} encontrada${total !== 1 ? 's' : ''}`}
         action={
-          <div className="flex gap-2">
-            <Link
-              href="/dashboard/guias/importar"
-              className={cn(
-                'inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium',
-                'bg-[var(--color-primary)] text-white hover:bg-[var(--color-primary-hover)] transition-colors',
-                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]'
-              )}
-            >
-              <Plus className="w-4 h-4" />
-              Importar Guias
-            </Link>
-          </div>
+          !isVisualizador ? (
+            <div className="flex gap-2">
+              <Link
+                href="/dashboard/guias/importar"
+                className={cn(
+                  'inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium',
+                  'bg-[var(--color-primary)] text-white hover:bg-[var(--color-primary-hover)] transition-colors',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]'
+                )}
+              >
+                <Plus className="w-4 h-4" />
+                Importar Guias
+              </Link>
+            </div>
+          ) : undefined
         }
       />
 
