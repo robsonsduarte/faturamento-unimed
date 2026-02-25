@@ -22,7 +22,8 @@ export async function getGuias(
   let query = supabase
     .from('guias')
     .select('*', { count: 'exact' })
-    .order('created_at', { ascending: false })
+    .order('data_solicitacao', { ascending: false, nullsFirst: false })
+    .order('guide_number', { ascending: false })
 
   if (status) query = query.eq('status', status)
   if (status_xml) query = query.eq('status_xml', status_xml)

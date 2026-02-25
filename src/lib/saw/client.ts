@@ -303,11 +303,12 @@ class SawClient {
           }
 
           /* ===========================
-             NUMERO CARTEIRA (split by -)
+             NUMERO CARTEIRA (keep only digits)
+             SAW format: "865 - 0057941759008" or "0865 0057941759008"
           =========================== */
           let numeroCarteira = extrairTextoDepoisDeLabel('8-N')
-          if (numeroCarteira && numeroCarteira.includes('-')) {
-            numeroCarteira = numeroCarteira.split('-').pop()?.trim() ?? numeroCarteira
+          if (numeroCarteira) {
+            numeroCarteira = numeroCarteira.replace(/\D/g, '') || null
           }
 
           /* ===========================
