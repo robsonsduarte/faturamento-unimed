@@ -337,9 +337,14 @@ class SawClient {
           let cbosProfissional = extrairTextoDepoisDeLabel('19-C')
           if (cbosProfissional) {
             const lower = cbosProfissional.toLowerCase()
-            if (lower.includes('logo cl')) cbosProfissional = '251510'
+            if (lower.includes('psicopedagog')) cbosProfissional = '239425'
+            else if (lower.includes('psicanalista')) cbosProfissional = '251545'
+            else if (lower.includes('psicomotric')) cbosProfissional = '239440'
+            else if (lower.includes('logo cl') || lower.includes('psicologo') || lower.includes('psicólogo')) cbosProfissional = '251510'
             else if (lower.includes('fonoaudi')) cbosProfissional = '223810'
             else if (lower.includes('nutri')) cbosProfissional = '223505'
+            else if (lower.includes('terapeuta ocup')) cbosProfissional = '223905'
+            else if (lower.includes('fisioterapeut')) cbosProfissional = '223605'
           }
 
           /* ===========================
@@ -357,7 +362,12 @@ class SawClient {
           if (tipoAtendimento && tipoAtendimento.includes('Outras Terapias')) tipoAtendimento = '03'
 
           let indicacaoAcidente = extrairTextoDepoisDeLabel('33-Indica')
-          if (indicacaoAcidente && indicacaoAcidente.includes('Não Acidente')) indicacaoAcidente = '9'
+          if (indicacaoAcidente) {
+            const lowerAcid = indicacaoAcidente.toLowerCase()
+            if (lowerAcid.includes('trabalho')) indicacaoAcidente = '0'
+            else if (lowerAcid.includes('trânsito') || lowerAcid.includes('transito')) indicacaoAcidente = '1'
+            else indicacaoAcidente = '9' // Não acidente (default para clínica terapêutica)
+          }
 
           /* ===========================
              QUANTITIES FROM #procedimentos table

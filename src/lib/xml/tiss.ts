@@ -47,6 +47,35 @@ function normalizeCodigoTabela(codigo: string | null | undefined): string {
   return '22' // Fallback: TUSS
 }
 
+/** Normalize CBOS: SAW may store text description, TISS requires numeric CBO-S code */
+function normalizeCbos(cbos: string | null | undefined, fallback = '251510'): string {
+  if (!cbos) return fallback
+  const trimmed = cbos.trim()
+  if (/^\d{4,6}$/.test(trimmed)) return trimmed
+  const lower = trimmed.toLowerCase()
+  if (lower.includes('psicopedagog')) return '239425'
+  if (lower.includes('psicanalista')) return '251545'
+  if (lower.includes('psicomotric')) return '239440'
+  if (lower.includes('logo cl') || lower.includes('psicologo') || lower.includes('psicólogo')) return '251510'
+  if (lower.includes('fonoaudi')) return '223810'
+  if (lower.includes('nutri')) return '223505'
+  if (lower.includes('terapeuta ocup')) return '223905'
+  if (lower.includes('fisioterapeut')) return '223605'
+  return fallback
+}
+
+/** Normalize indicacaoAcidente: SAW may store text, TISS requires numeric code (0-2,9) */
+function normalizeIndicacaoAcidente(valor: string | null | undefined): string {
+  if (!valor) return '9'
+  const trimmed = valor.trim()
+  if (/^\d$/.test(trimmed)) return trimmed
+  const lower = trimmed.toLowerCase()
+  if (lower.includes('trabalho')) return '0'
+  if (lower.includes('trânsito') || lower.includes('transito')) return '1'
+  if (lower.includes('não acidente') || lower.includes('nao acidente')) return '9'
+  return '9' // Default: Não acidente (contexto clínica terapêutica)
+}
+
 function extractCpf(guia: Guia): string | null {
   const cpro = guia.cpro_data as Record<string, unknown> | null
   const prof = cpro?.profissional as Record<string, unknown> | null
@@ -82,7 +111,7 @@ function buildProcedimento(proc: Procedimento, index: number, cpfProfissional: s
       [ans('conselho')]: proc.conselho ?? '09',
       [ans('numeroConselhoProfissional')]: proc.numero_conselho ?? '',
       [ans('UF')]: normalizeUf(proc.uf),
-      [ans('CBOS')]: proc.cbos ?? '251510',
+      [ans('CBOS')]: normalizeCbos(proc.cbos),
     },
   }
 }
@@ -123,7 +152,7 @@ function buildGuiaContent(guia: Guia) {
         [ans('conselhoProfissional')]: firstProc?.conselho ?? '09',
         [ans('numeroConselhoProfissional')]: firstProc?.numero_conselho ?? '',
         [ans('UF')]: normalizeUf(firstProc?.uf),
-        [ans('CBOS')]: firstProc?.cbos ?? '251510',
+        [ans('CBOS')]: normalizeCbos(firstProc?.cbos),
       },
     },
     [ans('dadosSolicitacao')]: {
@@ -139,7 +168,7 @@ function buildGuiaContent(guia: Guia) {
     },
     [ans('dadosAtendimento')]: {
       [ans('tipoAtendimento')]: guia.tipo_atendimento ?? '03',
-      [ans('indicacaoAcidente')]: guia.indicacao_acidente ?? '9',
+      [ans('indicacaoAcidente')]: normalizeIndicacaoAcidente(guia.indicacao_acidente),
       [ans('tipoConsulta')]: '2',
       [ans('regimeAtendimento')]: '01',
     },
