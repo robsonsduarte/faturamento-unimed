@@ -193,7 +193,7 @@ export async function POST(request: NextRequest) {
         let errorCount = 0
         const startTime = Date.now()
         const MAX_RETRIES = 3
-        const RETRY_DELAY_MS = 30_000
+        const RETRY_DELAY_MS = 3_000
 
         const isSessionError = (msg: string): boolean => {
           const lower = msg.toLowerCase()
@@ -291,14 +291,16 @@ export async function POST(request: NextRequest) {
             const msg = sawResult.error ?? 'Erro desconhecido'
 
             if (isSessionError(msg) && attempt < MAX_RETRIES) {
-              send('info', `Guia ${guideNumber}: sessao fechada (${msg}). Aguardando ${RETRY_DELAY_MS / 1000}s antes de reconectar... (tentativa ${attempt + 1}/${MAX_RETRIES})`, guideNumber)
+              send('info', `Guia ${guideNumber}: sessao fechada (${msg}). Reconectando... (tentativa ${attempt + 1}/${MAX_RETRIES})`, guideNumber)
               await sleep(RETRY_DELAY_MS)
 
               const reloginOk = await reloginSaw()
-              if (!reloginOk && attempt === MAX_RETRIES - 1) {
-                send('error', `Guia ${guideNumber}: esgotadas ${MAX_RETRIES} tentativas de reconexao.`, guideNumber)
-                errorCount++
-                break
+              if (!reloginOk) {
+                send('error', `Guia ${guideNumber}: falha ao reconectar (tentativa ${attempt + 1}/${MAX_RETRIES}).`, guideNumber)
+                if (attempt === MAX_RETRIES - 1) {
+                  errorCount++
+                  break
+                }
               }
               continue
             }
@@ -517,7 +519,7 @@ export async function POST(request: NextRequest) {
           const retries = outerRetryCount.get(i) ?? 0
           if (isSessionError(guiaMsg) && retries < MAX_RETRIES) {
             outerRetryCount.set(i, retries + 1)
-            send('info', `Guia ${guideNumber}: erro de sessao durante processamento (${guiaMsg}). Aguardando ${RETRY_DELAY_MS / 1000}s... (recuperacao ${retries + 1}/${MAX_RETRIES})`, guideNumber)
+            send('info', `Guia ${guideNumber}: erro de sessao durante processamento (${guiaMsg}). Reconectando... (recuperacao ${retries + 1}/${MAX_RETRIES})`, guideNumber)
             await sleep(RETRY_DELAY_MS)
             const recovered = await reloginSaw()
             if (recovered) {

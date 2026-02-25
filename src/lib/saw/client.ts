@@ -26,12 +26,39 @@ const SAW_BASE = 'https://saw.trixti.com.br'
 class SawClient {
   private browser: Browser | null = null
 
+  /**
+   * Returns a healthy browser connection. Verifies the WebSocket is alive
+   * with a real health check (browser.version()), not just the .connected flag.
+   * Automatically reconnects if the connection is stale or dead.
+   */
   async getBrowser(): Promise<Browser> {
-    if (!this.browser || !this.browser.connected) {
+    if (this.browser) {
+      try {
+        // Real health check — .connected flag is unreliable
+        await Promise.race([
+          this.browser.version(),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('Health check timeout')), 5000)
+          ),
+        ])
+      } catch {
+        console.log('[SAW] Browser connection stale, reconnecting...')
+        try { this.browser.disconnect() } catch { /* already dead */ }
+        this.browser = null
+      }
+    }
+
+    if (!this.browser) {
       const wsEndpoint = process.env.BROWSERLESS_WS_URL || 'ws://browserless:3000'
       console.log(`[SAW] Connecting to Browserless at ${wsEndpoint}`)
       this.browser = await puppeteer.connect({
         browserWSEndpoint: wsEndpoint,
+      })
+
+      // Proactively null reference on unexpected disconnect
+      this.browser.on('disconnected', () => {
+        console.log('[SAW] Browser disconnected unexpectedly')
+        this.browser = null
       })
     }
     return this.browser
@@ -59,7 +86,9 @@ class SawClient {
    * Login flow — mirrors production login.js
    */
   async login(config: SawLoginConfig): Promise<SawLoginResult> {
-    await this.close()
+    // getBrowser() handles stale connection detection via health check.
+    // Do NOT call this.close() here — it kills connections that
+    // forceReconnect() just created, causing the retry loop to fail.
     const browser = await this.getBrowser()
     const page: Page = await browser.newPage()
 
@@ -151,7 +180,7 @@ class SawClient {
         error: err instanceof Error ? err.message : 'Erro desconhecido no login',
       }
     } finally {
-      await page.close()
+      await page.close().catch(() => {})
     }
   }
 
