@@ -7,6 +7,7 @@ import type { SawCookie } from '@/lib/saw/client'
 import { fetchCproData } from '@/lib/saw/cpro-client'
 import type { SawConfig, CproConfig } from '@/lib/types'
 import { computeGuideStatus } from '@/lib/guide-status'
+import { classifyGuia } from '@/lib/carteira'
 
 /** Service role client — bypasses RLS for trusted server-side DB operations */
 function getServiceClient() {
@@ -421,11 +422,15 @@ export async function POST(request: NextRequest) {
 
           send('info', `Guia ${guideNumber}: status calculado = ${status} (realiz=${procedimentosRealizados}, aut=${quantidadeAutorizada}, cpro=${procedimentosCadastrados}, senha=${senhaRaw ? 'sim' : 'nao'}, dataAut=${dataAutorizacaoRaw ? 'sim' : 'nao'})`, guideNumber)
 
+          // Classify as Local/Intercambio based on carteira prefix
+          const numeroCarteira = orNull(sawData?.['numeroCarteira']) as string | null
+          const tipoGuia = classifyGuia(numeroCarteira)
+
           const guiaPayload: Record<string, unknown> = {
             guide_number: guideNumber,
             guide_number_prestador: orNull(sawData?.['numeroGuiaPrestador']),
             paciente,
-            numero_carteira: orNull(sawData?.['numeroCarteira']),
+            numero_carteira: numeroCarteira,
             senha: orNull(sawData?.['senha']),
             data_autorizacao: parseDate(sawData?.['dataAutorizacao']),
             data_validade_senha: parseDate(sawData?.['dataValidadeSenha']),
@@ -442,6 +447,7 @@ export async function POST(request: NextRequest) {
             procedimentos_cadastrados: procedimentosCadastrados ?? 0,
             user_id: null,
             valor_total: typeof cproData?.['valorTotal'] === 'number' ? cproData['valorTotal'] : null,
+            tipo_guia: tipoGuia,
             token_biometrico: tokenMessage === 'Realize o check-in do Paciente',
             saw_data: sawData,
             cpro_data: cproData,

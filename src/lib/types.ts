@@ -44,6 +44,7 @@ export interface Guia {
   indicacao_clinica: string | null
   tipo_atendimento: string | null
   indicacao_acidente: string | null
+  tipo_guia: 'Local' | 'Intercambio'
   lote_id: string | null
   token_biometrico: boolean
   data_token: string | null

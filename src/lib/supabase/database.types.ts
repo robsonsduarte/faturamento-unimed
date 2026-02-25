@@ -152,6 +152,7 @@ export interface Database {
           indicacao_clinica: string | null
           tipo_atendimento: string | null
           indicacao_acidente: string | null
+          tipo_guia: string
           lote_id: string | null
           token_biometrico: boolean
           data_token: string | null
@@ -185,6 +186,7 @@ export interface Database {
           indicacao_clinica?: string | null
           tipo_atendimento?: string | null
           indicacao_acidente?: string | null
+          tipo_guia?: string
           lote_id?: string | null
           token_biometrico?: boolean
           data_token?: string | null
@@ -218,6 +220,7 @@ export interface Database {
           indicacao_clinica?: string | null
           tipo_atendimento?: string | null
           indicacao_acidente?: string | null
+          tipo_guia?: string
           lote_id?: string | null
           token_biometrico?: boolean
           data_token?: string | null

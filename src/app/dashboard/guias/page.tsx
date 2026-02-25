@@ -138,7 +138,7 @@ export default function GuiasPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[var(--color-border)]">
-                  {['Numero Guia', 'Paciente', 'Carteira', 'Data Aut.', 'Status', 'Valor', ''].map((h) => (
+                  {['Numero Guia', 'Paciente', 'Carteira', 'Tipo', 'Data Aut.', 'Status', 'Valor', ''].map((h) => (
                     <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider">
                       {h}
                     </th>
@@ -156,6 +156,14 @@ export default function GuiasPage() {
                     </td>
                     <td className="px-4 py-3 font-mono text-xs text-[var(--color-text-muted)]">
                       {guia.numero_carteira ?? '—'}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={cn(
+                        'px-1.5 py-0.5 rounded text-xs font-medium',
+                        guia.tipo_guia === 'Local' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-purple-500/20 text-purple-400'
+                      )}>
+                        {guia.tipo_guia ?? '—'}
+                      </span>
                     </td>
                     <td className="px-4 py-3 text-[var(--color-text-muted)]">
                       {guia.data_autorizacao ? formatDate(guia.data_autorizacao) : '—'}

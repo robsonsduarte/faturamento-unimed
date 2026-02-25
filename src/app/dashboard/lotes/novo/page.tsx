@@ -33,7 +33,13 @@ export default function NovoLotePage() {
   const [errors, setErrors] = useState<Partial<Record<keyof LoteForm, string>>>({})
 
   const { data: guiasData } = useGuias({ status: 'COMPLETA', pageSize: 100 })
-  const guias = guiasData?.data ?? []
+  const allGuias = guiasData?.data ?? []
+
+  // Filter guides by selected lote tipo: Local shows Local, Externo shows Intercambio
+  const guias = allGuias.filter((g) => {
+    if (form.tipo === 'Local') return g.tipo_guia === 'Local'
+    return g.tipo_guia === 'Intercambio' || !g.tipo_guia
+  })
 
   function toggleGuia(id: string) {
     setSelectedGuias((prev) => {
@@ -132,7 +138,10 @@ export default function NovoLotePage() {
               <label className="block text-xs font-medium text-[var(--color-text-muted)] mb-1.5">Tipo</label>
               <select
                 value={form.tipo}
-                onChange={(e) => setForm((p) => ({ ...p, tipo: e.target.value as 'Local' | 'Externo' }))}
+                onChange={(e) => {
+                  setForm((p) => ({ ...p, tipo: e.target.value as 'Local' | 'Externo' }))
+                  setSelectedGuias(new Set())
+                }}
                 className={cn(
                   'w-full px-3 py-2 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)] text-sm text-[var(--color-text)]',
                   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]'
@@ -200,7 +209,7 @@ export default function NovoLotePage() {
           <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl overflow-hidden">
             <div className="px-5 py-4 border-b border-[var(--color-border)]">
               <h2 className="text-sm font-semibold text-[var(--color-text)]">
-                Guias Disponiveis (status COMPLETA) — {guias.length}
+                Guias Disponiveis ({form.tipo === 'Local' ? 'Local' : 'Intercambio'}) — {guias.length}
               </h2>
             </div>
             {guias.length === 0 ? (
@@ -223,7 +232,7 @@ export default function NovoLotePage() {
                           className="rounded"
                         />
                       </th>
-                      {['Numero Guia', 'Paciente', 'Status', 'Valor'].map((h) => (
+                      {['Numero Guia', 'Paciente', 'Tipo', 'Status', 'Valor'].map((h) => (
                         <th key={h} className="px-4 py-2.5 text-left font-medium text-[var(--color-text-muted)]">{h}</th>
                       ))}
                     </tr>
@@ -249,6 +258,14 @@ export default function NovoLotePage() {
                         </td>
                         <td className="px-4 py-2.5 font-mono">{g.guide_number}</td>
                         <td className="px-4 py-2.5">{g.paciente ?? '—'}</td>
+                        <td className="px-4 py-2.5">
+                          <span className={cn(
+                            'px-1.5 py-0.5 rounded text-xs font-medium',
+                            g.tipo_guia === 'Local' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-purple-500/20 text-purple-400'
+                          )}>
+                            {g.tipo_guia ?? '—'}
+                          </span>
+                        </td>
                         <td className="px-4 py-2.5"><StatusBadge status={g.status as GuideStatus} /></td>
                         <td className="px-4 py-2.5 font-mono">{formatCurrency(g.valor_total)}</td>
                       </tr>

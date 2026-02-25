@@ -1,6 +1,6 @@
 'use client'
 
-import { use, useState } from 'react'
+import { use, useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, RefreshCw, CheckCircle, RotateCw } from 'lucide-react'
 import { useGuia, useUpdateGuiaStatus } from '@/hooks/use-guias'
@@ -11,6 +11,7 @@ import { PageHeader } from '@/components/shared/page-header'
 import { formatCurrency, formatDate, cn } from '@/lib/utils'
 import { GUIDE_STATUS_FLOW } from '@/lib/constants'
 import type { GuideStatus } from '@/lib/constants'
+import type { ImportLog } from '@/lib/types'
 
 interface Props {
   params: Promise<{ id: string }>
@@ -23,12 +24,20 @@ export default function GuiaDetailPage({ params }: Props) {
   const { data: profile } = useProfile()
   const isVisualizador = profile?.role === 'visualizador'
   const [reimporting, setReimporting] = useState(false)
-  const [reimportMsg, setReimportMsg] = useState<string | null>(null)
+  const [logs, setLogs] = useState<ImportLog[]>([])
+  const logsEndRef = useRef<HTMLDivElement>(null)
+
+  // Auto-scroll logs to bottom
+  useEffect(() => {
+    if (logsEndRef.current) {
+      logsEndRef.current.scrollIntoView({ behavior: 'smooth' })
+    }
+  }, [logs])
 
   const handleReimport = async () => {
     if (!guia || reimporting) return
     setReimporting(true)
-    setReimportMsg('Atualizando dados da guia...')
+    setLogs([])
     try {
       const res = await fetch('/api/guias/importar', {
         method: 'POST',
@@ -37,7 +46,6 @@ export default function GuiaDetailPage({ params }: Props) {
       })
       const reader = res.body?.getReader()
       const decoder = new TextDecoder()
-      let lastMsg = ''
       if (reader) {
         while (true) {
           const { done, value } = await reader.read()
@@ -46,19 +54,21 @@ export default function GuiaDetailPage({ params }: Props) {
           const lines = text.split('\n').filter((l) => l.startsWith('data: '))
           for (const line of lines) {
             try {
-              const parsed = JSON.parse(line.replace('data: ', ''))
-              lastMsg = parsed.message ?? ''
+              const parsed = JSON.parse(line.replace('data: ', '')) as ImportLog
+              setLogs((prev) => [...prev, parsed])
             } catch { /* ignore */ }
           }
         }
       }
-      setReimportMsg(lastMsg || 'Dados atualizados')
       refetch()
     } catch (err) {
-      setReimportMsg(err instanceof Error ? err.message : 'Erro ao atualizar')
+      setLogs((prev) => [...prev, {
+        type: 'error',
+        message: err instanceof Error ? err.message : 'Erro ao atualizar',
+        timestamp: new Date().toLocaleTimeString('pt-BR', { hour12: false }),
+      }])
     } finally {
       setReimporting(false)
-      setTimeout(() => setReimportMsg(null), 5000)
     }
   }
 
@@ -84,6 +94,7 @@ export default function GuiaDetailPage({ params }: Props) {
   }
 
   const statusIndex = GUIDE_STATUS_FLOW.indexOf(guia.status as GuideStatus)
+  const lastLog = logs.length > 0 ? logs[logs.length - 1] : null
 
   return (
     <div className="space-y-6">
@@ -125,16 +136,48 @@ export default function GuiaDetailPage({ params }: Props) {
             </button>
           )}
         </div>
-        {reimportMsg && (
-          <p className={cn(
-            'text-xs mb-3 px-3 py-2 rounded-lg',
-            reimporting
-              ? 'bg-blue-500/10 text-blue-400'
-              : 'bg-[var(--color-success)]/10 text-[var(--color-success)]'
-          )}>
-            {reimportMsg}
+
+        {/* SSE Logs — real-time */}
+        {logs.length > 0 && (
+          <div className="mb-3 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)] overflow-hidden">
+            <div className="max-h-32 overflow-y-auto px-3 py-2 space-y-1 text-xs font-mono">
+              {logs.map((log, i) => (
+                <div
+                  key={i}
+                  className={cn(
+                    'flex gap-2',
+                    log.type === 'error' && 'text-red-400',
+                    log.type === 'success' && 'text-emerald-400',
+                    log.type === 'processing' && 'text-amber-400',
+                    log.type === 'info' && 'text-blue-400',
+                  )}
+                >
+                  <span className="text-[var(--color-text-muted)] shrink-0">{log.timestamp}</span>
+                  <span>{log.message}</span>
+                </div>
+              ))}
+              <div ref={logsEndRef} />
+            </div>
+          </div>
+        )}
+
+        {/* Current step indicator when reimporting but no logs yet */}
+        {reimporting && logs.length === 0 && (
+          <p className="text-xs mb-3 px-3 py-2 rounded-lg bg-blue-500/10 text-blue-400">
+            Conectando ao servidor...
           </p>
         )}
+
+        {/* Final status after reimport completes */}
+        {!reimporting && lastLog && (
+          <p className={cn(
+            'text-xs mb-3 px-3 py-2 rounded-lg',
+            lastLog.type === 'error' ? 'bg-red-500/10 text-red-400' : 'bg-[var(--color-success)]/10 text-[var(--color-success)]'
+          )}>
+            {lastLog.message}
+          </p>
+        )}
+
         <div className="flex items-center gap-1 overflow-x-auto pb-2">
           {GUIDE_STATUS_FLOW.map((s, i) => {
             const isActive = s === guia.status
@@ -186,6 +229,14 @@ export default function GuiaDetailPage({ params }: Props) {
             { label: 'Numero Operadora', value: guia.guide_number, mono: true },
             { label: 'Numero Prestador', value: guia.guide_number_prestador, mono: true },
             { label: 'Status', value: <StatusBadge status={guia.status as GuideStatus} /> },
+            { label: 'Tipo', value: (
+              <span className={cn(
+                'px-1.5 py-0.5 rounded text-xs font-medium',
+                guia.tipo_guia === 'Local' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-purple-500/20 text-purple-400'
+              )}>
+                {guia.tipo_guia ?? 'N/A'}
+              </span>
+            ) },
             { label: 'Paciente', value: guia.paciente },
             { label: 'Carteira', value: guia.numero_carteira, mono: true },
             { label: 'Senha', value: guia.senha, mono: true },
