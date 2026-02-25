@@ -15,7 +15,7 @@ export const VALORES_PROCEDIMENTO: Record<string, number> = {
 export const GUIDE_STATUS_FLOW = [
   'PENDENTE',
   'CPRO',
-  'COBRAR_OU_TOKEN',
+  'TOKEN',
   'COMPLETA',
   'PROCESSADA',
   'FATURADA',
@@ -26,7 +26,7 @@ export type GuideStatus = (typeof GUIDE_STATUS_FLOW)[number]
 export const GUIDE_STATUS_COLORS: Record<GuideStatus, string> = {
   PENDENTE: 'bg-slate-500',
   CPRO: 'bg-blue-500',
-  COBRAR_OU_TOKEN: 'bg-amber-500',
+  TOKEN: 'bg-amber-500',
   COMPLETA: 'bg-emerald-500',
   PROCESSADA: 'bg-sky-500',
   FATURADA: 'bg-green-500',
@@ -35,7 +35,7 @@ export const GUIDE_STATUS_COLORS: Record<GuideStatus, string> = {
 export const GUIDE_STATUS_LABELS: Record<GuideStatus, string> = {
   PENDENTE: 'Pendente',
   CPRO: 'CPro',
-  COBRAR_OU_TOKEN: 'Cobrar/Token',
+  TOKEN: 'Token',
   COMPLETA: 'Completa',
   PROCESSADA: 'Processada',
   FATURADA: 'Faturada',

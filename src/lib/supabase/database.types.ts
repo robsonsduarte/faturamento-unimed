@@ -131,7 +131,7 @@ export interface Database {
           id: string
           guide_number: string
           guide_number_prestador: string | null
-          status: 'PENDENTE' | 'CPRO' | 'COBRAR_OU_TOKEN' | 'COMPLETA' | 'PROCESSADA' | 'FATURADA'
+          status: 'PENDENTE' | 'CPRO' | 'TOKEN' | 'COMPLETA' | 'PROCESSADA' | 'FATURADA'
           status_xml: 'PENDENTE' | 'PROCESSADA' | 'ERRO'
           provider: string | null
           paciente: string | null
@@ -164,7 +164,7 @@ export interface Database {
           id?: string
           guide_number: string
           guide_number_prestador?: string | null
-          status?: 'PENDENTE' | 'CPRO' | 'COBRAR_OU_TOKEN' | 'COMPLETA' | 'PROCESSADA' | 'FATURADA'
+          status?: 'PENDENTE' | 'CPRO' | 'TOKEN' | 'COMPLETA' | 'PROCESSADA' | 'FATURADA'
           status_xml?: 'PENDENTE' | 'PROCESSADA' | 'ERRO'
           provider?: string | null
           paciente?: string | null
@@ -197,7 +197,7 @@ export interface Database {
           id?: string
           guide_number?: string
           guide_number_prestador?: string | null
-          status?: 'PENDENTE' | 'CPRO' | 'COBRAR_OU_TOKEN' | 'COMPLETA' | 'PROCESSADA' | 'FATURADA'
+          status?: 'PENDENTE' | 'CPRO' | 'TOKEN' | 'COMPLETA' | 'PROCESSADA' | 'FATURADA'
           status_xml?: 'PENDENTE' | 'PROCESSADA' | 'ERRO'
           provider?: string | null
           paciente?: string | null
@@ -475,7 +475,7 @@ export interface Database {
       }
     }
     Enums: {
-      guide_status: 'PENDENTE' | 'CPRO' | 'COBRAR_OU_TOKEN' | 'COMPLETA' | 'PROCESSADA' | 'FATURADA'
+      guide_status: 'PENDENTE' | 'CPRO' | 'TOKEN' | 'COMPLETA' | 'PROCESSADA' | 'FATURADA'
       xml_status: 'PENDENTE' | 'PROCESSADA' | 'ERRO'
       lote_status: 'rascunho' | 'gerado' | 'enviado' | 'aceito' | 'glosado' | 'pago'
       cobranca_status: 'pendente' | 'enviada' | 'paga' | 'glosada' | 'recurso'

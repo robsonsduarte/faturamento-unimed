@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireRole, isAuthError } from '@/lib/auth'
 import { rateLimit } from '@/lib/rate-limit'
 
-const VALID_STATUSES = ['PENDENTE', 'CPRO', 'COBRAR_OU_TOKEN', 'COMPLETA', 'PROCESSADA', 'FATURADA'] as const
+const VALID_STATUSES = ['PENDENTE', 'CPRO', 'TOKEN', 'COMPLETA', 'PROCESSADA', 'FATURADA'] as const
 
 export async function GET(request: NextRequest) {
   const limited = rateLimit(request, 'guias-pendentes', 30, 60_000)
@@ -29,15 +29,11 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Nenhum status valido informado' }, { status: 400 })
   }
 
-  const rawLimit = Number(searchParams.get('limit') ?? '50')
-  const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(Math.floor(rawLimit), 1), 50) : 50
-
   const { data, error, count } = await supabase
     .from('guias')
     .select('guide_number', { count: 'exact' })
     .in('status', filteredStatuses)
     .order('updated_at', { ascending: true })
-    .limit(limit)
 
   if (error) {
     console.error('[pendentes] Supabase error:', error.message)

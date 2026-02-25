@@ -3,7 +3,7 @@ import { z } from 'zod'
 export const guiaUpdateSchema = z.object({
   guide_number_prestador: z.string().optional(),
   status: z
-    .enum(['PENDENTE', 'CPRO', 'COBRAR_OU_TOKEN', 'COMPLETA', 'PROCESSADA', 'FATURADA'])
+    .enum(['PENDENTE', 'CPRO', 'TOKEN', 'COMPLETA', 'PROCESSADA', 'FATURADA'])
     .optional(),
   paciente: z.string().optional(),
   numero_carteira: z.string().optional(),
@@ -25,7 +25,7 @@ export const guiaStatusSchema = z.object({
   status: z.enum([
     'PENDENTE',
     'CPRO',
-    'COBRAR_OU_TOKEN',
+    'TOKEN',
     'COMPLETA',
     'PROCESSADA',
     'FATURADA',

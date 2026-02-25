@@ -44,7 +44,7 @@ function LogLine({ log }: { log: ImportLog }) {
 const REIMPORT_STATUSES = [
   { value: 'PENDENTE', label: 'PENDENTE' },
   { value: 'CPRO', label: 'CPRO' },
-  { value: 'COBRAR_OU_TOKEN', label: 'COBRAR/TOKEN' },
+  { value: 'TOKEN', label: 'TOKEN' },
 ] as const
 
 type ReimportStatus = (typeof REIMPORT_STATUSES)[number]['value']
@@ -94,7 +94,6 @@ export default function ImportarGuiasPage() {
     try {
       const params = new URLSearchParams({
         statuses: selectedStatuses.join(','),
-        limit: '50',
       })
       const res = await fetch(`/api/guias/pendentes?${params.toString()}`)
       if (!res.ok) {

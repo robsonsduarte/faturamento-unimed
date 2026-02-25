@@ -6,13 +6,10 @@ import { getSawClient } from '@/lib/saw/client'
 import type { SawCookie } from '@/lib/saw/client'
 import { fetchCproData } from '@/lib/saw/cpro-client'
 import type { SawConfig, CproConfig } from '@/lib/types'
-import type { GuideStatus } from '@/lib/constants'
+import { computeGuideStatus } from '@/lib/guide-status'
 
-/** Max guides per single import request — prevents abuse and SSE timeouts */
-const MAX_GUIDES_PER_REQUEST = 50
-
-/** Global SSE stream timeout in ms (10 minutes) */
-const STREAM_TIMEOUT_MS = 10 * 60 * 1000
+/** Global SSE stream timeout in ms (30 minutes — scales for large re-imports) */
+const STREAM_TIMEOUT_MS = 30 * 60 * 1000
 
 function timestamp(): string {
   return new Date().toLocaleTimeString('pt-BR', { hour12: false })
@@ -21,59 +18,6 @@ function timestamp(): string {
 function sseEvent(type: string, message: string, guide_number?: string): string {
   const payload = JSON.stringify({ type, message, timestamp: timestamp(), guide_number })
   return `data: ${payload}\n\n`
-}
-
-/**
- * Computes guide status. Priority order:
- *   1. COMPLETA — all authorized sessions performed (takes priority over CPro check)
- *   2. CPRO — procedures not yet registered in ConsultorioPro
- *   3. COBRAR_OU_TOKEN — needs billing action or biometric token
- *
- * COMPLETA conditions (any):
- *   - cond1: realizados == autorizada AND autorizada > 0 AND no check-in pending
- *   - cond2: solicitada != autorizada AND solicitada == realizados AND no check-in pending
- *   - cond3: cadastrados (CPro) == realizados AND cadastrados > 0 AND no check-in pending
- */
-function computeGuideStatus(
-  procedimentosCadastrados: number | null,
-  procedimentosRealizados: number,
-  quantidadeAutorizada: number | null,
-  quantidadeSolicitada: number | null,
-  tokenMessage: string
-): GuideStatus {
-  const needsCheckin = tokenMessage === 'Realize o check-in do Paciente'
-
-  // COMPLETA check first — if all sessions are done, the guide is complete
-  const cond1 =
-    quantidadeAutorizada != null &&
-    quantidadeAutorizada > 0 &&
-    procedimentosRealizados === quantidadeAutorizada &&
-    !needsCheckin
-
-  const cond2 =
-    quantidadeSolicitada != null &&
-    quantidadeSolicitada > 0 &&
-    quantidadeSolicitada !== quantidadeAutorizada &&
-    quantidadeSolicitada === procedimentosRealizados &&
-    !needsCheckin
-
-  // cond3: todos os procedimentos cadastrados no CPro foram realizados no SAW
-  const cond3 =
-    procedimentosCadastrados != null &&
-    procedimentosCadastrados > 0 &&
-    procedimentosRealizados === procedimentosCadastrados &&
-    !needsCheckin
-
-  if (cond1 || cond2 || cond3) {
-    return 'COMPLETA'
-  }
-
-  // CPRO — procedures not registered yet in ConsultorioPro
-  if (procedimentosCadastrados == null || procedimentosCadastrados === 0) {
-    return 'CPRO'
-  }
-
-  return 'COBRAR_OU_TOKEN'
 }
 
 export async function POST(request: NextRequest) {
@@ -121,13 +65,6 @@ export async function POST(request: NextRequest) {
   if (guideNumbers.length === 0) {
     return new Response(
       JSON.stringify({ error: 'Nenhum numero de guia informado' }),
-      { status: 400, headers: { 'Content-Type': 'application/json' } }
-    )
-  }
-
-  if (guideNumbers.length > MAX_GUIDES_PER_REQUEST) {
-    return new Response(
-      JSON.stringify({ error: `Maximo de ${MAX_GUIDES_PER_REQUEST} guias por requisicao` }),
       { status: 400, headers: { 'Content-Type': 'application/json' } }
     )
   }
@@ -456,16 +393,21 @@ export async function POST(request: NextRequest) {
             ? sawData['tokenMessage'] as string
             : ''
 
-          // Compute status using the spreadsheet formula
+          // Senha e data_autorizacao for status computation
+          const senhaRaw = typeof sawData?.['senha'] === 'string' ? sawData['senha'] as string : null
+          const dataAutorizacaoRaw = typeof sawData?.['dataAutorizacao'] === 'string' ? sawData['dataAutorizacao'] as string : null
+
+          // Compute status
           const status = computeGuideStatus(
             procedimentosCadastrados,
             procedimentosRealizados,
             quantidadeAutorizada,
-            quantidadeSolicitada,
-            tokenMessage
+            tokenMessage,
+            senhaRaw,
+            dataAutorizacaoRaw
           )
 
-          send('info', `Guia ${guideNumber}: status calculado = ${status} (realiz=${procedimentosRealizados}, aut=${quantidadeAutorizada}, solic=${quantidadeSolicitada}, cpro=${procedimentosCadastrados})`, guideNumber)
+          send('info', `Guia ${guideNumber}: status calculado = ${status} (realiz=${procedimentosRealizados}, aut=${quantidadeAutorizada}, cpro=${procedimentosCadastrados}, senha=${senhaRaw ? 'sim' : 'nao'}, dataAut=${dataAutorizacaoRaw ? 'sim' : 'nao'})`, guideNumber)
 
           const guiaPayload: Record<string, unknown> = {
             guide_number: guideNumber,
