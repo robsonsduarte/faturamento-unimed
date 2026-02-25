@@ -16,6 +16,7 @@ export async function GET(request: NextRequest) {
     const periodoInicio = searchParams.get('periodo_inicio')
     const periodoFim = searchParams.get('periodo_fim')
     const loteId = searchParams.get('lote_id')
+    const tipoGuia = searchParams.get('tipo_guia')
 
     let query = supabase
       .from('guias')
@@ -25,6 +26,7 @@ export async function GET(request: NextRequest) {
     if (status) query = query.eq('status', status)
     if (statusXml) query = query.eq('status_xml', statusXml)
     if (loteId) query = query.eq('lote_id', loteId)
+    if (tipoGuia) query = query.eq('tipo_guia', tipoGuia)
     if (search) {
       query = query.or(
         `guide_number.ilike.%${search}%,paciente.ilike.%${search}%,numero_carteira.ilike.%${search}%`

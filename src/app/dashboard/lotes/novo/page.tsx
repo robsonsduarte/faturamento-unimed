@@ -32,14 +32,10 @@ export default function NovoLotePage() {
   })
   const [errors, setErrors] = useState<Partial<Record<keyof LoteForm, string>>>({})
 
-  const { data: guiasData } = useGuias({ status: 'COMPLETA', pageSize: 100 })
-  const allGuias = guiasData?.data ?? []
-
-  // Filter guides by selected lote tipo: Local shows Local, Externo shows Intercambio
-  const guias = allGuias.filter((g) => {
-    if (form.tipo === 'Local') return g.tipo_guia === 'Local'
-    return g.tipo_guia === 'Intercambio' || !g.tipo_guia
-  })
+  // Fetch guides filtered by tipo from API: Local→Local, Externo→Intercambio
+  const tipoGuiaFilter = form.tipo === 'Local' ? 'Local' : 'Intercambio'
+  const { data: guiasData } = useGuias({ status: 'COMPLETA', tipo_guia: tipoGuiaFilter, pageSize: 100 })
+  const guias = guiasData?.data ?? []
 
   function toggleGuia(id: string) {
     setSelectedGuias((prev) => {

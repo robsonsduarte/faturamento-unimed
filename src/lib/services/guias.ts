@@ -10,13 +10,14 @@ export interface GuiaFilters {
   periodo_inicio?: string
   periodo_fim?: string
   lote_id?: string
+  tipo_guia?: string
 }
 
 export async function getGuias(
   filters: GuiaFilters = {}
 ): Promise<PaginatedResponse<Guia>> {
   const supabase = createClient()
-  const { status, status_xml, search, page = 1, pageSize = 20, periodo_inicio, periodo_fim, lote_id } = filters
+  const { status, status_xml, search, page = 1, pageSize = 20, periodo_inicio, periodo_fim, lote_id, tipo_guia } = filters
 
   let query = supabase
     .from('guias')
@@ -26,6 +27,7 @@ export async function getGuias(
   if (status) query = query.eq('status', status)
   if (status_xml) query = query.eq('status_xml', status_xml)
   if (lote_id) query = query.eq('lote_id', lote_id)
+  if (tipo_guia) query = query.eq('tipo_guia', tipo_guia)
   if (search) {
     query = query.or(
       `guide_number.ilike.%${search}%,paciente.ilike.%${search}%,numero_carteira.ilike.%${search}%`
