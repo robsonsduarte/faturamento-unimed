@@ -2,6 +2,19 @@ import { describe, it, expect } from 'vitest'
 import { computeGuideStatus } from '../guide-status'
 
 describe('computeGuideStatus', () => {
+  // ─── CANCELADA ───
+  it('CANCELADA: SAW status CANCELADA tem prioridade maxima', () => {
+    expect(computeGuideStatus(4, 4, 8, '', '84759912', '04/01/2026', 'CANCELADA')).toBe('CANCELADA')
+  })
+
+  it('CANCELADA: prioridade sobre TOKEN check-in', () => {
+    expect(computeGuideStatus(4, 4, 8, 'Realize o check-in do Paciente', '84759912', '04/01/2026', 'CANCELADA')).toBe('CANCELADA')
+  })
+
+  it('CANCELADA: case insensitive', () => {
+    expect(computeGuideStatus(null, 0, null, '', null, null, 'cancelada')).toBe('CANCELADA')
+  })
+
   // ─── TOKEN ───
   it('TOKEN: senha = "Realize o check-in do Paciente"', () => {
     expect(computeGuideStatus(4, 4, 8, 'Realize o check-in do Paciente', '84759912', '04/01/2026')).toBe('TOKEN')

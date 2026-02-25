@@ -24,7 +24,11 @@ export async function GET(request: NextRequest) {
       .order('data_solicitacao', { ascending: false, nullsFirst: false })
       .order('guide_number', { ascending: false })
 
-    if (status) query = query.eq('status', status)
+    if (status) {
+      query = query.eq('status', status)
+    } else {
+      query = query.neq('status', 'CANCELADA')
+    }
     if (statusXml) query = query.eq('status_xml', statusXml)
     if (loteId) query = query.eq('lote_id', loteId)
     if (tipoGuia) query = query.eq('tipo_guia', tipoGuia)

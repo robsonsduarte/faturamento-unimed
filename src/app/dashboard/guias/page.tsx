@@ -146,13 +146,15 @@ export default function GuiasPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--color-border)]">
-                {guias.map((guia) => (
-                  <tr key={guia.id} className="hover:bg-[var(--color-surface)] transition-colors">
+                {guias.map((guia) => {
+                  const isCancelada = guia.status === 'CANCELADA'
+                  return (
+                  <tr key={guia.id} className={cn('hover:bg-[var(--color-surface)] transition-colors', isCancelada && 'opacity-50')}>
                     <td className="px-4 py-3 font-mono text-xs text-[var(--color-text)]">
-                      {guia.guide_number}
+                      <span className={cn(isCancelada && 'line-through')}>{guia.guide_number}</span>
                     </td>
                     <td className="px-4 py-3 text-[var(--color-text)] max-w-[200px] truncate">
-                      {guia.paciente ?? '—'}
+                      <span className={cn(isCancelada && 'line-through')}>{guia.paciente ?? '—'}</span>
                     </td>
                     <td className="px-4 py-3 font-mono text-xs text-[var(--color-text-muted)]">
                       {guia.numero_carteira ?? '—'}
@@ -187,7 +189,8 @@ export default function GuiasPage() {
                       </Link>
                     </td>
                   </tr>
-                ))}
+                  )
+                })}
               </tbody>
             </table>
           </div>

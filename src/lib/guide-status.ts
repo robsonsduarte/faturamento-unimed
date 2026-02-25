@@ -4,6 +4,7 @@ import type { GuideStatus } from '@/lib/constants'
  * Computes guide status based on SAW + CPro data.
  *
  * Rules:
+ *   CANCELADA — SAW status contains "CANCELADA"
  *   TOKEN     — campo senha = "Realize o check-in do Paciente"
  *   COMPLETA  — qtd_cadastrada == qtd_realizada OR qtd_autorizada == qtd_realizada
  *   CPRO      — guia nao encontrada no ConsultorioPro (cadastrados null/0)
@@ -16,8 +17,14 @@ export function computeGuideStatus(
   quantidadeAutorizada: number | null,
   tokenMessage: string,
   senha: string | null,
-  dataAutorizacao: string | null
+  dataAutorizacao: string | null,
+  sawStatus?: string | null
 ): GuideStatus {
+  // 0. CANCELADA — guia cancelada no SAW (prioridade maxima)
+  if (sawStatus && sawStatus.toUpperCase().includes('CANCELADA')) {
+    return 'CANCELADA'
+  }
+
   // 1. TOKEN — paciente precisa fazer check-in biometrico
   if (tokenMessage === 'Realize o check-in do Paciente') {
     return 'TOKEN'

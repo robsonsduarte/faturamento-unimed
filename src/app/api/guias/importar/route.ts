@@ -410,6 +410,9 @@ export async function POST(request: NextRequest) {
           const senhaRaw = typeof sawData?.['senha'] === 'string' ? sawData['senha'] as string : null
           const dataAutorizacaoRaw = typeof sawData?.['dataAutorizacao'] === 'string' ? sawData['dataAutorizacao'] as string : null
 
+          // SAW status (e.g. "CANCELADA")
+          const sawStatus = typeof sawData?.['status'] === 'string' ? sawData['status'] as string : null
+
           // Compute status
           const status = computeGuideStatus(
             procedimentosCadastrados,
@@ -417,7 +420,8 @@ export async function POST(request: NextRequest) {
             quantidadeAutorizada,
             tokenMessage,
             senhaRaw,
-            dataAutorizacaoRaw
+            dataAutorizacaoRaw,
+            sawStatus
           )
 
           send('info', `Guia ${guideNumber}: status calculado = ${status} (realiz=${procedimentosRealizados}, aut=${quantidadeAutorizada}, cpro=${procedimentosCadastrados}, senha=${senhaRaw ? 'sim' : 'nao'}, dataAut=${dataAutorizacaoRaw ? 'sim' : 'nao'})`, guideNumber)

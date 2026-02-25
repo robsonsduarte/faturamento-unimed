@@ -266,6 +266,14 @@ export function gerarXmlTiss(lote: Lote): string {
   }
 
   const xml = builder.build(xmlObj) as string
-  const hash = createHash('md5').update(xml).digest('hex')
+
+  // TISS hash = md5 of textContent (PHP DOMDocument::textContent)
+  // Extract only text values between XML tags, ignoring whitespace-only nodes
+  const textContent = (xml.match(/>[^<]+</g) ?? [])
+    .map(s => s.slice(1, -1))
+    .filter(s => s.trim() !== '')
+    .join('')
+  const hash = createHash('md5').update(textContent).digest('hex')
+
   return xml.replace('<ans:hash></ans:hash>', `<ans:hash>${hash}</ans:hash>`)
 }
