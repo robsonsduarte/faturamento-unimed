@@ -10,7 +10,7 @@ import { EmptyState } from '@/components/shared/empty-state'
 import { TableSkeleton } from '@/components/shared/loading-skeleton'
 import { PageHeader } from '@/components/shared/page-header'
 import { formatCurrency, formatDate, cn } from '@/lib/utils'
-import { GUIDE_STATUS_FLOW } from '@/lib/constants'
+import { GUIDE_STATUS_FLOW, GUIDE_STATUS_LABELS } from '@/lib/constants'
 import type { GuideStatus } from '@/lib/constants'
 
 export default function GuiasPage() {
@@ -96,7 +96,7 @@ export default function GuiasPage() {
           >
             <option value="">Todos os status</option>
             {GUIDE_STATUS_FLOW.map((s) => (
-              <option key={s} value={s}>{s}</option>
+              <option key={s} value={s}>{GUIDE_STATUS_LABELS[s]}</option>
             ))}
           </select>
 

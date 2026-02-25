@@ -35,3 +35,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# DuarteOS — configs pessoais (nao versionar)
+.claude/config/user.yaml
+.claude/settings.local.json

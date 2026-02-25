@@ -64,6 +64,30 @@ function normalizeCbos(cbos: string | null | undefined, fallback = '251510'): st
   return fallback
 }
 
+/** Normalize tipoAtendimento: SAW may store text, TISS requires numeric code (Tabela 50) */
+function normalizeTipoAtendimento(valor: string | null | undefined): string {
+  if (!valor) return '03' // Default: Outras Terapias (contexto clínica terapêutica)
+  const trimmed = valor.trim()
+  if (/^\d{2}$/.test(trimmed)) return trimmed
+  const lower = trimmed.toLowerCase()
+  if (lower.includes('remoção') || lower.includes('remocao')) return '01'
+  if (lower.includes('outras despesas')) return '02'
+  if (lower.includes('consulta')) return '03'
+  if (lower.includes('exame')) return '04'
+  if (lower.includes('atendimento domiciliar') || lower.includes('domiciliar')) return '05'
+  if (lower.includes('internação') || lower.includes('internacao')) return '06'
+  if (lower.includes('quimioterapia')) return '07'
+  if (lower.includes('radioterapia')) return '08'
+  if (lower.includes('trs') || lower.includes('renal substitutiva')) return '09'
+  if (lower.includes('pronto socorro') || lower.includes('urgência') || lower.includes('urgencia')) return '10'
+  if (lower.includes('pequena cirurgia')) return '11'
+  if (lower.includes('saúde ocupacional') || lower.includes('saude ocupacional')) return '12'
+  if (lower.includes('sadt internado')) return '13'
+  if (lower.includes('hospital dia') || lower.includes('hospital-dia')) return '14'
+  if (lower.includes('terapia') || lower.includes('outras terapias')) return '03'
+  return '03' // Fallback: Outras Terapias
+}
+
 /** Normalize indicacaoAcidente: SAW may store text, TISS requires numeric code (0-2,9) */
 function normalizeIndicacaoAcidente(valor: string | null | undefined): string {
   if (!valor) return '9'
@@ -167,7 +191,7 @@ function buildGuiaContent(guia: Guia) {
       [ans('CNES')]: guia.cnes ?? DEDICARE.CNES,
     },
     [ans('dadosAtendimento')]: {
-      [ans('tipoAtendimento')]: guia.tipo_atendimento ?? '03',
+      [ans('tipoAtendimento')]: normalizeTipoAtendimento(guia.tipo_atendimento),
       [ans('indicacaoAcidente')]: normalizeIndicacaoAcidente(guia.indicacao_acidente),
       [ans('tipoConsulta')]: '2',
       [ans('regimeAtendimento')]: '01',

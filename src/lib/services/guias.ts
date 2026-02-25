@@ -25,7 +25,7 @@ export async function getGuias(
     .order('data_solicitacao', { ascending: false, nullsFirst: false })
     .order('guide_number', { ascending: false })
 
-  if (status) query = query.ilike('status', status)
+  if (status) query = query.eq('status', status)
   if (status_xml) query = query.eq('status_xml', status_xml)
   if (lote_id) query = query.eq('lote_id', lote_id)
   if (tipo_guia) query = query.eq('tipo_guia', tipo_guia)

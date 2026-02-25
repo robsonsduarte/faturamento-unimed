@@ -19,6 +19,7 @@ export const GUIDE_STATUS_FLOW = [
   'COMPLETA',
   'PROCESSADA',
   'FATURADA',
+  'CANCELADA',
 ] as const
 
 export type GuideStatus = (typeof GUIDE_STATUS_FLOW)[number]
@@ -30,6 +31,7 @@ export const GUIDE_STATUS_COLORS: Record<GuideStatus, string> = {
   COMPLETA: 'bg-emerald-500',
   PROCESSADA: 'bg-sky-500',
   FATURADA: 'bg-green-500',
+  CANCELADA: 'bg-red-500',
 }
 
 export const GUIDE_STATUS_LABELS: Record<GuideStatus, string> = {
@@ -39,4 +41,5 @@ export const GUIDE_STATUS_LABELS: Record<GuideStatus, string> = {
   COMPLETA: 'Completa',
   PROCESSADA: 'Processada',
   FATURADA: 'Faturada',
+  CANCELADA: 'Cancelada',
 }
