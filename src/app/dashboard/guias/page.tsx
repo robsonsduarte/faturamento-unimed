@@ -40,6 +40,18 @@ export default function GuiasPage() {
           !isVisualizador ? (
             <div className="flex gap-2">
               <Link
+                href="/dashboard/guias/importar?mode=pendentes"
+                className={cn(
+                  'inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium',
+                  'bg-[var(--color-card)] border border-[var(--color-border)] text-[var(--color-text-muted)]',
+                  'hover:text-[var(--color-text)] transition-colors',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]'
+                )}
+              >
+                <RefreshCw className="w-4 h-4" />
+                Re-importar Pendentes
+              </Link>
+              <Link
                 href="/dashboard/guias/importar"
                 className={cn(
                   'inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium',

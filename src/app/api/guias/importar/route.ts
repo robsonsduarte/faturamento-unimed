@@ -342,6 +342,16 @@ export async function POST(request: NextRequest) {
             if (sawResult.success) {
               sawData = sawResult.data ?? null
               sawSuccess = true
+
+              // Log detalhado para SSE — diagnostico de mismatch
+              const realizados = typeof sawData?.['procedimentosRealizados'] === 'number' ? sawData['procedimentosRealizados'] : 0
+              const detalhes = Array.isArray(sawData?.['procedimentosDetalhes']) ? (sawData['procedimentosDetalhes'] as unknown[]).length : 0
+              send('info', `Guia ${guideNumber}: SAW retornou ${realizados} realizados, ${detalhes} detalhes extraidos`, guideNumber)
+
+              if (realizados > 0 && detalhes === 0) {
+                send('error', `Guia ${guideNumber}: ALERTA — ${realizados} procedimentos no SAW mas 0 extraidos. Estrutura HTML pode ter mudado.`, guideNumber)
+              }
+
               break
             }
 
@@ -455,6 +465,8 @@ export async function POST(request: NextRequest) {
             tokenMessage
           )
 
+          send('info', `Guia ${guideNumber}: status calculado = ${status} (realiz=${procedimentosRealizados}, aut=${quantidadeAutorizada}, solic=${quantidadeSolicitada}, cpro=${procedimentosCadastrados})`, guideNumber)
+
           const guiaPayload: Record<string, unknown> = {
             guide_number: guideNumber,
             guide_number_prestador: orNull(sawData?.['numeroGuiaPrestador']),
@@ -561,7 +573,11 @@ export async function POST(request: NextRequest) {
             }
           }
 
-          const label = paciente ? `paciente: ${paciente}` : 'sem dados de paciente'
+          // SSE: truncar nome do paciente para protecao LGPD (apenas primeiro nome)
+          const pacienteLabel = typeof paciente === 'string' && paciente.length > 0
+            ? paciente.split(' ')[0]
+            : null
+          const label = pacienteLabel ? `paciente: ${pacienteLabel}` : 'sem dados de paciente'
           const statusLabel = `status: ${status}`
           const qtdLabel = quantidadeAutorizada != null
             ? `qtd: ${procedimentosRealizados}/${quantidadeAutorizada}`
@@ -600,7 +616,7 @@ export async function POST(request: NextRequest) {
         controller.enqueue(enc.encode(sseEvent('error', `Erro fatal: ${msg}`)))
       } finally {
         clearTimeout(streamTimeout)
-        controller.close()
+        try { controller.close() } catch { /* already closed by timeout */ }
       }
     },
   })

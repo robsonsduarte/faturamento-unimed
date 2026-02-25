@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, Download, Loader2, TerminalSquare, CheckCircle2, XCircle, Clock } from 'lucide-react'
+import { useSearchParams } from 'next/navigation'
+import { ArrowLeft, Download, Loader2, TerminalSquare, CheckCircle2, XCircle, Clock, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
 import { useQueryClient } from '@tanstack/react-query'
 import { PageHeader } from '@/components/shared/page-header'
@@ -40,7 +41,16 @@ function LogLine({ log }: { log: ImportLog }) {
   )
 }
 
+const REIMPORT_STATUSES = [
+  { value: 'PENDENTE', label: 'PENDENTE' },
+  { value: 'CPRO', label: 'CPRO' },
+  { value: 'COBRAR_OU_TOKEN', label: 'COBRAR/TOKEN' },
+] as const
+
+type ReimportStatus = (typeof REIMPORT_STATUSES)[number]['value']
+
 export default function ImportarGuiasPage() {
+  const searchParams = useSearchParams()
   const [loading, setLoading] = useState(false)
   const [guideNumbers, setGuideNumbers] = useState('')
   const [logs, setLogs] = useState<ImportLog[]>([])
@@ -49,6 +59,66 @@ export default function ImportarGuiasPage() {
   const logEndRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
   const queryClient = useQueryClient()
+
+  // Re-importar guias existentes
+  const [selectedStatuses, setSelectedStatuses] = useState<ReimportStatus[]>(['PENDENTE'])
+  const [loadingPendentes, setLoadingPendentes] = useState(false)
+  const [pendentesInfo, setPendentesInfo] = useState<{ loaded: number; total: number; statuses: string[] } | null>(null)
+
+  // Auto-carregar pendentes se vier com ?mode=pendentes
+  useEffect(() => {
+    if (searchParams.get('mode') === 'pendentes') {
+      void handleCarregarPendentes()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  function toggleStatus(value: ReimportStatus) {
+    setSelectedStatuses((prev) =>
+      prev.includes(value)
+        ? prev.filter((s) => s !== value)
+        : [...prev, value]
+    )
+  }
+
+  async function handleCarregarPendentes() {
+    if (loadingPendentes) return // guard contra double-click
+    if (selectedStatuses.length === 0) {
+      toast.error('Selecione ao menos um status')
+      return
+    }
+
+    setLoadingPendentes(true)
+    setPendentesInfo(null)
+
+    try {
+      const params = new URLSearchParams({
+        statuses: selectedStatuses.join(','),
+        limit: '50',
+      })
+      const res = await fetch(`/api/guias/pendentes?${params.toString()}`)
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Erro ao carregar guias' })) as { error: string }
+        throw new Error(err.error)
+      }
+
+      const json = await res.json() as { guide_numbers: string[]; total: number; loaded: number }
+
+      setGuideNumbers(json.guide_numbers.join('\n'))
+      setPendentesInfo({ loaded: json.loaded, total: json.total, statuses: [...selectedStatuses] })
+
+      if (json.loaded === 0) {
+        toast.info('Nenhuma guia encontrada para os status selecionados')
+      } else {
+        toast.success(`${json.loaded} guia(s) carregada(s)`)
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Erro ao carregar guias pendentes'
+      toast.error(msg)
+    } finally {
+      setLoadingPendentes(false)
+    }
+  }
 
   // Auto-scroll to bottom when new logs arrive
   useEffect(() => {
@@ -213,6 +283,88 @@ export default function ImportarGuiasPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Left panel: input */}
         <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-6 space-y-4">
+
+          {/* Re-importar guias existentes */}
+          <div className="space-y-3 pb-4 border-b border-[var(--color-border)]">
+            <div>
+              <h2 className="text-sm font-semibold text-[var(--color-text)]">Re-importar guias existentes</h2>
+              <p className="text-xs text-[var(--color-text-muted)] mt-1">
+                Carrega numeros de guias ja cadastradas pelo status selecionado.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              {REIMPORT_STATUSES.map(({ value, label }) => {
+                const active = selectedStatuses.includes(value)
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => toggleStatus(value)}
+                    disabled={loading || loadingPendentes}
+                    className={cn(
+                      'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors',
+                      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]',
+                      'disabled:opacity-50 disabled:cursor-not-allowed',
+                      active
+                        ? 'bg-[var(--color-primary)]/15 border-[var(--color-primary)] text-[var(--color-primary)]'
+                        : 'bg-[var(--color-surface)] border-[var(--color-border)] text-[var(--color-text-muted)] hover:text-[var(--color-text)]'
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        'w-3 h-3 rounded-sm border flex items-center justify-center shrink-0',
+                        active
+                          ? 'bg-[var(--color-primary)] border-[var(--color-primary)]'
+                          : 'border-[var(--color-border)]'
+                      )}
+                    >
+                      {active && (
+                        <svg viewBox="0 0 10 10" className="w-2 h-2 text-white fill-current">
+                          <path d="M1.5 5l2.5 2.5 4.5-4.5" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      )}
+                    </span>
+                    {label}
+                  </button>
+                )
+              })}
+            </div>
+
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => void handleCarregarPendentes()}
+                disabled={loading || loadingPendentes || selectedStatuses.length === 0}
+                className={cn(
+                  'inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border transition-colors',
+                  'bg-[var(--color-surface)] border-[var(--color-border)] text-[var(--color-text-muted)] hover:text-[var(--color-text)]',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]',
+                  'disabled:opacity-50 disabled:cursor-not-allowed'
+                )}
+              >
+                {loadingPendentes ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="w-4 h-4" />
+                )}
+                Carregar Guias
+              </button>
+
+              {pendentesInfo && pendentesInfo.loaded > 0 && (
+                <span className="text-xs text-[var(--color-text-muted)]">
+                  <span className="font-semibold text-[var(--color-text)]">{pendentesInfo.loaded}</span>
+                  {' carregada'}
+                  {pendentesInfo.loaded !== 1 ? 's' : ''}
+                  {' de '}
+                  <span className="font-semibold text-[var(--color-text)]">{pendentesInfo.total}</span>
+                  {' '}
+                  {pendentesInfo.statuses.join(', ')}
+                </span>
+              )}
+            </div>
+          </div>
+
           <div>
             <h2 className="text-sm font-semibold text-[var(--color-text)]">Numeros de guia</h2>
             <p className="text-xs text-[var(--color-text-muted)] mt-1">
@@ -243,7 +395,7 @@ export default function ImportarGuiasPage() {
           <div className="flex gap-3">
             <button
               onClick={handleImportar}
-              disabled={loading}
+              disabled={loading || totalGuides === 0}
               className={cn(
                 'flex-1 py-2.5 rounded-lg font-medium text-sm text-white',
                 'bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] transition-colors',

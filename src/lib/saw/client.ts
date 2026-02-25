@@ -232,7 +232,7 @@ class SawClient {
       await this.injectCookies(page, cookies)
 
       // Navigate directly using numeroDaGuia + isConsultaNaGuia (matches production)
-      const url = `${SAW_BASE}/saw/tiss/SolicitacaoDeSPSADT40.do?method=consultarGuiaDeSPSADT&manterTISSSPSADT40DTO.tissSolicitacaoDeSPSADTDTO.numeroDaGuia=${numeroGuia}&manterTISSSPSADT40DTO.tissSolicitacaoDeSPSADTDTO.isConsultaNaGuia=true`
+      const url = `${SAW_BASE}/saw/tiss/SolicitacaoDeSPSADT40.do?method=consultarGuiaDeSPSADT&manterTISSSPSADT40DTO.tissSolicitacaoDeSPSADTDTO.numeroDaGuia=${encodeURIComponent(numeroGuia)}&manterTISSSPSADT40DTO.tissSolicitacaoDeSPSADTDTO.isConsultaNaGuia=true`
 
       await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 })
 
@@ -399,6 +399,8 @@ class SawClient {
           let procedimentosRealizados = 0
 
           const todasTabelas = document.querySelectorAll('table.caixaBranca')
+          // Diagnostic logging (appears in Puppeteer console)
+          console.log('[SAW-SCRAPE] Total table.caixaBranca encontradas:', todasTabelas.length)
           for (const tabela of todasTabelas) {
             const headers = tabela.querySelectorAll('tr:first-child td label')
             const temData36 = Array.from(headers).some(
@@ -414,6 +416,8 @@ class SawClient {
               break
             }
           }
+
+          console.log('[SAW-SCRAPE] procedimentosRealizados:', procedimentosRealizados)
 
           /* ===========================
              PROCEDURE DETAILS (for DB)
@@ -448,7 +452,10 @@ class SawClient {
             const trs = tabela.querySelectorAll('tr')
             for (let i = 1; i < trs.length; i++) {
               const td = trs[i].querySelectorAll('td')
-              if (td.length < 12) continue
+              if (td.length < 12) {
+                console.log('[SAW-SCRAPE] Row', i, 'ignorada: apenas', td.length, 'colunas (esperado >= 12)')
+                continue
+              }
 
               const dataRaw = (td[0].textContent ?? '').trim()
               const seqMatch = dataRaw.match(/^(\d+)/)
@@ -523,6 +530,16 @@ class SawClient {
           error: (resultado as { erro?: string }).erro ?? 'Erro ao extrair dados da guia',
         }
       }
+
+      // Validacao de mismatch: procedimentos reportados mas nao extraidos
+      const procRealizados = (resultado as Record<string, unknown>).procedimentosRealizados as number
+      const procDetalhes = ((resultado as Record<string, unknown>).procedimentosDetalhes as unknown[]) ?? []
+
+      if (procRealizados > 0 && procDetalhes.length === 0) {
+        console.error(`[SAW] ALERTA: Guia ${numeroGuia} — ${procRealizados} procedimentos reportados mas 0 extraidos (possivel mudanca na estrutura HTML SAW)`)
+      }
+
+      console.log(`[SAW] Guia ${numeroGuia}: ${procRealizados} realizados, ${procDetalhes.length} detalhes extraidos`)
 
       return { success: true, data: { ...resultado, numeroGuia } as Record<string, unknown> }
     } catch (err) {
