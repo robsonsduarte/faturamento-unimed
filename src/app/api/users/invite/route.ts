@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
+import { userInviteSchema } from '@/lib/validations/user'
+import { auditLog } from '@/lib/audit'
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient()
@@ -23,20 +25,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Apenas administradores podem convidar usuarios' }, { status: 403 })
   }
 
-  const body = await request.json().catch(() => ({})) as {
-    email?: string
-    full_name?: string
-    password?: string
-    role?: string
+  const body = await request.json().catch(() => ({})) as unknown
+  const parsed = userInviteSchema.safeParse(body)
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Dados invalidos' }, { status: 400 })
   }
-
-  if (!body.email || !body.full_name || !body.password) {
-    return NextResponse.json({ error: 'Email, nome e senha sao obrigatorios' }, { status: 400 })
-  }
-
-  const role = body.role === 'admin' || body.role === 'operador' || body.role === 'visualizador'
-    ? body.role
-    : 'visualizador'
 
   // Use service role to create user (bypasses email confirmation)
   const admin = createAdminClient(
@@ -45,10 +38,10 @@ export async function POST(request: NextRequest) {
   )
 
   const { data: newUser, error: createError } = await admin.auth.admin.createUser({
-    email: body.email,
-    password: body.password,
+    email: parsed.data.email,
+    password: parsed.data.password,
     email_confirm: true,
-    user_metadata: { full_name: body.full_name },
+    user_metadata: { full_name: parsed.data.full_name },
   })
 
   if (createError) {
@@ -59,12 +52,17 @@ export async function POST(request: NextRequest) {
   if (newUser.user) {
     await admin
       .from('profiles')
-      .update({ role })
+      .update({ role: parsed.data.role })
       .eq('id', newUser.user.id)
   }
 
+  await auditLog(supabase, user.id, 'user.invite', 'profile', newUser.user.id, {
+    email: parsed.data.email,
+    role: parsed.data.role,
+  }, request)
+
   return NextResponse.json({
     success: true,
-    user: { id: newUser.user.id, email: body.email, full_name: body.full_name, role },
+    user: { id: newUser.user.id, email: parsed.data.email, full_name: parsed.data.full_name, role: parsed.data.role },
   })
 }

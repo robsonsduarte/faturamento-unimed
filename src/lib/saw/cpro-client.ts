@@ -26,8 +26,10 @@ export interface CproConfig {
 
 /**
  * Makes an HTTPS GET request to ConsultorioPro API.
- * The server uses a self-signed cert, so TLS verification is disabled.
- * The Host header must be set to consultoriopro.com.br (virtual hosting on shared IP).
+ * The server uses a self-signed cert on a private IP (same VPS network).
+ * TLS verification is disabled because the cert is self-signed — acceptable
+ * only because the API runs on the same trusted infrastructure (VPS 157.173.120.60).
+ * TODO: Replace with proper CA-pinned cert when CPro migrates to a public domain.
  */
 function cproGet(
   config: CproConfig,
@@ -59,7 +61,9 @@ function cproGet(
       timeout: 15000,
     }
 
-    console.log(`[CPRO] GET ${parsed.hostname}:${parsed.port || 443}${parsed.pathname}${parsed.search}`)
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`[CPRO] GET ${parsed.hostname}:${parsed.port || 443}${parsed.pathname}${parsed.search}`)
+    }
 
     const req = https.request(options, (res) => {
       let body = ''
@@ -67,7 +71,9 @@ function cproGet(
         body += chunk.toString()
       })
       res.on('end', () => {
-        console.log(`[CPRO] Status: ${res.statusCode}, Body: ${body.slice(0, 300)}`)
+        if (process.env.NODE_ENV !== 'production') {
+          console.log(`[CPRO] Status: ${res.statusCode}, Body: ${body.slice(0, 300)}`)
+        }
         resolve({ status: res.statusCode ?? 0, body })
       })
     })
@@ -154,7 +160,9 @@ export async function fetchCproData(
       }
     }
 
-    console.log(`[CPRO] Result: cadastrados=${procedimentosCadastrados}, userId=${userId}, valor=${valorTotal}, prof=${profissional?.nome ?? 'null'}`)
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`[CPRO] Result: cadastrados=${procedimentosCadastrados}, userId=${userId}, valor=${valorTotal}, prof=${profissional?.nome ?? 'null'}`)
+    }
 
     return {
       procedimentosCadastrados,

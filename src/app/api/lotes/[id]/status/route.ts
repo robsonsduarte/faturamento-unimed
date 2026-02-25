@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { loteStatusSchema } from '@/lib/validations/lote'
+import { auditLog } from '@/lib/audit'
 
 interface Params {
   params: Promise<{ id: string }>
@@ -40,6 +41,9 @@ export async function PUT(request: NextRequest, { params }: Params) {
       .single()
 
     if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+
+    await auditLog(supabase, user.id, 'lote.status_change', 'lote', id, { new_status: parsed.data.status }, request)
+
     return NextResponse.json(data)
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : 'Erro interno' }, { status: 500 })

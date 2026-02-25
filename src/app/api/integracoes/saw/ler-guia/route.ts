@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 import { requireRole, isAuthError } from '@/lib/auth'
 import { getSawClient } from '@/lib/saw/client'
 import type { SawCookie } from '@/lib/saw/client'
+
+const lerGuiaSchema = z.object({
+  guide_number: z.string().min(1, 'guide_number e obrigatorio').max(50),
+})
 
 export async function POST(request: NextRequest) {
   try {
@@ -39,14 +44,14 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const body = await request.json() as { guide_number: string }
-
-    if (!body.guide_number) {
-      return NextResponse.json({ error: 'guide_number e obrigatorio' }, { status: 400 })
+    const body = await request.json() as unknown
+    const parsed = lerGuiaSchema.safeParse(body)
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Dados invalidos' }, { status: 400 })
     }
 
     const cookies = session.cookies as SawCookie[]
-    const result = await getSawClient().readGuide(cookies, body.guide_number)
+    const result = await getSawClient().readGuide(cookies, parsed.data.guide_number)
 
     if (!result.success) {
       return NextResponse.json(

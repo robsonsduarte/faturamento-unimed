@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { requireAuth, isAuthError } from '@/lib/auth'
 import { cobrancaCreateSchema } from '@/lib/validations/cobranca'
+import { auditLog } from '@/lib/audit'
 
 export async function GET(request: NextRequest) {
   try {
@@ -54,6 +55,9 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+
+    await auditLog(supabase, user.id, 'cobranca.create', 'cobranca', data.id, { guia_id: parsed.data.guia_id ?? null }, request)
+
     return NextResponse.json(data, { status: 201 })
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : 'Erro interno' }, { status: 500 })

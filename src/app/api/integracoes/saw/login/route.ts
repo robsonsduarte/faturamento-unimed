@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireRole, isAuthError } from '@/lib/auth'
 import { rateLimit } from '@/lib/rate-limit'
+import { auditLog } from '@/lib/audit'
 import { getSawClient } from '@/lib/saw/client'
 import type { SawConfig } from '@/lib/types'
 
@@ -49,11 +50,13 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    await supabase.from('saw_sessions').insert({
+    const { data: session } = await supabase.from('saw_sessions').insert({
       cookies: result.cookies,
       valida: true,
       expires_at: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
-    })
+    }).select('id').single()
+
+    await auditLog(supabase, auth.user.id, 'saw.login', 'saw_session', session?.id ?? 'unknown', {}, request)
 
     return NextResponse.json({ success: true })
   } catch (err) {

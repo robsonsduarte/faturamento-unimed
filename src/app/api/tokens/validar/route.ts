@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireRole, isAuthError } from '@/lib/auth'
 import { rateLimit } from '@/lib/rate-limit'
 import { tokenValidarSchema } from '@/lib/validations/token'
+import { auditLog } from '@/lib/audit'
 
 export async function POST(request: NextRequest) {
   try {
@@ -43,6 +44,11 @@ export async function POST(request: NextRequest) {
       .from('guias')
       .update({ token_biometrico: true, data_token: new Date().toISOString(), updated_at: new Date().toISOString() })
       .eq('id', parsed.data.guia_id)
+
+    await auditLog(supabase, auth.user.id, 'token.validate', 'token_biometrico', data.id, {
+      guia_id: parsed.data.guia_id,
+      paciente: parsed.data.paciente_nome,
+    }, request)
 
     return NextResponse.json(data, { status: 201 })
   } catch (err) {
