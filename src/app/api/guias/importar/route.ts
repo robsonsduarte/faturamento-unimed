@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { requireAuth, isAuthError } from '@/lib/auth'
 import { rateLimit } from '@/lib/rate-limit'
 import { getSawClient } from '@/lib/saw/client'
@@ -7,6 +7,14 @@ import type { SawCookie } from '@/lib/saw/client'
 import { fetchCproData } from '@/lib/saw/cpro-client'
 import type { SawConfig, CproConfig } from '@/lib/types'
 import { computeGuideStatus } from '@/lib/guide-status'
+
+/** Service role client — bypasses RLS for trusted server-side DB operations */
+function getServiceClient() {
+  return createAdminClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  )
+}
 
 /** Global SSE stream timeout in ms (30 minutes — scales for large re-imports) */
 const STREAM_TIMEOUT_MS = 30 * 60 * 1000
@@ -84,11 +92,15 @@ export async function POST(request: NextRequest) {
         } catch { /* already closed */ }
       }, STREAM_TIMEOUT_MS)
 
+      // Service role client — bypasses RLS for DB operations
+      // Auth + role already validated above; this is trusted server-side code
+      const db = getServiceClient()
+
       try {
         send('info', 'Iniciando importacao...')
 
         // Load SAW config
-        const { data: sawIntegracao, error: sawErr } = await supabase
+        const { data: sawIntegracao, error: sawErr } = await db
           .from('integracoes')
           .select('config, ativo')
           .eq('slug', 'saw')
@@ -109,7 +121,7 @@ export async function POST(request: NextRequest) {
         const sawConfig = sawIntegracao.config as SawConfig
 
         // Load CPro config
-        const { data: cproIntegracao } = await supabase
+        const { data: cproIntegracao } = await db
           .from('integracoes')
           .select('config, ativo')
           .eq('slug', 'cpro')
@@ -120,7 +132,7 @@ export async function POST(request: NextRequest) {
         // Check/create SAW session
         send('processing', 'Verificando sessao SAW...')
 
-        const { data: existingSession } = await supabase
+        const { data: existingSession } = await db
           .from('saw_sessions')
           .select('cookies, expires_at')
           .eq('valida', true)
@@ -141,7 +153,7 @@ export async function POST(request: NextRequest) {
             send('info', 'Sessao salva expirou no SAW. Fazendo novo login...')
             sessionCookies = null
             // Mark old session as invalid
-            await supabase
+            await db
               .from('saw_sessions')
               .update({ valida: false })
               .eq('valida', true)
@@ -171,7 +183,7 @@ export async function POST(request: NextRequest) {
 
           sessionCookies = loginResult.cookies
 
-          await supabase.from('saw_sessions').insert({
+          await db.from('saw_sessions').insert({
             cookies: sessionCookies,
             valida: true,
             expires_at: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
@@ -233,12 +245,12 @@ export async function POST(request: NextRequest) {
             sessionCookies = loginResult.cookies
 
             // Invalidate old sessions and save new one
-            await supabase
+            await db
               .from('saw_sessions')
               .update({ valida: false })
               .eq('valida', true)
 
-            await supabase.from('saw_sessions').insert({
+            await db.from('saw_sessions').insert({
               cookies: sessionCookies,
               valida: true,
               expires_at: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
@@ -437,7 +449,7 @@ export async function POST(request: NextRequest) {
             updated_at: new Date().toISOString(),
           }
 
-          const { data: upsertedGuia, error: upsertError } = await supabase
+          const { data: upsertedGuia, error: upsertError } = await db
             .from('guias')
             .upsert(guiaPayload, { onConflict: 'guide_number' })
             .select('id')
@@ -468,7 +480,7 @@ export async function POST(request: NextRequest) {
           const sawProcedimentos = (sawData?.['procedimentosDetalhes'] ?? []) as ProcDetalhe[]
           if (sawProcedimentos.length > 0) {
             // Delete existing procedures for this guide to avoid duplicates on re-import
-            await supabase
+            await db
               .from('procedimentos')
               .delete()
               .eq('guia_id', upsertedGuia.id)
@@ -504,7 +516,7 @@ export async function POST(request: NextRequest) {
               status: 'Importado' as const,
             }))
 
-            const { error: procError } = await supabase
+            const { error: procError } = await db
               .from('procedimentos')
               .insert(procRows)
 
