@@ -10,7 +10,7 @@ const builder = new XMLBuilder({
   indentBy: '  ',
 })
 
-function buildProcedimento(proc: Procedimento, index: number) {
+function buildProcedimento(proc: Procedimento, index: number, cpfProfissional: string | null) {
   return {
     sequencialItem: index + 1,
     dataExecucao: proc.data_execucao,
@@ -22,24 +22,34 @@ function buildProcedimento(proc: Procedimento, index: number) {
       descricaoProcedimento: proc.descricao,
     },
     quantidadeExecutada: proc.quantidade_executada,
+    viaAcesso: proc.via_acesso ?? '1',
+    tecnicaUtilizada: proc.tecnica_utilizada ?? '1',
     reducaoAcrescimo: proc.reducao_acrescimo,
     valorUnitario: proc.valor_unitario?.toFixed(2),
     valorTotal: proc.valor_total?.toFixed(2),
     equipeSadt: {
-      sequencialEquipe: 1,
-      grauParticipacao: '00',
-      codigoPrestadorNaOperadora: DEDICARE.CODIGO_PRESTADOR,
+      grauPart: '12',
+      codProfissional: {
+        cpfContratado: cpfProfissional ?? '',
+      },
       nomeProf: proc.nome_profissional ?? DEDICARE.NOME_PRESTADOR,
-      conselho: proc.conselho ?? 'CRFa',
-      numeroConselho: proc.numero_conselho ?? '',
-      UF: proc.uf ?? 'SP',
+      conselho: proc.conselho ?? '09',
+      numeroConselhoProfissional: proc.numero_conselho ?? '',
+      UF: proc.uf ?? '29',
       CBOS: proc.cbos ?? '251510',
     },
   }
 }
 
+function extractCpf(guia: Guia): string | null {
+  const cpro = guia.cpro_data as Record<string, unknown> | null
+  const prof = cpro?.profissional as Record<string, unknown> | null
+  return typeof prof?.cpf === 'string' ? prof.cpf : null
+}
+
 function buildGuia(guia: Guia, sequencial: number) {
   const procedimentos = guia.procedimentos ?? []
+  const cpf = extractCpf(guia)
   return {
     guiaSP: {
       cabecalhoGuia: {
@@ -72,7 +82,7 @@ function buildGuia(guia: Guia, sequencial: number) {
         dataValidadeSenha: guia.data_validade_senha,
       },
       procedimentosExecutados: {
-        procedimentoExecutado: procedimentos.map((p, i) => buildProcedimento(p, i)),
+        procedimentoExecutado: procedimentos.map((p, i) => buildProcedimento(p, i, cpf)),
       },
       valorTotal: {
         valorTotalGeral: guia.valor_total?.toFixed(2),

@@ -2,7 +2,9 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { Plus, RefreshCw } from 'lucide-react'
+import { Plus, RefreshCw, Trash2 } from 'lucide-react'
+import { toast } from 'sonner'
+import { useQueryClient } from '@tanstack/react-query'
 import { useLotes } from '@/hooks/use-lotes'
 import { LoteStatusBadge } from '@/components/shared/status-badge'
 import { EmptyState } from '@/components/shared/empty-state'
@@ -13,6 +15,8 @@ import { formatCurrency, formatDateTime, cn } from '@/lib/utils'
 export default function LotesPage() {
   const [status, setStatus] = useState('')
   const [page, setPage] = useState(1)
+  const [deleting, setDeleting] = useState<string | null>(null)
+  const queryClient = useQueryClient()
 
   const { data, isLoading, error, refetch } = useLotes({
     status: status || undefined,
@@ -22,6 +26,27 @@ export default function LotesPage() {
 
   const lotes = data?.data ?? []
   const total = data?.count ?? 0
+
+  async function handleDelete(loteId: string, numeroLote: string) {
+    if (!confirm(`Excluir lote ${numeroLote}? As guias serao liberadas e voltarao ao estado anterior.`)) return
+    setDeleting(loteId)
+    try {
+      const res = await fetch(`/api/lotes/${loteId}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const err = await res.json() as { error: string }
+        throw new Error(err.error)
+      }
+      const result = await res.json() as { guias_liberadas: number }
+      queryClient.invalidateQueries({ queryKey: ['lotes'] })
+      queryClient.invalidateQueries({ queryKey: ['guias'] })
+      toast.success(`Lote ${numeroLote} excluido. ${result.guias_liberadas} guia(s) liberada(s).`)
+      refetch()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao excluir lote')
+    } finally {
+      setDeleting(null)
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -100,16 +125,32 @@ export default function LotesPage() {
                     <td className="px-4 py-3"><LoteStatusBadge status={lote.status} /></td>
                     <td className="px-4 py-3 text-xs text-[var(--color-text-muted)]">{formatDateTime(lote.created_at)}</td>
                     <td className="px-4 py-3">
-                      <Link
-                        href={`/dashboard/lotes/${lote.id}`}
-                        className={cn(
-                          'px-3 py-1.5 rounded-lg text-xs',
-                          'bg-[var(--color-surface)] text-[var(--color-text-muted)] hover:text-[var(--color-text)]',
-                          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]'
+                      <div className="flex items-center gap-2">
+                        <Link
+                          href={`/dashboard/lotes/${lote.id}`}
+                          className={cn(
+                            'px-3 py-1.5 rounded-lg text-xs',
+                            'bg-[var(--color-surface)] text-[var(--color-text-muted)] hover:text-[var(--color-text)]',
+                            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]'
+                          )}
+                        >
+                          Ver
+                        </Link>
+                        {['rascunho', 'gerado'].includes(lote.status) && (
+                          <button
+                            onClick={() => handleDelete(lote.id, lote.numero_lote)}
+                            disabled={deleting === lote.id}
+                            title="Excluir lote"
+                            className={cn(
+                              'p-1.5 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-danger)] transition-colors',
+                              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-danger)]',
+                              'disabled:opacity-50 disabled:cursor-not-allowed'
+                            )}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
                         )}
-                      >
-                        Ver
-                      </Link>
+                      </div>
                     </td>
                   </tr>
                 ))}
