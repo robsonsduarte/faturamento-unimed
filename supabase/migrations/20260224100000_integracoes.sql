@@ -21,11 +21,11 @@ CREATE POLICY "Admins can manage integracoes"
 CREATE TRIGGER integracoes_updated_at BEFORE UPDATE ON integracoes
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
--- Seed SAW credentials
+-- Seed SAW config (credentials must be set via admin UI after deploy)
 INSERT INTO integracoes (slug, nome, config) VALUES (
   'saw',
   'Portal SAW (Unimed)',
-  '{"api_url": "http://puppeteer-api:3001", "login_url": "https://saw.trixti.com.br/saw/Logar.do?method=abrirSAW", "usuario": "cnu.robson.duarte", "senha": "EhNoisNaFita852*", "cookie_key": "saw_session_cookies"}'::jsonb
+  '{"api_url": "http://puppeteer-api:3001", "login_url": "https://saw.trixti.com.br/saw/Logar.do?method=abrirSAW", "usuario": "", "senha": "", "cookie_key": "saw_session_cookies"}'::jsonb
 );
 
 INSERT INTO integracoes (slug, nome, config) VALUES (

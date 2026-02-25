@@ -1,16 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { requireRole, isAuthError } from '@/lib/auth'
 import { getSawClient } from '@/lib/saw/client'
 import type { SawCookie } from '@/lib/saw/client'
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createClient()
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-
-    if (!user) return NextResponse.json({ error: 'Nao autenticado' }, { status: 401 })
+    const auth = await requireRole(['admin', 'operador'])
+    if (isAuthError(auth)) return auth.response
+    const { supabase } = auth
 
     const { data: integracao, error: integracaoError } = await supabase
       .from('integracoes')

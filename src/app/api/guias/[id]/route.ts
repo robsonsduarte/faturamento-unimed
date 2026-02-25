@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { requireAuth, isAuthError } from '@/lib/auth'
 import { guiaUpdateSchema } from '@/lib/validations/guia'
 
 interface Params {
@@ -8,7 +9,9 @@ interface Params {
 
 export async function GET(_request: NextRequest, { params }: Params) {
   try {
-    const supabase = await createClient()
+    const auth = await requireAuth()
+    if (isAuthError(auth)) return auth.response
+    const { supabase } = auth
     const { id } = await params
     const { data, error } = await supabase
       .from('guias')

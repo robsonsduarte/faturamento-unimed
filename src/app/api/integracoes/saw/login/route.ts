@@ -1,16 +1,17 @@
-import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { NextRequest, NextResponse } from 'next/server'
+import { requireRole, isAuthError } from '@/lib/auth'
+import { rateLimit } from '@/lib/rate-limit'
 import { getSawClient } from '@/lib/saw/client'
 import type { SawConfig } from '@/lib/types'
 
-export async function POST() {
+export async function POST(request: NextRequest) {
   try {
-    const supabase = await createClient()
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
+    const limited = rateLimit(request, 'saw-login', 5, 60_000)
+    if (limited) return limited
 
-    if (!user) return NextResponse.json({ error: 'Nao autenticado' }, { status: 401 })
+    const auth = await requireRole(['admin', 'operador'])
+    if (isAuthError(auth)) return auth.response
+    const { supabase } = auth
 
     const { data: integracao, error: integracaoError } = await supabase
       .from('integracoes')

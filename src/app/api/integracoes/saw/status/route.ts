@@ -1,12 +1,14 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { requireAuth, isAuthError } from '@/lib/auth'
 import { getSawClient } from '@/lib/saw/client'
 import type { SawCookie } from '@/lib/saw/client'
 import type { SawConfig } from '@/lib/types'
 
 export async function GET() {
   try {
-    const supabase = await createClient()
+    const auth = await requireAuth()
+    if (isAuthError(auth)) return auth.response
+    const { supabase } = auth
 
     const { data: session, error: sessionError } = await supabase
       .from('saw_sessions')

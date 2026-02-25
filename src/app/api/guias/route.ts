@@ -1,16 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { requireAuth, isAuthError } from '@/lib/auth'
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createClient()
+    const auth = await requireAuth()
+    if (isAuthError(auth)) return auth.response
+    const { supabase } = auth
     const { searchParams } = new URL(request.url)
 
     const status = searchParams.get('status')
     const statusXml = searchParams.get('status_xml')
     const search = searchParams.get('search')
     const page = Number(searchParams.get('page') ?? '1')
-    const pageSize = Number(searchParams.get('pageSize') ?? '20')
+    const pageSize = Math.min(Number(searchParams.get('pageSize') ?? '20'), 100)
     const periodoInicio = searchParams.get('periodo_inicio')
     const periodoFim = searchParams.get('periodo_fim')
     const loteId = searchParams.get('lote_id')

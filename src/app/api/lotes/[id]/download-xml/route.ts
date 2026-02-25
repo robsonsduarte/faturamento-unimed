@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { requireAuth, isAuthError } from '@/lib/auth'
 
 interface Params {
   params: Promise<{ id: string }>
@@ -7,7 +7,9 @@ interface Params {
 
 export async function GET(_request: NextRequest, { params }: Params) {
   try {
-    const supabase = await createClient()
+    const auth = await requireAuth()
+    if (isAuthError(auth)) return auth.response
+    const { supabase } = auth
     const { id } = await params
     const { data: lote, error } = await supabase
       .from('lotes')

@@ -1,15 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { requireRole, isAuthError } from '@/lib/auth'
+import { rateLimit } from '@/lib/rate-limit'
 import { tokenValidarSchema } from '@/lib/validations/token'
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createClient()
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
+    const limited = rateLimit(request, 'token-validar', 10, 60_000)
+    if (limited) return limited
 
-    if (!user) return NextResponse.json({ error: 'Nao autenticado' }, { status: 401 })
+    const auth = await requireRole(['admin', 'operador'])
+    if (isAuthError(auth)) return auth.response
+    const { supabase } = auth
 
     const body = await request.json() as unknown
     const parsed = tokenValidarSchema.safeParse(body)

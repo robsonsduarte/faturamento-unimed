@@ -1,5 +1,7 @@
 import { NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { requireRole, isAuthError } from '@/lib/auth'
+import { rateLimit } from '@/lib/rate-limit'
 import { getSawClient } from '@/lib/saw/client'
 import type { SawCookie } from '@/lib/saw/client'
 import { fetchCproData } from '@/lib/saw/cpro-client'
@@ -59,17 +61,17 @@ function computeGuideStatus(
 }
 
 export async function POST(request: NextRequest) {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const limited = rateLimit(request, 'guias-importar', 5, 60_000)
+  if (limited) return limited
 
-  if (!user) {
-    return new Response(JSON.stringify({ error: 'Nao autenticado' }), {
-      status: 401,
+  const auth = await requireRole(['admin', 'operador'])
+  if (isAuthError(auth)) {
+    return new Response(JSON.stringify({ error: 'Permissao insuficiente' }), {
+      status: 403,
       headers: { 'Content-Type': 'application/json' },
     })
   }
+  const { user, supabase } = auth
 
   const body = await request.json().catch(() => ({})) as { guide_numbers?: string[] }
   const guideNumbers: string[] = Array.isArray(body.guide_numbers)

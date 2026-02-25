@@ -1,14 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { requireAuth, isAuthError } from '@/lib/auth'
 import { loteCreateSchema } from '@/lib/validations/lote'
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createClient()
+    const auth = await requireAuth()
+    if (isAuthError(auth)) return auth.response
+    const { supabase } = auth
     const { searchParams } = new URL(request.url)
     const status = searchParams.get('status')
     const page = Number(searchParams.get('page') ?? '1')
-    const pageSize = Number(searchParams.get('pageSize') ?? '20')
+    const pageSize = Math.min(Number(searchParams.get('pageSize') ?? '20'), 100)
 
     let query = supabase
       .from('lotes')
