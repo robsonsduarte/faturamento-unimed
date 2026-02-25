@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { requireRole, isAuthError } from '@/lib/auth'
+import { requireAuth, isAuthError } from '@/lib/auth'
 import { rateLimit } from '@/lib/rate-limit'
 import { getSawClient } from '@/lib/saw/client'
 import type { SawCookie } from '@/lib/saw/client'
@@ -30,8 +30,9 @@ function sseEvent(type: string, message: string, guide_number?: string): string 
  *   3. COBRAR_OU_TOKEN — needs billing action or biometric token
  *
  * COMPLETA conditions (any):
- *   - realizados == autorizada AND autorizada > 0 AND no check-in pending
- *   - solicitada != autorizada AND solicitada == realizados AND no check-in pending
+ *   - cond1: realizados == autorizada AND autorizada > 0 AND no check-in pending
+ *   - cond2: solicitada != autorizada AND solicitada == realizados AND no check-in pending
+ *   - cond3: cadastrados (CPro) == realizados AND cadastrados > 0 AND no check-in pending
  */
 function computeGuideStatus(
   procedimentosCadastrados: number | null,
@@ -50,11 +51,20 @@ function computeGuideStatus(
     !needsCheckin
 
   const cond2 =
+    quantidadeSolicitada != null &&
+    quantidadeSolicitada > 0 &&
     quantidadeSolicitada !== quantidadeAutorizada &&
     quantidadeSolicitada === procedimentosRealizados &&
     !needsCheckin
 
-  if (cond1 || cond2) {
+  // cond3: todos os procedimentos cadastrados no CPro foram realizados no SAW
+  const cond3 =
+    procedimentosCadastrados != null &&
+    procedimentosCadastrados > 0 &&
+    procedimentosRealizados === procedimentosCadastrados &&
+    !needsCheckin
+
+  if (cond1 || cond2 || cond3) {
     return 'COMPLETA'
   }
 
@@ -70,10 +80,12 @@ export async function POST(request: NextRequest) {
   const limited = rateLimit(request, 'guias-importar', 5, 60_000)
   if (limited) return limited
 
-  const auth = await requireRole(['admin', 'operador'])
+  // Qualquer usuario autenticado pode chamar esta rota —
+  // a restricao de volume para visualizador e feita abaixo, apos o parse do body
+  const auth = await requireAuth()
   if (isAuthError(auth)) {
-    return new Response(JSON.stringify({ error: 'Permissao insuficiente' }), {
-      status: 403,
+    return new Response(JSON.stringify({ error: 'Nao autenticado' }), {
+      status: 401,
       headers: { 'Content-Type': 'application/json' },
     })
   }
@@ -83,6 +95,35 @@ export async function POST(request: NextRequest) {
   const guideNumbers: string[] = Array.isArray(body.guide_numbers)
     ? body.guide_numbers.filter(Boolean)
     : []
+
+  // Visualizador pode atualizar somente uma guia por vez (botao "Atualizar dados")
+  // Importacao em massa e restrita a admin e operador
+  const { data: callerProfile } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', user.id)
+    .single()
+
+  if (!callerProfile) {
+    return new Response(
+      JSON.stringify({ error: 'Profile nao encontrado' }),
+      { status: 403, headers: { 'Content-Type': 'application/json' } }
+    )
+  }
+
+  if (callerProfile.role === 'visualizador' && guideNumbers.length > 1) {
+    return new Response(
+      JSON.stringify({ error: 'Visualizador pode atualizar apenas uma guia por vez' }),
+      { status: 403, headers: { 'Content-Type': 'application/json' } }
+    )
+  }
+
+  if (guideNumbers.length === 0) {
+    return new Response(
+      JSON.stringify({ error: 'Nenhum numero de guia informado' }),
+      { status: 400, headers: { 'Content-Type': 'application/json' } }
+    )
+  }
 
   if (guideNumbers.length > MAX_GUIDES_PER_REQUEST) {
     return new Response(
@@ -202,13 +243,6 @@ export async function POST(request: NextRequest) {
           send('success', 'Login no SAW realizado com sucesso.')
         } else {
           send('success', 'Sessao SAW validada e ativa.')
-        }
-
-        // If no guide numbers provided, notify and close
-        if (guideNumbers.length === 0) {
-          send('error', 'Nenhum numero de guia informado. Informe ao menos um numero.')
-          controller.close()
-          return
         }
 
         const total = guideNumbers.length
