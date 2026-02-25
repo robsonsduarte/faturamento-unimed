@@ -8,6 +8,12 @@ import { fetchCproData } from '@/lib/saw/cpro-client'
 import type { SawConfig, CproConfig } from '@/lib/types'
 import type { GuideStatus } from '@/lib/constants'
 
+/** Max guides per single import request — prevents abuse and SSE timeouts */
+const MAX_GUIDES_PER_REQUEST = 50
+
+/** Global SSE stream timeout in ms (10 minutes) */
+const STREAM_TIMEOUT_MS = 10 * 60 * 1000
+
 function timestamp(): string {
   return new Date().toLocaleTimeString('pt-BR', { hour12: false })
 }
@@ -78,12 +84,27 @@ export async function POST(request: NextRequest) {
     ? body.guide_numbers.filter(Boolean)
     : []
 
+  if (guideNumbers.length > MAX_GUIDES_PER_REQUEST) {
+    return new Response(
+      JSON.stringify({ error: `Maximo de ${MAX_GUIDES_PER_REQUEST} guias por requisicao` }),
+      { status: 400, headers: { 'Content-Type': 'application/json' } }
+    )
+  }
+
   const stream = new ReadableStream({
     async start(controller) {
       const enc = new TextEncoder()
       const send = (type: string, message: string, guide_number?: string) => {
         controller.enqueue(enc.encode(sseEvent(type, message, guide_number)))
       }
+
+      // Global stream timeout — kills the stream if it exceeds STREAM_TIMEOUT_MS
+      const streamTimeout = setTimeout(() => {
+        try {
+          controller.enqueue(enc.encode(sseEvent('error', `Timeout: importacao excedeu ${STREAM_TIMEOUT_MS / 60_000} minutos`)))
+          controller.close()
+        } catch { /* already closed */ }
+      }, STREAM_TIMEOUT_MS)
 
       try {
         send('info', 'Iniciando importacao...')
@@ -544,6 +565,7 @@ export async function POST(request: NextRequest) {
         const msg = err instanceof Error ? err.message : 'Erro inesperado'
         controller.enqueue(enc.encode(sseEvent('error', `Erro fatal: ${msg}`)))
       } finally {
+        clearTimeout(streamTimeout)
         controller.close()
       }
     },

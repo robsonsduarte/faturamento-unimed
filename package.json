@@ -8,7 +8,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "keywords": [],
   "author": "",
@@ -45,6 +47,7 @@
     "@eslint/eslintrc": "^3.3.4",
     "eslint": "^9.39.3",
     "eslint-config-next": "^16.1.6",
-    "pg": "^8.18.0"
+    "pg": "^8.18.0",
+    "vitest": "^4.0.18"
   }
 }
