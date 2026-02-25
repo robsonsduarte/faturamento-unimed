@@ -163,7 +163,7 @@ function buildGuiaContent(guia: Guia) {
       [ans('dataValidadeSenha')]: guia.data_validade_senha,
     },
     [ans('dadosBeneficiario')]: {
-      [ans('numeroCarteira')]: guia.numero_carteira,
+      [ans('numeroCarteira')]: (guia.numero_carteira ?? '').padStart(17, '0'),
       [ans('atendimentoRN')]: 'N',
     },
     [ans('dadosSolicitante')]: {
