@@ -269,7 +269,7 @@ function buildGuiaContent(guia: Guia) {
 
   // Sum procedure values for valorTotal section — prefer DB values, fallback to guia total
   const dbValorSum = procedimentos.reduce((sum, p) => sum + (p.valor_total ?? 0), 0)
-  const valorProcedimentos = dbValorSum > 0 ? dbValorSum : guia.valor_total
+  const valorProcedimentos = dbValorSum > 0 ? dbValorSum : (guia.valor_total ?? 0)
 
   // Resolve solicitante professional fields — saw_xml_data with padding, then fallback
   const solNome = xml?.dadosSolicitante.profissionalSolicitante.nomeProfissional || profFallback.nome
@@ -341,7 +341,7 @@ function buildGuiaContent(guia: Guia) {
     [ans('valorTotal')]: {
       [ans('valorProcedimentos')]: hasValue(xml?.valorTotal.valorProcedimentos)
         ? xml!.valorTotal.valorProcedimentos
-        : valorProcedimentos.toFixed(2),
+        : (valorProcedimentos ?? 0).toFixed(2),
       [ans('valorDiarias')]: '0.00',
       [ans('valorTaxasAlugueis')]: '0.00',
       [ans('valorMateriais')]: '0.00',
@@ -350,7 +350,7 @@ function buildGuiaContent(guia: Guia) {
       [ans('valorGasesMedicinais')]: '0.00',
       [ans('valorTotalGeral')]: hasValue(xml?.valorTotal.valorTotalGeral)
         ? xml!.valorTotal.valorTotalGeral
-        : (guia.valor_total || valorProcedimentos).toFixed(2),
+        : (guia.valor_total ?? valorProcedimentos ?? 0).toFixed(2),
     },
   }
 }

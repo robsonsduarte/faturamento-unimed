@@ -539,9 +539,10 @@ export async function POST(request: NextRequest) {
           }
 
           // Parse XML oficial do SAW (baixado durante readGuide, na mesma pagina)
+          // Somente salva XML quando a guia atingiu status COMPLETA — outros status nao tem dados definitivos
           const sawXmlContent = typeof sawData?.['xmlContent'] === 'string' ? sawData['xmlContent'] as string : null
 
-          if (sawXmlContent) {
+          if (sawXmlContent && status === 'COMPLETA') {
             try {
               const sawXmlData = parseSawXml(sawXmlContent)
 
@@ -555,6 +556,8 @@ export async function POST(request: NextRequest) {
               const xmlMsg = xmlErr instanceof Error ? xmlErr.message : 'Erro desconhecido'
               send('info', `Guia ${guideNumber}: erro ao processar XML (${xmlMsg})`, guideNumber)
             }
+          } else if (sawXmlContent && status !== 'COMPLETA') {
+            send('info', `Guia ${guideNumber}: XML nao salvo (status != COMPLETA, status atual = ${status})`, guideNumber)
           }
 
           // SSE: truncar nome do paciente para protecao LGPD (apenas primeiro nome)
