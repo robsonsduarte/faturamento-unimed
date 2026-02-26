@@ -32,6 +32,8 @@ export async function GET(request: NextRequest) {
     if (statusXml) query = query.eq('status_xml', statusXml)
     if (loteId) query = query.eq('lote_id', loteId)
     if (tipoGuia) query = query.eq('tipo_guia', tipoGuia)
+    const semLote = searchParams.get('sem_lote')
+    if (semLote === 'true') query = query.is('lote_id', null)
     if (search) {
       query = query.or(
         `guide_number.ilike.%${search}%,paciente.ilike.%${search}%,numero_carteira.ilike.%${search}%`

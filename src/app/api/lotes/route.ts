@@ -49,6 +49,21 @@ export async function POST(request: NextRequest) {
 
     const { guia_ids, ...loteData } = parsed.data
 
+    // Validar que nenhuma guia ja pertence a outro lote
+    const { data: guiasComLote } = await supabase
+      .from('guias')
+      .select('id, guide_number, lote_id')
+      .in('id', guia_ids)
+      .not('lote_id', 'is', null)
+
+    if (guiasComLote && guiasComLote.length > 0) {
+      const nums = guiasComLote.map((g) => g.guide_number).join(', ')
+      return NextResponse.json(
+        { error: `Guia(s) ja associada(s) a outro lote: ${nums}` },
+        { status: 400 }
+      )
+    }
+
     // Calcular totais das guias selecionadas
     const { data: guias } = await supabase
       .from('guias')

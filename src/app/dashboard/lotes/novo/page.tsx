@@ -34,7 +34,7 @@ export default function NovoLotePage() {
 
   // Fetch guides filtered by tipo from API: Local→Local, Externo→Intercambio
   const tipoGuiaFilter = form.tipo === 'Local' ? 'Local' : 'Intercambio'
-  const { data: guiasData } = useGuias({ status: 'COMPLETA', tipo_guia: tipoGuiaFilter, pageSize: 100 })
+  const { data: guiasData } = useGuias({ status: 'COMPLETA', tipo_guia: tipoGuiaFilter, sem_lote: true, pageSize: 100 })
   const guias = guiasData?.data ?? []
 
   function toggleGuia(id: string) {
