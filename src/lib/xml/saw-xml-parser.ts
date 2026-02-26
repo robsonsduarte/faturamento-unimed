@@ -25,15 +25,17 @@ function asArray<T>(v: T | T[] | undefined | null): T[] {
 export function parseSawXml(xmlContent: string): SawXmlData {
   const parsed = parser.parse(xmlContent)
 
-  // Navigate to the guia — XML do SAW individual tem uma unica guiaSP-SADT
-  const msg = parsed.mensagemTISS
-  const loteGuias = msg?.prestadorParaOperadora?.loteGuias
-  const guiasTISS = loteGuias?.guiasTISS
-  const guiaRaw = guiasTISS?.['guiaSP-SADT']
-
-  // Pode ser objeto (1 guia) ou array (N guias) — pegar a primeira
-  const guia = Array.isArray(guiaRaw) ? guiaRaw[0] : guiaRaw
-  if (!guia) throw new Error('Nenhuma guiaSP-SADT encontrada no XML')
+  // SAW retorna XML individual com root <ctmSpSadtGuia> (sem wrapper de lote)
+  // Fallback: se vier como lote TISS, navega pela estrutura completa
+  let guia = parsed.ctmSpSadtGuia
+  if (!guia) {
+    const msg = parsed.mensagemTISS
+    const loteGuias = msg?.prestadorParaOperadora?.loteGuias
+    const guiasTISS = loteGuias?.guiasTISS
+    const guiaRaw = guiasTISS?.['guiaSP-SADT']
+    guia = Array.isArray(guiaRaw) ? guiaRaw[0] : guiaRaw
+  }
+  if (!guia) throw new Error('Nenhuma guia encontrada no XML (esperado ctmSpSadtGuia ou mensagemTISS)')
 
   const sol = guia.dadosSolicitante ?? {}
   const exec = guia.dadosExecutante ?? {}

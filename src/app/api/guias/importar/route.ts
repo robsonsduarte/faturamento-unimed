@@ -538,27 +538,25 @@ export async function POST(request: NextRequest) {
             }
           }
 
-          // Download XML oficial do SAW para guias COMPLETA
-          const sawChave = typeof sawData?.['chave'] === 'string' ? sawData['chave'] as string : null
-          const sawTemXML = sawData?.['temXML'] === true
+          // Parse XML oficial do SAW (baixado durante readGuide, na mesma pagina)
+          const sawChave = sawData?.['chave'] ?? null
+          const sawTemXML = sawData?.['temXML'] ?? false
+          const sawXmlContent = typeof sawData?.['xmlContent'] === 'string' ? sawData['xmlContent'] as string : null
 
-          if (status === 'COMPLETA' && sawChave && sawTemXML) {
+          if (status === 'COMPLETA') {
+            send('info', `Guia ${guideNumber}: XML debug — chave=${sawChave ? 'sim' : 'nao'}, temXML=${sawTemXML}, xmlContent=${sawXmlContent ? sawXmlContent.length + ' bytes' : 'null'}`, guideNumber)
+          }
+
+          if (sawXmlContent) {
             try {
-              send('processing', `[${i + 1}/${total}] Baixando XML oficial da guia ${guideNumber}...`, guideNumber)
-              const xmlResult = await getSawClient().downloadGuideXml(sessionCookies!, sawChave)
+              const sawXmlData = parseSawXml(sawXmlContent)
 
-              if (xmlResult.success && xmlResult.xmlContent) {
-                const sawXmlData = parseSawXml(xmlResult.xmlContent)
+              await db
+                .from('guias')
+                .update({ saw_xml_data: sawXmlData })
+                .eq('id', upsertedGuia.id)
 
-                await db
-                  .from('guias')
-                  .update({ saw_xml_data: sawXmlData })
-                  .eq('id', upsertedGuia.id)
-
-                send('success', `Guia ${guideNumber}: XML oficial baixado e parseado (${xmlResult.xmlContent.length} bytes)`, guideNumber)
-              } else {
-                send('info', `Guia ${guideNumber}: falha ao baixar XML (${xmlResult.error ?? 'erro desconhecido'})`, guideNumber)
-              }
+              send('success', `Guia ${guideNumber}: XML oficial parseado (${sawXmlContent.length} bytes)`, guideNumber)
             } catch (xmlErr) {
               const xmlMsg = xmlErr instanceof Error ? xmlErr.message : 'Erro desconhecido'
               send('info', `Guia ${guideNumber}: erro ao processar XML (${xmlMsg})`, guideNumber)

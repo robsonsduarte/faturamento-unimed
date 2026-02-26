@@ -579,7 +579,31 @@ class SawClient {
 
       console.log(`[SAW] Guia ${numeroGuia}: ${procRealizados} realizados, ${procDetalhes.length} detalhes extraidos`)
 
-      return { success: true, data: { ...resultado, numeroGuia } as Record<string, unknown> }
+      // Download XML while still on the guide page (SAW requires server-side session context)
+      let xmlContent: string | null = null
+      const resData = resultado as Record<string, unknown>
+
+      if (resData.temXML && resData.chave) {
+        try {
+          const xmlUrl = `${SAW_BASE}/saw/tiss/SolicitacaoDeSPSADT40.do?method=gerarXMLTISSDeGuia&manterTISSSPSADT40DTO.tissSolicitacaoDeSPSADTDTO.chave=${resData.chave}`
+          xmlContent = await page.evaluate(async (url: string) => {
+            const resp = await fetch(url, { credentials: 'include' })
+            return await resp.text()
+          }, xmlUrl)
+
+          if (xmlContent && (xmlContent.includes('ctmSpSadtGuia') || xmlContent.includes('mensagemTISS'))) {
+            console.log(`[SAW] XML da guia ${numeroGuia} baixado: ${xmlContent.length} bytes`)
+          } else {
+            console.log(`[SAW] XML da guia ${numeroGuia}: conteudo invalido (${xmlContent?.length ?? 0} bytes)`)
+            xmlContent = null
+          }
+        } catch (xmlErr) {
+          console.log(`[SAW] XML da guia ${numeroGuia}: erro ao baixar (${xmlErr instanceof Error ? xmlErr.message : 'erro'})`)
+          xmlContent = null
+        }
+      }
+
+      return { success: true, data: { ...resultado, numeroGuia, xmlContent } as Record<string, unknown> }
     } catch (err) {
       return {
         success: false,
