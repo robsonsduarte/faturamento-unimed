@@ -15,6 +15,17 @@ function ans(tag: string): string {
   return `ans:${tag}`
 }
 
+/** Sanitize text for TISS XML — remove characters that Unimed rejects */
+function sanitize(val: string | null | undefined): string {
+  if (!val) return ''
+  return val
+    .replace(/&/g, 'E')
+    .replace(/</g, '')
+    .replace(/>/g, '')
+    .replace(/"/g, '')
+    .replace(/'/g, '')
+}
+
 /** Pad numeric TISS domain code to 2 digits with leading zero (e.g. "7" → "07") */
 function padCode2(val: string | null | undefined, fallback: string): string {
   const v = val?.trim()
@@ -148,7 +159,7 @@ function buildEquipeSadt(
     [ans('codProfissional')]: {
       [ans('cpfContratado')]: cpf,
     },
-    [ans('nomeProf')]: nome,
+    [ans('nomeProf')]: sanitize(nome),
     [ans('conselho')]: padCode2(conselho, '09'),
     [ans('numeroConselhoProfissional')]: numeroConselho,
     [ans('UF')]: normalizeUf(uf),
@@ -165,7 +176,7 @@ function buildProcedimento(proc: Procedimento, index: number, fb: ProfFallback, 
     [ans('procedimento')]: {
       [ans('codigoTabela')]: normalizeCodigoTabela(proc.codigo_tabela),
       [ans('codigoProcedimento')]: proc.codigo_procedimento,
-      [ans('descricaoProcedimento')]: proc.descricao,
+      [ans('descricaoProcedimento')]: sanitize(proc.descricao),
     },
     [ans('quantidadeExecutada')]: proc.quantidade_executada,
     [ans('viaAcesso')]: proc.via_acesso ?? '1',
@@ -175,7 +186,7 @@ function buildProcedimento(proc: Procedimento, index: number, fb: ProfFallback, 
     [ans('valorTotal')]: (proc.valor_total ?? valorPerProc ?? 0).toFixed(2),
     [ans('equipeSadt')]: buildEquipeSadt(
       proc.nome_profissional ? (fb.cpf) : fb.cpf,
-      proc.nome_profissional ?? fb.nome,
+      sanitize(proc.nome_profissional ?? fb.nome),
       proc.conselho ?? fb.conselho,
       proc.numero_conselho ?? fb.numeroConselho,
       proc.uf ?? fb.uf,
@@ -231,7 +242,7 @@ function buildProcedimentoFromXml(
     [ans('procedimento')]: {
       [ans('codigoTabela')]: proc.codigoTabela,
       [ans('codigoProcedimento')]: proc.codigoProcedimento,
-      [ans('descricaoProcedimento')]: proc.descricaoProcedimento,
+      [ans('descricaoProcedimento')]: sanitize(proc.descricaoProcedimento),
     },
     [ans('quantidadeExecutada')]: proc.quantidadeExecutada || 1,
     [ans('viaAcesso')]: proc.viaAcesso || '1',
@@ -242,7 +253,7 @@ function buildProcedimentoFromXml(
     // CPro is authoritative for equipe — SAW XML is fallback only
     [ans('equipeSadt')]: buildEquipeSadt(
       fb.cpf || eq.cpfContratado,
-      fb.nome || eq.nomeProf,
+      sanitize(fb.nome || eq.nomeProf),
       fb.conselho || eq.conselho,
       fb.numeroConselho || eq.numeroConselhoProfissional,
       fb.uf || eq.UF,
@@ -327,7 +338,7 @@ function buildGuiaContent(guia: Guia) {
       },
       [ans('nomeContratadoSolicitante')]: DEDICARE.NOME_PRESTADOR,
       [ans('profissionalSolicitante')]: {
-        [ans('nomeProfissional')]: solNome,
+        [ans('nomeProfissional')]: sanitize(solNome),
         [ans('conselhoProfissional')]: solConselho,
         [ans('numeroConselhoProfissional')]: solNumero,
         [ans('UF')]: solUf,
@@ -337,7 +348,7 @@ function buildGuiaContent(guia: Guia) {
     [ans('dadosSolicitacao')]: {
       [ans('dataSolicitacao')]: guia.data_solicitacao ?? guia.data_autorizacao,
       [ans('caraterAtendimento')]: '1',
-      [ans('indicacaoClinica')]: guia.indicacao_clinica ?? '',
+      [ans('indicacaoClinica')]: sanitize(guia.indicacao_clinica),
     },
     [ans('dadosExecutante')]: {
       [ans('contratadoExecutante')]: {
@@ -428,10 +439,16 @@ export function gerarXmlTiss(lote: Lote): string {
 
   // TISS hash = md5 of textContent (PHP DOMDocument::textContent)
   // Extract only text values between XML tags, ignoring whitespace-only nodes
+  // Decode XML entities to match PHP behavior (e.g. &amp; → &)
   const textContent = (xml.match(/>[^<]+</g) ?? [])
     .map(s => s.slice(1, -1))
     .filter(s => s.trim() !== '')
     .join('')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
   const hash = createHash('md5').update(textContent).digest('hex')
 
   return xml.replace('<ans:hash></ans:hash>', `<ans:hash>${hash}</ans:hash>`)
