@@ -65,7 +65,7 @@ export async function getLote(id: string): Promise<Lote> {
   const supabase = createClient()
   const { data, error } = await supabase
     .from('lotes')
-    .select('*, guias(*)')
+    .select('*, guias(id, guide_number, paciente, data_autorizacao, status, valor_total)')
     .eq('id', id)
     .single()
 

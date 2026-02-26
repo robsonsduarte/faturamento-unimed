@@ -1,7 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { loteStatusSchema } from '@/lib/validations/lote'
 import { auditLog } from '@/lib/audit'
+
+function getServiceClient() {
+  return createAdminClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  )
+}
 
 interface Params {
   params: Promise<{ id: string }>
@@ -66,11 +74,12 @@ export async function PUT(request: NextRequest, { params }: Params) {
 
     if (error) return NextResponse.json({ error: error.message }, { status: 400 })
 
-    // Propagacao de status para guias do lote
+    // Propagacao de status para guias do lote (service_role bypassa RLS)
     let guiasAtualizadas = 0
+    const admin = getServiceClient()
 
     if (status === 'processado') {
-      const { data: guiasData, error: guiasError } = await supabase
+      const { data: guiasData, error: guiasError } = await admin
         .from('guias')
         .update({ status: 'PROCESSADA', updated_at: new Date().toISOString() })
         .eq('lote_id', id)
@@ -96,7 +105,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
         request
       )
     } else if (status === 'faturado') {
-      const { data: guiasData, error: guiasError } = await supabase
+      const { data: guiasData, error: guiasError } = await admin
         .from('guias')
         .update({ status: 'FATURADA', updated_at: new Date().toISOString() })
         .eq('lote_id', id)

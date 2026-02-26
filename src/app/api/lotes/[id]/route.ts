@@ -14,7 +14,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
     const { id } = await params
     const { data, error } = await supabase
       .from('lotes')
-      .select('*, guias(*)')
+      .select('*, guias(id, guide_number, paciente, data_autorizacao, status, valor_total)')
       .eq('id', id)
       .single()
 
