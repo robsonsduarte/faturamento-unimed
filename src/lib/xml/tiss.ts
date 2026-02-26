@@ -15,6 +15,24 @@ function ans(tag: string): string {
   return `ans:${tag}`
 }
 
+/** Pad numeric TISS domain code to 2 digits with leading zero (e.g. "7" → "07") */
+function padCode2(val: string | null | undefined, fallback: string): string {
+  const v = val?.trim()
+  if (!v) return fallback
+  if (/^\d{1,2}$/.test(v)) return v.padStart(2, '0')
+  return v
+}
+
+/** Fallback professional data for procedure equipeSadt */
+interface ProfFallback {
+  cpf: string
+  nome: string
+  conselho: string
+  numeroConselho: string
+  uf: string
+  cbos: string
+}
+
 /** IBGE numeric codes for Brazilian states (required by TISS XSD) */
 const UF_IBGE: Record<string, string> = {
   AC: '12', AL: '27', AM: '13', AP: '16', BA: '29',
@@ -38,7 +56,6 @@ function normalizeCodigoTabela(codigo: string | null | undefined): string {
   if (!codigo) return '22' // Default: TUSS
   const trimmed = codigo.trim()
   if (/^\d{2}$/.test(trimmed)) return trimmed
-  // Map known text descriptions to numeric codes
   const lower = trimmed.toLowerCase()
   if (lower.includes('tuss') || lower.includes('procedimento') || lower.includes('evento')) return '22'
   if (lower.includes('material') || lower.includes('opme')) return '18'
@@ -66,9 +83,9 @@ function normalizeCbos(cbos: string | null | undefined, fallback = '251510'): st
 
 /** Normalize tipoAtendimento: SAW may store text, TISS requires numeric code (Tabela 50) */
 function normalizeTipoAtendimento(valor: string | null | undefined): string {
-  if (!valor) return '03' // Default: Outras Terapias (contexto clínica terapêutica)
+  if (!valor) return '03' // Default: Consulta (contexto clinica terapeutica)
   const trimmed = valor.trim()
-  if (/^\d{2}$/.test(trimmed)) return trimmed
+  if (/^\d{1,2}$/.test(trimmed)) return trimmed.padStart(2, '0')
   const lower = trimmed.toLowerCase()
   if (lower.includes('remoção') || lower.includes('remocao')) return '01'
   if (lower.includes('outras despesas')) return '02'
@@ -85,7 +102,7 @@ function normalizeTipoAtendimento(valor: string | null | undefined): string {
   if (lower.includes('sadt internado')) return '13'
   if (lower.includes('hospital dia') || lower.includes('hospital-dia')) return '14'
   if (lower.includes('terapia') || lower.includes('outras terapias')) return '03'
-  return '03' // Fallback: Outras Terapias
+  return '03'
 }
 
 /** Normalize indicacaoAcidente: SAW may store text, TISS requires numeric code (0-2,9) */
@@ -97,7 +114,7 @@ function normalizeIndicacaoAcidente(valor: string | null | undefined): string {
   if (lower.includes('trabalho')) return '0'
   if (lower.includes('trânsito') || lower.includes('transito')) return '1'
   if (lower.includes('não acidente') || lower.includes('nao acidente')) return '9'
-  return '9' // Default: Não acidente (contexto clínica terapêutica)
+  return '9'
 }
 
 function extractCpf(guia: Guia): string | null {
@@ -106,10 +123,28 @@ function extractCpf(guia: Guia): string | null {
   return typeof prof?.cpf === 'string' ? prof.cpf : null
 }
 
-function buildProcedimento(proc: Procedimento, index: number, cpfProfissional: string | null) {
-  // XSD order: sequencialItem → dataExecucao → horaInicial → horaFinal → procedimento →
-  // quantidadeExecutada → viaAcesso → tecnicaUtilizada → reducaoAcrescimo → valorUnitario →
-  // valorTotal → equipeSadt
+function buildEquipeSadt(
+  cpf: string,
+  nome: string,
+  conselho: string,
+  numeroConselho: string,
+  uf: string,
+  cbos: string,
+) {
+  return {
+    [ans('grauPart')]: '12',
+    [ans('codProfissional')]: {
+      [ans('cpfContratado')]: cpf,
+    },
+    [ans('nomeProf')]: nome,
+    [ans('conselho')]: padCode2(conselho, '09'),
+    [ans('numeroConselhoProfissional')]: numeroConselho,
+    [ans('UF')]: normalizeUf(uf),
+    [ans('CBOS')]: normalizeCbos(cbos),
+  }
+}
+
+function buildProcedimento(proc: Procedimento, index: number, fb: ProfFallback, valorPerProc?: number) {
   return {
     [ans('sequencialItem')]: index + 1,
     [ans('dataExecucao')]: proc.data_execucao,
@@ -124,26 +159,60 @@ function buildProcedimento(proc: Procedimento, index: number, cpfProfissional: s
     [ans('viaAcesso')]: proc.via_acesso ?? '1',
     [ans('tecnicaUtilizada')]: proc.tecnica_utilizada ?? '1',
     [ans('reducaoAcrescimo')]: proc.reducao_acrescimo?.toFixed(1) ?? '1.0',
-    [ans('valorUnitario')]: (proc.valor_unitario ?? 0).toFixed(2),
-    [ans('valorTotal')]: (proc.valor_total ?? 0).toFixed(2),
-    [ans('equipeSadt')]: {
-      [ans('grauPart')]: '12',
-      [ans('codProfissional')]: {
-        [ans('cpfContratado')]: cpfProfissional ?? '',
-      },
-      [ans('nomeProf')]: proc.nome_profissional ?? DEDICARE.NOME_PRESTADOR,
-      [ans('conselho')]: proc.conselho ?? '09',
-      [ans('numeroConselhoProfissional')]: proc.numero_conselho ?? '',
-      [ans('UF')]: normalizeUf(proc.uf),
-      [ans('CBOS')]: normalizeCbos(proc.cbos),
-    },
+    [ans('valorUnitario')]: (proc.valor_unitario ?? valorPerProc ?? 0).toFixed(2),
+    [ans('valorTotal')]: (proc.valor_total ?? valorPerProc ?? 0).toFixed(2),
+    [ans('equipeSadt')]: buildEquipeSadt(
+      proc.nome_profissional ? (fb.cpf) : fb.cpf,
+      proc.nome_profissional ?? fb.nome,
+      proc.conselho ?? fb.conselho,
+      proc.numero_conselho ?? fb.numeroConselho,
+      proc.uf ?? fb.uf,
+      proc.cbos ?? fb.cbos,
+    ),
   }
 }
 
-/** Build a procedure entry from authoritative SAW XML data (already in TISS format) */
-function buildProcedimentoFromXml(proc: SawXmlProcedimento) {
+/** Check if a string value is meaningful (not empty, not "0") */
+function hasValue(v: string | null | undefined): boolean {
+  if (!v) return false
+  const trimmed = v.trim()
+  return trimmed !== '' && trimmed !== '0' && trimmed !== '0.00'
+}
+
+/** Format a numeric value as decimal with 2 places (e.g. "30.36"), fallback to "0.00" */
+function formatDecimal2(v: string | number | null | undefined, fallback: number = 0): string {
+  if (typeof v === 'number') return v.toFixed(2)
+  if (typeof v === 'string') {
+    const n = parseFloat(v)
+    if (!isNaN(n) && n > 0) return n.toFixed(2)
+  }
+  return fallback.toFixed(2)
+}
+
+/** Build a procedure entry from SAW XML data, merging with DB procedure for values */
+function buildProcedimentoFromXml(
+  proc: SawXmlProcedimento,
+  index: number,
+  fb: ProfFallback,
+  dbProc?: Procedimento,
+  valorPerProc?: number,
+) {
+  const eq = proc.equipeSadt
+
+  // SAW XML is authoritative for structure; DB is authoritative for values
+  // Fallback chain: SAW XML → DB procedure → guia.valor_total / proc_count
+  const valorUnit = hasValue(proc.valorUnitario)
+    ? proc.valorUnitario
+    : formatDecimal2(dbProc?.valor_unitario, valorPerProc ?? 0)
+  const valorTot = hasValue(proc.valorTotal)
+    ? proc.valorTotal
+    : formatDecimal2(dbProc?.valor_total, valorPerProc ?? 0)
+  const reducao = hasValue(proc.reducaoAcrescimo)
+    ? parseFloat(proc.reducaoAcrescimo).toFixed(1)
+    : (dbProc?.reducao_acrescimo?.toFixed(1) ?? '1.0')
+
   return {
-    [ans('sequencialItem')]: proc.sequencialItem,
+    [ans('sequencialItem')]: proc.sequencialItem > 0 ? proc.sequencialItem : index + 1,
     [ans('dataExecucao')]: proc.dataExecucao,
     [ans('horaInicial')]: proc.horaInicial,
     [ans('horaFinal')]: proc.horaFinal,
@@ -152,23 +221,20 @@ function buildProcedimentoFromXml(proc: SawXmlProcedimento) {
       [ans('codigoProcedimento')]: proc.codigoProcedimento,
       [ans('descricaoProcedimento')]: proc.descricaoProcedimento,
     },
-    [ans('quantidadeExecutada')]: proc.quantidadeExecutada,
+    [ans('quantidadeExecutada')]: proc.quantidadeExecutada || 1,
     [ans('viaAcesso')]: proc.viaAcesso || '1',
     [ans('tecnicaUtilizada')]: proc.tecnicaUtilizada || '1',
-    [ans('reducaoAcrescimo')]: proc.reducaoAcrescimo || '1.0',
-    [ans('valorUnitario')]: proc.valorUnitario,
-    [ans('valorTotal')]: proc.valorTotal,
-    [ans('equipeSadt')]: {
-      [ans('grauPart')]: proc.equipeSadt.grauPart || '12',
-      [ans('codProfissional')]: {
-        [ans('cpfContratado')]: proc.equipeSadt.cpfContratado,
-      },
-      [ans('nomeProf')]: proc.equipeSadt.nomeProf,
-      [ans('conselho')]: proc.equipeSadt.conselho,
-      [ans('numeroConselhoProfissional')]: proc.equipeSadt.numeroConselhoProfissional,
-      [ans('UF')]: proc.equipeSadt.UF,
-      [ans('CBOS')]: proc.equipeSadt.CBOS,
-    },
+    [ans('reducaoAcrescimo')]: reducao,
+    [ans('valorUnitario')]: valorUnit,
+    [ans('valorTotal')]: valorTot,
+    [ans('equipeSadt')]: buildEquipeSadt(
+      eq.cpfContratado || fb.cpf,
+      eq.nomeProf || fb.nome,
+      eq.conselho || fb.conselho,
+      eq.numeroConselhoProfissional || fb.numeroConselho,
+      eq.UF || fb.uf,
+      eq.CBOS || fb.cbos,
+    ),
   }
 }
 
@@ -178,16 +244,51 @@ function buildGuiaContent(guia: Guia) {
   const procedimentos = guia.procedimentos ?? []
   const cpf = extractCpf(guia)
 
-  // When saw_xml_data exists, use authoritative XML procedures
-  const procsContent = xml && xml.procedimentosExecutados.length > 0
-    ? xml.procedimentosExecutados.map((p) => buildProcedimentoFromXml(p))
-    : procedimentos.map((p, i) => buildProcedimento(p, i, cpf))
-
-  // Sum procedure values for valorTotal section
-  const valorProcedimentos = procedimentos.reduce((sum, p) => sum + (p.valor_total ?? 0), 0)
-
-  // Professional data from first procedure (for dadosSolicitante)
+  // Professional data from first procedure (for dadosSolicitante + fallback)
   const firstProc = procedimentos[0]
+
+  // Build fallback professional data from guia-level sources
+  const profFallback: ProfFallback = {
+    cpf: cpf ?? '',
+    nome: firstProc?.nome_profissional ?? guia.nome_profissional ?? '',
+    conselho: firstProc?.conselho ?? '09',
+    numeroConselho: firstProc?.numero_conselho ?? '',
+    uf: firstProc?.uf ?? '',
+    cbos: firstProc?.cbos ?? '',
+  }
+
+  // Calculate per-procedure value from guia total when individual values are missing
+  const xmlProcCount = xml?.procedimentosExecutados.length ?? 0
+  const dbProcCount = procedimentos.length
+  const procCount = xmlProcCount > 0 ? xmlProcCount : dbProcCount
+  const valorPerProc = procCount > 0 && guia.valor_total > 0
+    ? Math.round((guia.valor_total / procCount) * 100) / 100
+    : 0
+
+  // When saw_xml_data exists, use SAW XML structure merged with DB values
+  const procsContent = xml && xmlProcCount > 0
+    ? xml.procedimentosExecutados.map((p, i) => buildProcedimentoFromXml(p, i, profFallback, procedimentos[i], valorPerProc))
+    : procedimentos.map((p, i) => buildProcedimento(p, i, profFallback, valorPerProc))
+
+  // Sum procedure values for valorTotal section — prefer DB values, fallback to guia total
+  const dbValorSum = procedimentos.reduce((sum, p) => sum + (p.valor_total ?? 0), 0)
+  const valorProcedimentos = dbValorSum > 0 ? dbValorSum : guia.valor_total
+
+  // Resolve solicitante professional fields — saw_xml_data with padding, then fallback
+  const solNome = xml?.dadosSolicitante.profissionalSolicitante.nomeProfissional || profFallback.nome
+  const solConselho = padCode2(
+    xml?.dadosSolicitante.profissionalSolicitante.conselhoProfissional || profFallback.conselho,
+    '09',
+  )
+  const solNumero = xml?.dadosSolicitante.profissionalSolicitante.numeroConselhoProfissional || profFallback.numeroConselho
+  const solUf = normalizeUf(xml?.dadosSolicitante.profissionalSolicitante.UF || profFallback.uf)
+  const solCbos = normalizeCbos(xml?.dadosSolicitante.profissionalSolicitante.CBOS || profFallback.cbos)
+
+  // Resolve dadosAtendimento — saw_xml_data with padding, then fallback
+  const tipoAtend = padCode2(xml?.dadosAtendimento.tipoAtendimento, normalizeTipoAtendimento(guia.tipo_atendimento))
+  const indAcidente = xml?.dadosAtendimento.indicacaoAcidente || normalizeIndicacaoAcidente(guia.indicacao_acidente)
+  const tipoConsulta = xml?.dadosAtendimento.tipoConsulta || '2'
+  const regimeAtend = padCode2(xml?.dadosAtendimento.regimeAtendimento, '01')
 
   return {
     [ans('cabecalhoGuia')]: {
@@ -210,11 +311,11 @@ function buildGuiaContent(guia: Guia) {
       },
       [ans('nomeContratadoSolicitante')]: DEDICARE.NOME_PRESTADOR,
       [ans('profissionalSolicitante')]: {
-        [ans('nomeProfissional')]: xml?.dadosSolicitante.profissionalSolicitante.nomeProfissional || (firstProc?.nome_profissional ?? guia.nome_profissional ?? ''),
-        [ans('conselhoProfissional')]: xml?.dadosSolicitante.profissionalSolicitante.conselhoProfissional || (firstProc?.conselho ?? '09'),
-        [ans('numeroConselhoProfissional')]: xml?.dadosSolicitante.profissionalSolicitante.numeroConselhoProfissional || (firstProc?.numero_conselho ?? ''),
-        [ans('UF')]: xml?.dadosSolicitante.profissionalSolicitante.UF || normalizeUf(firstProc?.uf),
-        [ans('CBOS')]: xml?.dadosSolicitante.profissionalSolicitante.CBOS || normalizeCbos(firstProc?.cbos),
+        [ans('nomeProfissional')]: solNome,
+        [ans('conselhoProfissional')]: solConselho,
+        [ans('numeroConselhoProfissional')]: solNumero,
+        [ans('UF')]: solUf,
+        [ans('CBOS')]: solCbos,
       },
     },
     [ans('dadosSolicitacao')]: {
@@ -229,23 +330,27 @@ function buildGuiaContent(guia: Guia) {
       [ans('CNES')]: DEDICARE.CNES,
     },
     [ans('dadosAtendimento')]: {
-      [ans('tipoAtendimento')]: xml?.dadosAtendimento.tipoAtendimento || normalizeTipoAtendimento(guia.tipo_atendimento),
-      [ans('indicacaoAcidente')]: xml?.dadosAtendimento.indicacaoAcidente || normalizeIndicacaoAcidente(guia.indicacao_acidente),
-      [ans('tipoConsulta')]: xml?.dadosAtendimento.tipoConsulta || '2',
-      [ans('regimeAtendimento')]: xml?.dadosAtendimento.regimeAtendimento || '01',
+      [ans('tipoAtendimento')]: tipoAtend,
+      [ans('indicacaoAcidente')]: indAcidente,
+      [ans('tipoConsulta')]: tipoConsulta,
+      [ans('regimeAtendimento')]: regimeAtend,
     },
     [ans('procedimentosExecutados')]: {
       [ans('procedimentoExecutado')]: procsContent,
     },
     [ans('valorTotal')]: {
-      [ans('valorProcedimentos')]: xml?.valorTotal.valorProcedimentos || valorProcedimentos.toFixed(2),
+      [ans('valorProcedimentos')]: hasValue(xml?.valorTotal.valorProcedimentos)
+        ? xml!.valorTotal.valorProcedimentos
+        : valorProcedimentos.toFixed(2),
       [ans('valorDiarias')]: '0.00',
       [ans('valorTaxasAlugueis')]: '0.00',
       [ans('valorMateriais')]: '0.00',
       [ans('valorMedicamentos')]: '0.00',
       [ans('valorOPME')]: '0.00',
       [ans('valorGasesMedicinais')]: '0.00',
-      [ans('valorTotalGeral')]: xml?.valorTotal.valorTotalGeral || (guia.valor_total || valorProcedimentos).toFixed(2),
+      [ans('valorTotalGeral')]: hasValue(xml?.valorTotal.valorTotalGeral)
+        ? xml!.valorTotal.valorTotalGeral
+        : (guia.valor_total || valorProcedimentos).toFixed(2),
     },
   }
 }
