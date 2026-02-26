@@ -114,10 +114,25 @@ function normalizeIndicacaoAcidente(valor: string | null | undefined): string {
   return '9'
 }
 
-function extractCpf(guia: Guia): string | null {
+/** Extract professional data from ConsultorioPro (cpro_data) — authoritative for equipe */
+function extractCproProfissional(guia: Guia): {
+  cpf: string | null
+  nome: string | null
+  conselho: string | null
+  numeroConselho: string | null
+  uf: string | null
+  cbos: string | null
+} {
   const cpro = guia.cpro_data as Record<string, unknown> | null
   const prof = cpro?.profissional as Record<string, unknown> | null
-  return typeof prof?.cpf === 'string' ? prof.cpf : null
+  return {
+    cpf: typeof prof?.cpf === 'string' ? prof.cpf : null,
+    nome: typeof prof?.nome === 'string' ? prof.nome : null,
+    conselho: typeof prof?.conselho === 'string' ? prof.conselho : null,
+    numeroConselho: typeof prof?.numeroConselho === 'string' ? prof.numeroConselho : null,
+    uf: typeof prof?.uf === 'string' ? prof.uf : null,
+    cbos: typeof prof?.cbos === 'string' ? prof.cbos : null,
+  }
 }
 
 function buildEquipeSadt(
@@ -224,13 +239,14 @@ function buildProcedimentoFromXml(
     [ans('reducaoAcrescimo')]: reducao,
     [ans('valorUnitario')]: valorUnit,
     [ans('valorTotal')]: valorTot,
+    // CPro is authoritative for equipe — SAW XML is fallback only
     [ans('equipeSadt')]: buildEquipeSadt(
-      eq.cpfContratado || fb.cpf,
-      eq.nomeProf || fb.nome,
-      eq.conselho || fb.conselho,
-      eq.numeroConselhoProfissional || fb.numeroConselho,
-      eq.UF || fb.uf,
-      eq.CBOS || fb.cbos,
+      fb.cpf || eq.cpfContratado,
+      fb.nome || eq.nomeProf,
+      fb.conselho || eq.conselho,
+      fb.numeroConselho || eq.numeroConselhoProfissional,
+      fb.uf || eq.UF,
+      fb.cbos || eq.CBOS,
     ),
   }
 }
@@ -239,19 +255,19 @@ function buildProcedimentoFromXml(
 function buildGuiaContent(guia: Guia) {
   const xml = guia.saw_xml_data
   const procedimentos = guia.procedimentos ?? []
-  const cpf = extractCpf(guia)
+  const cproProfissional = extractCproProfissional(guia)
 
   // Professional data from first procedure (for dadosSolicitante + fallback)
   const firstProc = procedimentos[0]
 
-  // Build fallback professional data from guia-level sources
+  // Build professional data — CPro is authoritative, DB procedure is fallback
   const profFallback: ProfFallback = {
-    cpf: cpf ?? '',
-    nome: firstProc?.nome_profissional ?? guia.nome_profissional ?? '',
-    conselho: firstProc?.conselho ?? '09',
-    numeroConselho: firstProc?.numero_conselho ?? '',
-    uf: firstProc?.uf ?? '',
-    cbos: firstProc?.cbos ?? '',
+    cpf: cproProfissional.cpf ?? '',
+    nome: cproProfissional.nome ?? firstProc?.nome_profissional ?? guia.nome_profissional ?? '',
+    conselho: cproProfissional.conselho ?? firstProc?.conselho ?? '09',
+    numeroConselho: cproProfissional.numeroConselho ?? firstProc?.numero_conselho ?? '',
+    uf: cproProfissional.uf ?? firstProc?.uf ?? '',
+    cbos: cproProfissional.cbos ?? firstProc?.cbos ?? '',
   }
 
   // Calculate per-procedure value from guia total when individual values are missing
