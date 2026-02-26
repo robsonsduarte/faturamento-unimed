@@ -50,6 +50,7 @@ export interface Guia {
   data_token: string | null
   saw_data: Record<string, unknown> | null
   cpro_data: Record<string, unknown> | null
+  saw_xml_data: SawXmlData | null
   created_at: string
   updated_at: string
   procedimentos?: Procedimento[]
@@ -174,6 +175,61 @@ export interface CproConfig {
   api_url: string
   api_key: string
   company: string
+}
+
+export interface SawXmlProcedimento {
+  sequencialItem: number
+  dataExecucao: string
+  horaInicial: string
+  horaFinal: string
+  codigoTabela: string
+  codigoProcedimento: string
+  descricaoProcedimento: string
+  quantidadeExecutada: number
+  viaAcesso: string
+  tecnicaUtilizada: string
+  reducaoAcrescimo: string
+  valorUnitario: string
+  valorTotal: string
+  equipeSadt: {
+    grauPart: string
+    cpfContratado: string
+    nomeProf: string
+    conselho: string
+    numeroConselhoProfissional: string
+    UF: string
+    CBOS: string
+  }
+}
+
+export interface SawXmlData {
+  downloaded_at: string
+  dadosSolicitante: {
+    codigoPrestadorNaOperadora: string
+    nomeContratadoSolicitante: string
+    profissionalSolicitante: {
+      nomeProfissional: string
+      conselhoProfissional: string
+      numeroConselhoProfissional: string
+      UF: string
+      CBOS: string
+    }
+  }
+  dadosExecutante: {
+    codigoPrestadorNaOperadora: string
+    CNES: string
+  }
+  dadosAtendimento: {
+    tipoAtendimento: string
+    indicacaoAcidente: string
+    tipoConsulta: string
+    regimeAtendimento: string
+  }
+  procedimentosExecutados: SawXmlProcedimento[]
+  valorTotal: {
+    valorProcedimentos: string
+    valorTotalGeral: string
+  }
 }
 
 export interface ImportLog {

@@ -8,6 +8,7 @@ import { fetchCproData } from '@/lib/saw/cpro-client'
 import type { SawConfig, CproConfig } from '@/lib/types'
 import { computeGuideStatus } from '@/lib/guide-status'
 import { classifyGuia } from '@/lib/carteira'
+import { parseSawXml } from '@/lib/xml/saw-xml-parser'
 
 /** Service role client — bypasses RLS for trusted server-side DB operations */
 function getServiceClient() {
@@ -534,6 +535,33 @@ export async function POST(request: NextRequest) {
               send('info', `Guia ${guideNumber}: falha ao salvar procedimentos (${procError.message})`, guideNumber)
             } else {
               send('info', `Guia ${guideNumber}: ${procRows.length} procedimento(s) realizado(s) importado(s)`, guideNumber)
+            }
+          }
+
+          // Download XML oficial do SAW para guias COMPLETA
+          const sawChave = typeof sawData?.['chave'] === 'string' ? sawData['chave'] as string : null
+          const sawTemXML = sawData?.['temXML'] === true
+
+          if (status === 'COMPLETA' && sawChave && sawTemXML) {
+            try {
+              send('processing', `[${i + 1}/${total}] Baixando XML oficial da guia ${guideNumber}...`, guideNumber)
+              const xmlResult = await getSawClient().downloadGuideXml(sessionCookies!, sawChave)
+
+              if (xmlResult.success && xmlResult.xmlContent) {
+                const sawXmlData = parseSawXml(xmlResult.xmlContent)
+
+                await db
+                  .from('guias')
+                  .update({ saw_xml_data: sawXmlData })
+                  .eq('id', upsertedGuia.id)
+
+                send('success', `Guia ${guideNumber}: XML oficial baixado e parseado (${xmlResult.xmlContent.length} bytes)`, guideNumber)
+              } else {
+                send('info', `Guia ${guideNumber}: falha ao baixar XML (${xmlResult.error ?? 'erro desconhecido'})`, guideNumber)
+              }
+            } catch (xmlErr) {
+              const xmlMsg = xmlErr instanceof Error ? xmlErr.message : 'Erro desconhecido'
+              send('info', `Guia ${guideNumber}: erro ao processar XML (${xmlMsg})`, guideNumber)
             }
           }
 

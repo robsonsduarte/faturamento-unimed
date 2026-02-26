@@ -1,6 +1,6 @@
 import { XMLBuilder } from 'fast-xml-parser'
 import { DEDICARE } from '@/lib/constants'
-import type { Guia, Lote, Procedimento } from '@/lib/types'
+import type { Guia, Lote, Procedimento, SawXmlProcedimento } from '@/lib/types'
 import { createHash } from 'crypto'
 
 const builder = new XMLBuilder({
@@ -140,10 +140,48 @@ function buildProcedimento(proc: Procedimento, index: number, cpfProfissional: s
   }
 }
 
+/** Build a procedure entry from authoritative SAW XML data (already in TISS format) */
+function buildProcedimentoFromXml(proc: SawXmlProcedimento) {
+  return {
+    [ans('sequencialItem')]: proc.sequencialItem,
+    [ans('dataExecucao')]: proc.dataExecucao,
+    [ans('horaInicial')]: proc.horaInicial,
+    [ans('horaFinal')]: proc.horaFinal,
+    [ans('procedimento')]: {
+      [ans('codigoTabela')]: proc.codigoTabela,
+      [ans('codigoProcedimento')]: proc.codigoProcedimento,
+      [ans('descricaoProcedimento')]: proc.descricaoProcedimento,
+    },
+    [ans('quantidadeExecutada')]: proc.quantidadeExecutada,
+    [ans('viaAcesso')]: proc.viaAcesso || '1',
+    [ans('tecnicaUtilizada')]: proc.tecnicaUtilizada || '1',
+    [ans('reducaoAcrescimo')]: proc.reducaoAcrescimo || '1.0',
+    [ans('valorUnitario')]: proc.valorUnitario,
+    [ans('valorTotal')]: proc.valorTotal,
+    [ans('equipeSadt')]: {
+      [ans('grauPart')]: proc.equipeSadt.grauPart || '12',
+      [ans('codProfissional')]: {
+        [ans('cpfContratado')]: proc.equipeSadt.cpfContratado,
+      },
+      [ans('nomeProf')]: proc.equipeSadt.nomeProf,
+      [ans('conselho')]: proc.equipeSadt.conselho,
+      [ans('numeroConselhoProfissional')]: proc.equipeSadt.numeroConselhoProfissional,
+      [ans('UF')]: proc.equipeSadt.UF,
+      [ans('CBOS')]: proc.equipeSadt.CBOS,
+    },
+  }
+}
+
 /** Returns the INNER content of a guiaSP-SADT (without the wrapper tag) */
 function buildGuiaContent(guia: Guia) {
+  const xml = guia.saw_xml_data
   const procedimentos = guia.procedimentos ?? []
   const cpf = extractCpf(guia)
+
+  // When saw_xml_data exists, use authoritative XML procedures
+  const procsContent = xml && xml.procedimentosExecutados.length > 0
+    ? xml.procedimentosExecutados.map((p) => buildProcedimentoFromXml(p))
+    : procedimentos.map((p, i) => buildProcedimento(p, i, cpf))
 
   // Sum procedure values for valorTotal section
   const valorProcedimentos = procedimentos.reduce((sum, p) => sum + (p.valor_total ?? 0), 0)
@@ -172,11 +210,11 @@ function buildGuiaContent(guia: Guia) {
       },
       [ans('nomeContratadoSolicitante')]: DEDICARE.NOME_PRESTADOR,
       [ans('profissionalSolicitante')]: {
-        [ans('nomeProfissional')]: firstProc?.nome_profissional ?? guia.nome_profissional ?? '',
-        [ans('conselhoProfissional')]: firstProc?.conselho ?? '09',
-        [ans('numeroConselhoProfissional')]: firstProc?.numero_conselho ?? '',
-        [ans('UF')]: normalizeUf(firstProc?.uf),
-        [ans('CBOS')]: normalizeCbos(firstProc?.cbos),
+        [ans('nomeProfissional')]: xml?.dadosSolicitante.profissionalSolicitante.nomeProfissional || (firstProc?.nome_profissional ?? guia.nome_profissional ?? ''),
+        [ans('conselhoProfissional')]: xml?.dadosSolicitante.profissionalSolicitante.conselhoProfissional || (firstProc?.conselho ?? '09'),
+        [ans('numeroConselhoProfissional')]: xml?.dadosSolicitante.profissionalSolicitante.numeroConselhoProfissional || (firstProc?.numero_conselho ?? ''),
+        [ans('UF')]: xml?.dadosSolicitante.profissionalSolicitante.UF || normalizeUf(firstProc?.uf),
+        [ans('CBOS')]: xml?.dadosSolicitante.profissionalSolicitante.CBOS || normalizeCbos(firstProc?.cbos),
       },
     },
     [ans('dadosSolicitacao')]: {
@@ -188,26 +226,26 @@ function buildGuiaContent(guia: Guia) {
       [ans('contratadoExecutante')]: {
         [ans('codigoPrestadorNaOperadora')]: DEDICARE.CODIGO_PRESTADOR,
       },
-      [ans('CNES')]: guia.cnes ?? DEDICARE.CNES,
+      [ans('CNES')]: xml?.dadosExecutante.CNES || (guia.cnes ?? DEDICARE.CNES),
     },
     [ans('dadosAtendimento')]: {
-      [ans('tipoAtendimento')]: normalizeTipoAtendimento(guia.tipo_atendimento),
-      [ans('indicacaoAcidente')]: normalizeIndicacaoAcidente(guia.indicacao_acidente),
-      [ans('tipoConsulta')]: '2',
-      [ans('regimeAtendimento')]: '01',
+      [ans('tipoAtendimento')]: xml?.dadosAtendimento.tipoAtendimento || normalizeTipoAtendimento(guia.tipo_atendimento),
+      [ans('indicacaoAcidente')]: xml?.dadosAtendimento.indicacaoAcidente || normalizeIndicacaoAcidente(guia.indicacao_acidente),
+      [ans('tipoConsulta')]: xml?.dadosAtendimento.tipoConsulta || '2',
+      [ans('regimeAtendimento')]: xml?.dadosAtendimento.regimeAtendimento || '01',
     },
     [ans('procedimentosExecutados')]: {
-      [ans('procedimentoExecutado')]: procedimentos.map((p, i) => buildProcedimento(p, i, cpf)),
+      [ans('procedimentoExecutado')]: procsContent,
     },
     [ans('valorTotal')]: {
-      [ans('valorProcedimentos')]: valorProcedimentos.toFixed(2),
+      [ans('valorProcedimentos')]: xml?.valorTotal.valorProcedimentos || valorProcedimentos.toFixed(2),
       [ans('valorDiarias')]: '0.00',
       [ans('valorTaxasAlugueis')]: '0.00',
       [ans('valorMateriais')]: '0.00',
       [ans('valorMedicamentos')]: '0.00',
       [ans('valorOPME')]: '0.00',
       [ans('valorGasesMedicinais')]: '0.00',
-      [ans('valorTotalGeral')]: (guia.valor_total || valorProcedimentos).toFixed(2),
+      [ans('valorTotalGeral')]: xml?.valorTotal.valorTotalGeral || (guia.valor_total || valorProcedimentos).toFixed(2),
     },
   }
 }
