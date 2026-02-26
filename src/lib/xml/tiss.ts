@@ -75,18 +75,22 @@ function normalizeCodigoTabela(codigo: string | null | undefined): string {
   return '22' // Fallback: TUSS
 }
 
-/** Normalize CBOS: SAW may store text description, TISS requires numeric CBO-S code */
+/** Normalize CBOS: SAW may store text description, TISS requires numeric CBO-S code.
+ *  Codes sourced from app_occupations table (TISS/CBO-S standard). */
 function normalizeCbos(cbos: string | null | undefined, fallback = '251510'): string {
   if (!cbos) return fallback
   const trimmed = cbos.trim()
   if (/^\d{4,6}$/.test(trimmed)) return trimmed
   const lower = trimmed.toLowerCase()
+  if (lower.includes('musicoterapeut')) return '226305'
+  if (lower.includes('neuropsicopedag')) return '239440'
   if (lower.includes('psicopedagog')) return '239425'
-  if (lower.includes('psicanalista')) return '251545'
-  if (lower.includes('psicomotric')) return '239440'
+  if (lower.includes('psicanalista')) return '251550'
+  if (lower.includes('neuropsic')) return '251545'
+  if (lower.includes('psicomotric')) return '223915'
   if (lower.includes('logo cl') || lower.includes('psicologo') || lower.includes('psicólogo')) return '251510'
   if (lower.includes('fonoaudi')) return '223810'
-  if (lower.includes('nutri')) return '223505'
+  if (lower.includes('nutricionista') || lower.includes('nutri')) return '223710'
   if (lower.includes('terapeuta ocup')) return '223905'
   if (lower.includes('fisioterapeut')) return '223605'
   return fallback
