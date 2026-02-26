@@ -1,0 +1,36 @@
+name: "fullstack"
+version: "1.0.0"
+description: "Squad fullstack — backend-lead + frontend-lead + qa-lead. Para projetos web completos."
+agents:
+  - name: "backend-lead"
+    file: "agents/backend-lead.md"
+    role: "executor"
+    model: "sonnet"
+  - name: "frontend-lead"
+    file: "agents/frontend-lead.md"
+    role: "executor"
+    model: "sonnet"
+  - name: "qa-lead"
+    file: "agents/qa-lead.md"
+    role: "validator"
+    model: "sonnet"
+config:
+  mode: "balanced"
+  parallel: true
+  auto_commit: true
+tasks:
+  - name: "setup-db"
+    file: "tasks/setup-db.md"
+    agent: "backend-lead"
+    priority: "P1"
+  - name: "build-api"
+    file: "tasks/build-api.md"
+    agent: "backend-lead"
+    priority: "P1"
+    depends_on: ["setup-db"]
+  - name: "build-ui"
+    file: "tasks/build-ui.md"
+    agent: "frontend-lead"
+    priority: "P1"
+    depends_on: ["build-api"]
+inherit: ["context-engineer"]

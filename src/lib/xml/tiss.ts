@@ -154,14 +154,16 @@ function buildEquipeSadt(
   uf: string,
   cbos: string,
 ) {
+  // TISS requires cpfContratado to be 11 digits — use zeros as fallback for missing CPF
+  const cpfNorm = cpf && cpf.trim().length >= 11 ? cpf.trim() : '00000000000'
   return {
     [ans('grauPart')]: '12',
     [ans('codProfissional')]: {
-      [ans('cpfContratado')]: cpf,
+      [ans('cpfContratado')]: cpfNorm,
     },
-    [ans('nomeProf')]: sanitize(nome),
+    [ans('nomeProf')]: sanitize(nome) || 'NAO INFORMADO',
     [ans('conselho')]: padCode2(conselho, '09'),
-    [ans('numeroConselhoProfissional')]: numeroConselho,
+    [ans('numeroConselhoProfissional')]: numeroConselho || '0',
     [ans('UF')]: normalizeUf(uf),
     [ans('CBOS')]: normalizeCbos(cbos),
   }

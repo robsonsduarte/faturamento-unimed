@@ -449,15 +449,21 @@ export async function POST(request: NextRequest) {
             tipo_atendimento: orNull(sawData?.['tipoAtendimento']),
             indicacao_acidente: orNull(sawData?.['indicacaoAcidente']),
             indicacao_clinica: orNull(sawData?.['indicacaoClinica']),
-            procedimentos_cadastrados: procedimentosCadastrados ?? 0,
             user_id: null,
-            valor_total: typeof cproData?.['valorTotal'] === 'number' ? cproData['valorTotal'] : null,
             tipo_guia: tipoGuia,
             token_biometrico: tokenMessage === 'Realize o check-in do Paciente',
             saw_data: sawData,
-            cpro_data: cproData,
             status,
             updated_at: new Date().toISOString(),
+          }
+
+          // Only overwrite CPro-derived fields when CPro returned data.
+          // On reimport, if CPro API fails/returns null, preserve existing cpro_data,
+          // valor_total and procedimentos_cadastrados already stored in the DB.
+          if (cproData !== null) {
+            guiaPayload.cpro_data = cproData
+            guiaPayload.valor_total = typeof cproData['valorTotal'] === 'number' ? cproData['valorTotal'] : null
+            guiaPayload.procedimentos_cadastrados = procedimentosCadastrados ?? 0
           }
 
           const { data: upsertedGuia, error: upsertError } = await db

@@ -1,0 +1,22 @@
+name: "automation"
+version: "1.0.0"
+description: "Squad automacao — orchestrator + script-builder + tester. Para automacoes e integrações."
+agents:
+  - name: "orchestrator"
+    file: "agents/orchestrator.md"
+    role: "orchestrator"
+    model: "sonnet"
+  - name: "script-builder"
+    file: "agents/script-builder.md"
+    role: "executor"
+    model: "sonnet"
+  - name: "tester"
+    file: "agents/tester.md"
+    role: "validator"
+    model: "sonnet"
+config:
+  mode: "yolo"
+  parallel: true
+  auto_commit: true
+tasks: []
+inherit: []

@@ -1,0 +1,22 @@
+name: "basic"
+version: "1.0.0"
+description: "Squad basico — 1 lead + 1 executor. Minimo viavel para qualquer projeto."
+agents:
+  - name: "lead"
+    file: "agents/lead.md"
+    role: "orchestrator"
+    model: "sonnet"
+  - name: "executor"
+    file: "agents/executor.md"
+    role: "executor"
+    model: "sonnet"
+config:
+  mode: "balanced"
+  parallel: false
+  auto_commit: true
+tasks:
+  - name: "default"
+    file: "tasks/default.md"
+    agent: "lead"
+    priority: "P1"
+inherit: []

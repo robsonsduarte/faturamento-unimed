@@ -1,0 +1,22 @@
+name: "data-science"
+version: "1.0.0"
+description: "Squad data science — analyst + pipeline-builder + validator. Para projetos de dados e ML."
+agents:
+  - name: "analyst"
+    file: "agents/analyst.md"
+    role: "researcher"
+    model: "sonnet"
+  - name: "pipeline-builder"
+    file: "agents/pipeline-builder.md"
+    role: "executor"
+    model: "sonnet"
+  - name: "validator"
+    file: "agents/validator.md"
+    role: "validator"
+    model: "sonnet"
+config:
+  mode: "balanced"
+  parallel: true
+  auto_commit: true
+tasks: []
+inherit: []

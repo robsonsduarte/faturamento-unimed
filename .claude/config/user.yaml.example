@@ -1,0 +1,15 @@
+# DuarteOS User Config — Layer 2 (Preferencias Pessoais)
+#
+# Copie este arquivo para user.yaml e ajuste suas preferencias.
+# Este arquivo e pessoal e deve ser adicionado ao .gitignore.
+#
+#   cp .claude/config/user.yaml.example .claude/config/user.yaml
+#
+# Valores aqui sobrescrevem project.yaml e system.yaml.
+# Veja .claude/protocols/CONFIG-PROTOCOL.md para detalhes.
+
+agents:
+  greeting_style: "archetypal"    # eu prefiro saudacoes completas
+
+# quality:
+#   auto_lint: false               # desabilitar auto-lint (meu linter e diferente)

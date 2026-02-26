@@ -1,0 +1,35 @@
+# DuarteOS System Config — Layer 0 (Defaults do Sistema)
+#
+# Este arquivo contem os defaults do DuarteOS.
+# NAO EDITE — sera sobrescrito no update.
+# Para customizar, edite project.yaml (Layer 1) ou user.yaml (Layer 2).
+# Veja .claude/protocols/CONFIG-PROTOCOL.md para detalhes.
+
+version: "5.0.0"
+
+agents:
+  default_model: "sonnet"
+  greeting_style: "minimal"     # minimal | named | archetypal
+  memory_enabled: true
+  synapse_enabled: true
+
+quality:
+  pre_commit_checks: true
+  auto_lint: true
+  security_gate: true
+  min_test_coverage: 0          # 0 = desabilitado
+  bundle_size_alert_kb: 0       # 0 = desabilitado
+
+features:
+  task_templates: true
+  squad_factory: true
+  mind_clone: true
+  constitution_enforced: true
+
+naming:
+  commit_style: "conventional"  # conventional | freeform
+
+ide_sync:
+  cursor: false
+  windsurf: false
+  copilot: false

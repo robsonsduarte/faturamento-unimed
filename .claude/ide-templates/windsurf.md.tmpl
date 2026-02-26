@@ -1,0 +1,121 @@
+# Windsurf Rules — Gerado por DuarteOS v5.0.0
+# Nao edite diretamente. Edite o template em .claude/ide-templates/windsurf.md.tmpl
+# Regenere com: /squad:sync-ide windsurf
+
+## Projeto
+
+{{PROJECT_OVERVIEW}}
+
+## Stack Tecnica
+
+{{TECH_STACK}}
+
+## Regras de Codigo
+
+{{CODE_STYLE}}
+
+### Estilo e Formatacao
+
+- Indentacao: 2 espacos
+- Aspas simples para strings
+- Ponto-e-virgula obrigatorio
+- Trailing commas em multilinhas
+- Prefira simplicidade — 3 linhas duplicadas > abstracao prematura
+
+### Workflow Obrigatorio
+
+1. Leia o arquivo completo antes de editar
+2. Verifique se algo similar ja existe antes de criar
+3. Execute verificacoes (types + testes) antes de finalizar
+4. Commits atomicos com conventional commits
+
+## Arquitetura
+
+{{ARCHITECTURE_RULES}}
+
+### Estrutura do Projeto
+
+- API routes: `src/app/api/{dominio}/{acao}/route.ts`
+- Componentes: `src/components/` com design system padronizado
+- Hooks customizados para estado — sem stores globais
+- Servicos em `src/lib/services/`
+- Tipos centralizados em `src/types/`
+- Operacoes pesadas delegadas para edge functions
+
+### Padroes
+
+- Server Components como padrao; Client Components apenas quando necessario
+- Validacao de input com zod em todas API routes
+- Tratamento de erro estruturado com logging adequado
+- Cache quando apropriado, invalidacao explicita
+
+## Seguranca
+
+{{SECURITY_RULES}}
+
+### Regras Inviolaveis de Seguranca
+
+- **Secrets:** Nunca commitar chaves, tokens ou credenciais no codigo
+- **Logs:** Nunca expor dados sensiveis em logs ou mensagens de erro
+- **Input:** Sempre validar dados do usuario no servidor (nunca confiar no cliente)
+- **SQL:** Sempre usar parametros preparados — nunca concatenar queries
+- **Auth:** Verificar autenticacao E autorizacao em toda operacao protegida
+- **CORS:** Configurar origins permitidas explicitamente
+- **Headers:** Incluir headers de seguranca (CSP, X-Frame-Options, etc.)
+
+## Testes
+
+{{TESTING_RULES}}
+
+### Estrategia de Testes
+
+- Testes unitarios para logica de negocio e utilitarios puros
+- Testes de integracao para fluxos criticos de API
+- Descrever comportamento esperado no nome do teste
+- Preferir implementacoes reais sobre mocks quando possivel
+- Cobertura focada em caminhos criticos, nao em metricas vazias
+
+### Verificacao Obrigatoria
+
+Antes de considerar qualquer tarefa completa:
+```bash
+npx tsc --noEmit        # verificacao de tipos
+npm run lint             # verificacao de lint
+npm test                 # testes automatizados
+```
+
+## Principios Fundamentais (Constitution DuarteOS)
+
+Principios derivados da Constitution do projeto — sao inviolaveis:
+
+1. **Determinismo** — Codigo/SQL/regex > solucoes LLM-generated
+2. **Observacao primeiro** — Ler antes de editar, diagnosticar antes de corrigir
+3. **Minimalismo** — Fazer o que foi pedido, nada mais
+4. **Seguranca inegociavel** — Nunca comprometer seguranca por velocidade
+5. **Verificacao obrigatoria** — Validar que funciona antes de declarar pronto
+6. **Transparencia** — Reportar o que foi feito, nao o que sera feito
+7. **Reutilizacao** — Verificar se ja existe antes de criar
+
+## Nomenclatura (Governance DuarteOS)
+
+### Arquivos
+
+| Tipo | Padrao | Exemplo |
+|------|--------|---------|
+| Componente React | `PascalCase.tsx` | `UserProfile.tsx` |
+| Utilitario/Servico | `kebab-case.ts` | `brand-resolver.ts` |
+| Teste | `*.test.ts` | `rate-limiter.test.ts` |
+| API Route | `route.ts` em pasta nomeada | `api/content/generate/route.ts` |
+
+### Codigo
+
+| Elemento | Padrao | Exemplo |
+|----------|--------|---------|
+| Variaveis/funcoes | `camelCase` | `getUserProfile` |
+| Componentes/tipos | `PascalCase` | `PipelineExecutor` |
+| Constantes | `UPPER_SNAKE_CASE` | `CREDIT_COSTS` |
+| Hooks | `use` + `PascalCase` | `useAuth` |
+
+### Commits
+
+Conventional commits: `feat:`, `fix:`, `docs:`, `chore:`, `refactor:`, `test:`, `style:`

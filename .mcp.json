@@ -1,0 +1,164 @@
+{
+  "mcpServers": {
+
+    "_comment_search": "=== BUSCA E PESQUISA ===",
+
+    "context7": {
+      "command": "npx",
+      "args": ["-y", "@upstash/context7-mcp@latest"],
+      "env": {
+        "DEFAULT_MINIMUM_TOKENS": "10000"
+      }
+    },
+    "exa": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "exa-mcp-server",
+        "--tools=web_search_exa,get_code_context_exa,company_research_exa,crawling_exa"
+      ],
+      "env": {
+        "EXA_API_KEY": "${EXA_API_KEY}"
+      }
+    },
+    "brave-search": {
+      "command": "npx",
+      "args": ["-y", "@brave/brave-search-mcp-server", "--transport", "stdio"],
+      "env": {
+        "BRAVE_API_KEY": "${BRAVE_API_KEY}"
+      }
+    },
+    "fetch": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-fetch"]
+    },
+
+    "_comment_content": "=== CONTEUDO E MIDIA ===",
+
+    "youtube-transcript": {
+      "command": "npx",
+      "args": ["-y", "@kimtaeyoon83/mcp-server-youtube-transcript"]
+    },
+    "reddit": {
+      "command": "npx",
+      "args": ["-y", "mcp-server-reddit"],
+      "env": {
+        "REDDIT_CLIENT_ID": "${REDDIT_CLIENT_ID}",
+        "REDDIT_CLIENT_SECRET": "${REDDIT_CLIENT_SECRET}"
+      }
+    },
+
+    "_comment_dev": "=== DESENVOLVIMENTO ===",
+
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_PAT}"
+      }
+    },
+    "rest-api": {
+      "command": "npx",
+      "args": ["-y", "dkmaker-mcp-rest-api"],
+      "env": {
+        "REST_BASE_URL": "${REST_API_BASE_URL}",
+        "REST_ENABLE_SSL_VERIFY": "true",
+        "REST_RESPONSE_SIZE_LIMIT": "50000"
+      }
+    },
+    "supabase": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote",
+        "https://mcp.supabase.com/mcp?project_ref=${SUPABASE_PROJECT_REF}"
+      ]
+    },
+    "coderabbit": {
+      "command": "npx",
+      "args": ["-y", "coderabbitai-mcp@latest"],
+      "env": {
+        "GITHUB_PAT": "${GITHUB_PAT}"
+      }
+    },
+
+    "_comment_automation": "=== AUTOMACAO E PRODUTIVIDADE ===",
+
+    "n8n": {
+      "command": "npx",
+      "args": ["-y", "n8n-mcp"],
+      "env": {
+        "MCP_MODE": "stdio",
+        "LOG_LEVEL": "error",
+        "DISABLE_CONSOLE_OUTPUT": "true",
+        "N8N_API_URL": "${N8N_API_URL}",
+        "N8N_API_KEY": "${N8N_API_KEY}"
+      }
+    },
+    "google-workspace": {
+      "command": "uvx",
+      "args": ["workspace-mcp", "--single-user"],
+      "env": {
+        "GOOGLE_OAUTH_CLIENT_ID": "${GOOGLE_OAUTH_CLIENT_ID}",
+        "GOOGLE_OAUTH_CLIENT_SECRET": "${GOOGLE_OAUTH_CLIENT_SECRET}"
+      }
+    },
+    "obsidian": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@mauricio.wolff/mcp-obsidian@latest",
+        "${OBSIDIAN_VAULT_PATH}"
+      ]
+    },
+
+    "_comment_ai": "=== RACIOCINIO E MEMORIA ===",
+
+    "memory": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-memory"]
+    },
+    "sequential-thinking": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"]
+    },
+
+    "_comment_python": "=== PYTHON MCP SERVERS (DuarteOS) ===",
+
+    "data-analyzer": {
+      "command": "python3",
+      "args": [".claude/mcp-servers/data-analyzer/server.py"]
+    },
+    "web-scraper": {
+      "command": "python3",
+      "args": [".claude/mcp-servers/web-scraper/server.py"]
+    },
+    "automation": {
+      "command": "python3",
+      "args": [".claude/mcp-servers/automation/server.py"]
+    },
+
+    "input-analyzer": {
+      "command": "python3",
+      "args": [".claude/mcp-servers/input-analyzer/server.py"]
+    },
+    "memory-graph": {
+      "command": "python3",
+      "args": [".claude/mcp-servers/memory-graph/server.py"]
+    },
+    "tool-forge": {
+      "command": "python3",
+      "args": [".claude/mcp-servers/tool-forge/server.py"]
+    },
+
+    "_comment_sandbox": "=== SANDBOX (opcional) ===",
+
+    "e2b-sandbox": {
+      "command": "npx",
+      "args": ["-y", "@e2b/mcp-server"],
+      "env": {
+        "E2B_API_KEY": "${E2B_API_KEY}"
+      }
+    }
+  }
+}

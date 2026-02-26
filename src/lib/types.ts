@@ -141,6 +141,39 @@ export interface DashboardKPIs {
   lotes_abertos: number
 }
 
+export interface GuiaStatusCount {
+  count: number
+  valor: number
+}
+
+export interface LoteStatusCount {
+  count: number
+  valor: number
+}
+
+export interface ReportData {
+  // Guias
+  total_guias: number
+  valor_total_guias: number
+  guias_por_status: Record<string, GuiaStatusCount>
+  guias_sem_lote: number
+  valor_guias_sem_lote: number
+  guias_canceladas: number
+
+  // Lotes
+  total_lotes: number
+  valor_total_lotes: number
+  lotes_por_status: Record<string, LoteStatusCount>
+
+  // Financeiro (cobrancas)
+  total_cobrado: number
+  total_pago: number
+  total_glosado: number
+  a_receber: number
+  total_cobrancas: number
+  cobrancas_pagas: number
+}
+
 export interface ApiError {
   error: string
   details?: string
