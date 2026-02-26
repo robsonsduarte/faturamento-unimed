@@ -539,13 +539,7 @@ export async function POST(request: NextRequest) {
           }
 
           // Parse XML oficial do SAW (baixado durante readGuide, na mesma pagina)
-          const sawChave = sawData?.['chave'] ?? null
-          const sawTemXML = sawData?.['temXML'] ?? false
           const sawXmlContent = typeof sawData?.['xmlContent'] === 'string' ? sawData['xmlContent'] as string : null
-
-          if (status === 'COMPLETA') {
-            send('info', `Guia ${guideNumber}: XML debug — chave=${sawChave ? 'sim' : 'nao'}, temXML=${sawTemXML}, xmlContent=${sawXmlContent ? sawXmlContent.length + ' bytes' : 'null'}`, guideNumber)
-          }
 
           if (sawXmlContent) {
             try {
