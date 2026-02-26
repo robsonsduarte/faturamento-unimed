@@ -91,7 +91,8 @@ export interface Lote {
   valor_total: number
   xml_content: string | null
   xml_hash: string | null
-  status: 'rascunho' | 'gerado' | 'enviado' | 'aceito' | 'glosado' | 'pago'
+  status: 'rascunho' | 'gerado' | 'enviado' | 'aceito' | 'processado' | 'faturado' | 'glosado' | 'pago'
+  numero_fatura: string | null
   data_envio: string | null
   data_resposta: string | null
   observacoes: string | null

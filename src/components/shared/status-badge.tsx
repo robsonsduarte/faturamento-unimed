@@ -34,6 +34,8 @@ const LOTE_STATUS_COLORS: Record<string, string> = {
   gerado: 'bg-blue-500',
   enviado: 'bg-amber-500',
   aceito: 'bg-emerald-500',
+  processado: 'bg-sky-500',
+  faturado: 'bg-green-600',
   glosado: 'bg-red-500',
   pago: 'bg-green-500',
 }
@@ -43,6 +45,8 @@ const LOTE_STATUS_LABELS: Record<string, string> = {
   gerado: 'Gerado',
   enviado: 'Enviado',
   aceito: 'Aceito',
+  processado: 'Processado',
+  faturado: 'Faturado',
   glosado: 'Glosado',
   pago: 'Pago',
 }

@@ -2,9 +2,9 @@
 
 import { use, useState } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, Download, Code2, Loader2 } from 'lucide-react'
+import { ArrowLeft, Download, Code2, Loader2, CheckCircle, Receipt } from 'lucide-react'
 import { toast } from 'sonner'
-import { useLote } from '@/hooks/use-lotes'
+import { useLote, useUpdateLoteStatus } from '@/hooks/use-lotes'
 import { LoteStatusBadge, StatusBadge } from '@/components/shared/status-badge'
 import { Skeleton } from '@/components/shared/loading-skeleton'
 import { PageHeader } from '@/components/shared/page-header'
@@ -18,7 +18,10 @@ interface Props {
 export default function LoteDetailPage({ params }: Props) {
   const { id } = use(params)
   const { data: lote, isLoading, error, refetch } = useLote(id)
+  const updateStatus = useUpdateLoteStatus()
   const [generating, setGenerating] = useState(false)
+  const [showFaturaInput, setShowFaturaInput] = useState(false)
+  const [numeroFatura, setNumeroFatura] = useState('')
 
   if (isLoading) {
     return (
@@ -70,12 +73,105 @@ export default function LoteDetailPage({ params }: Props) {
     URL.revokeObjectURL(url)
   }
 
+  async function handleMarcarProcessado() {
+    updateStatus.mutate(
+      { id, status: 'processado' },
+      {
+        onSuccess: async (result) => {
+          await refetch()
+          toast.success(`Lote marcado como Processado. ${result.guias_atualizadas} guia(s) atualizada(s).`)
+        },
+        onError: (err) => {
+          toast.error(err instanceof Error ? err.message : 'Erro ao atualizar status')
+        },
+      }
+    )
+  }
+
+  async function handleMarcarFaturado() {
+    if (!numeroFatura.trim()) {
+      toast.error('Informe o numero da fatura/NF')
+      return
+    }
+    updateStatus.mutate(
+      { id, status: 'faturado', numeroFatura: numeroFatura.trim() },
+      {
+        onSuccess: async (result) => {
+          await refetch()
+          setShowFaturaInput(false)
+          setNumeroFatura('')
+          toast.success(`Lote marcado como Faturado. ${result.guias_atualizadas} guia(s) atualizada(s).`)
+        },
+        onError: (err) => {
+          toast.error(err instanceof Error ? err.message : 'Erro ao atualizar status')
+        },
+      }
+    )
+  }
+
+  const canMarkProcessado = ['gerado', 'enviado', 'aceito'].includes(lote.status)
+  const canMarkFaturado = lote.status === 'processado'
+  const isMutating = updateStatus.isPending
+
+  const infoCards: { label: string; value: React.ReactNode }[] = [
+    { label: 'Status', value: <LoteStatusBadge status={lote.status} /> },
+    { label: 'Tipo', value: lote.tipo },
+    { label: 'Referencia', value: lote.referencia ?? '—' },
+    { label: 'Quantidade de Guias', value: String(lote.quantidade_guias) },
+    { label: 'Valor Total', value: formatCurrency(lote.valor_total) },
+    { label: 'XML gerado', value: lote.xml_content ? 'Sim' : 'Nao' },
+  ]
+
+  if (lote.status === 'faturado' && lote.numero_fatura) {
+    infoCards.push({
+      label: 'Fatura/NF',
+      value: (
+        <span className="font-mono text-green-400 font-semibold">{lote.numero_fatura}</span>
+      ),
+    })
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
         title={`Lote ${lote.numero_lote}`}
         action={
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
+            {canMarkProcessado && (
+              <button
+                onClick={handleMarcarProcessado}
+                disabled={isMutating}
+                className={cn(
+                  'inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium',
+                  'bg-sky-600 text-white hover:bg-sky-700 transition-colors',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500',
+                  'disabled:opacity-50 disabled:cursor-not-allowed'
+                )}
+              >
+                {isMutating
+                  ? <Loader2 className="w-4 h-4 animate-spin" />
+                  : <CheckCircle className="w-4 h-4" />
+                }
+                {isMutating ? 'Processando...' : 'Marcar como Processado'}
+              </button>
+            )}
+
+            {canMarkFaturado && !showFaturaInput && (
+              <button
+                onClick={() => setShowFaturaInput(true)}
+                disabled={isMutating}
+                className={cn(
+                  'inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium',
+                  'bg-green-600 text-white hover:bg-green-700 transition-colors',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-500',
+                  'disabled:opacity-50 disabled:cursor-not-allowed'
+                )}
+              >
+                <Receipt className="w-4 h-4" />
+                Marcar como Faturado
+              </button>
+            )}
+
             <button
               onClick={handleGerarXml}
               disabled={generating}
@@ -89,6 +185,7 @@ export default function LoteDetailPage({ params }: Props) {
               {generating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Code2 className="w-4 h-4" />}
               Gerar XML
             </button>
+
             {lote.xml_content && (
               <button
                 onClick={handleDownloadXml}
@@ -102,6 +199,7 @@ export default function LoteDetailPage({ params }: Props) {
                 Download XML
               </button>
             )}
+
             <Link
               href="/dashboard/lotes"
               className={cn(
@@ -117,15 +215,68 @@ export default function LoteDetailPage({ params }: Props) {
         }
       />
 
+      {canMarkFaturado && showFaturaInput && (
+        <div className="bg-[var(--color-card)] border border-green-700/50 rounded-xl p-4">
+          <p className="text-sm font-medium text-[var(--color-text)] mb-3">
+            Informe o numero da Fatura/NF para confirmar o faturamento:
+          </p>
+          <div className="flex items-center gap-3">
+            <div className="flex-1 max-w-xs">
+              <label htmlFor="numero-fatura" className="block text-xs text-[var(--color-text-muted)] mb-1">
+                Numero da Fatura/NF
+              </label>
+              <input
+                id="numero-fatura"
+                type="text"
+                value={numeroFatura}
+                onChange={(e) => setNumeroFatura(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleMarcarFaturado() }}
+                placeholder="Ex: NF-2026001"
+                autoFocus
+                className={cn(
+                  'w-full px-3 py-2 rounded-lg text-sm',
+                  'bg-[var(--color-surface)] border border-[var(--color-border)]',
+                  'text-[var(--color-text)] placeholder:text-[var(--color-text-muted)]',
+                  'focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent'
+                )}
+              />
+            </div>
+            <div className="flex gap-2 mt-5">
+              <button
+                onClick={handleMarcarFaturado}
+                disabled={isMutating || !numeroFatura.trim()}
+                className={cn(
+                  'inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium',
+                  'bg-green-600 text-white hover:bg-green-700 transition-colors',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-500',
+                  'disabled:opacity-50 disabled:cursor-not-allowed'
+                )}
+              >
+                {isMutating
+                  ? <Loader2 className="w-4 h-4 animate-spin" />
+                  : <Receipt className="w-4 h-4" />
+                }
+                {isMutating ? 'Salvando...' : 'Confirmar Faturamento'}
+              </button>
+              <button
+                onClick={() => { setShowFaturaInput(false); setNumeroFatura('') }}
+                disabled={isMutating}
+                className={cn(
+                  'px-4 py-2 rounded-lg text-sm',
+                  'bg-[var(--color-surface)] border border-[var(--color-border)]',
+                  'text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors',
+                  'disabled:opacity-50 disabled:cursor-not-allowed'
+                )}
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {([
-          { label: 'Status', value: <LoteStatusBadge status={lote.status} /> },
-          { label: 'Tipo', value: lote.tipo },
-          { label: 'Referencia', value: lote.referencia ?? '—' },
-          { label: 'Quantidade de Guias', value: String(lote.quantidade_guias) },
-          { label: 'Valor Total', value: formatCurrency(lote.valor_total) },
-          { label: 'XML gerado', value: lote.xml_content ? 'Sim' : 'Nao' },
-        ] as { label: string; value: React.ReactNode }[]).map(({ label, value }) => (
+        {infoCards.map(({ label, value }) => (
           <div key={label} className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-4">
             <p className="text-xs text-[var(--color-text-muted)] mb-1">{label}</p>
             <div className="text-sm font-medium text-[var(--color-text)]">{value}</div>

@@ -1,6 +1,32 @@
 import { createClient } from '@/lib/supabase/client'
 import type { Lote, PaginatedResponse } from '@/lib/types'
 
+export interface UpdateLoteStatusResult {
+  guias_atualizadas: number
+}
+
+export async function updateLoteStatus(
+  id: string,
+  status: 'processado' | 'faturado',
+  numeroFatura?: string
+): Promise<UpdateLoteStatusResult> {
+  const body: Record<string, string> = { status }
+  if (numeroFatura) body.numero_fatura = numeroFatura
+
+  const res = await fetch(`/api/lotes/${id}/status`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+
+  if (!res.ok) {
+    const data = await res.json() as { error: string }
+    throw new Error(data.error || 'Erro ao atualizar status')
+  }
+
+  return res.json() as Promise<UpdateLoteStatusResult>
+}
+
 export interface LoteFilters {
   status?: string
   page?: number

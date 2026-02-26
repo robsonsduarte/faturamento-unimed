@@ -10,9 +10,20 @@ export const loteCreateSchema = z.object({
 
 export type LoteCreateInput = z.infer<typeof loteCreateSchema>
 
-export const loteStatusSchema = z.object({
-  status: z.enum(['rascunho', 'gerado', 'enviado', 'aceito', 'glosado', 'pago']),
-  observacoes: z.string().optional(),
-})
+export const loteStatusSchema = z
+  .object({
+    status: z.enum(['rascunho', 'gerado', 'enviado', 'aceito', 'processado', 'faturado', 'glosado', 'pago']),
+    observacoes: z.string().optional(),
+    numero_fatura: z.string().min(1, 'Numero da fatura obrigatorio').optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.status === 'faturado' && !data.numero_fatura) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['numero_fatura'],
+        message: 'numero_fatura e obrigatorio quando status e faturado',
+      })
+    }
+  })
 
 export type LoteStatusInput = z.infer<typeof loteStatusSchema>

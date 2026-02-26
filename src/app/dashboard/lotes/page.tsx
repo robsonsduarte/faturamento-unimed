@@ -79,8 +79,17 @@ export default function LotesPage() {
           )}
         >
           <option value="">Todos os status</option>
-          {['rascunho', 'gerado', 'enviado', 'aceito', 'glosado', 'pago'].map((s) => (
-            <option key={s} value={s}>{s}</option>
+          {[
+            { value: 'rascunho',   label: 'Rascunho'   },
+            { value: 'gerado',     label: 'Gerado'      },
+            { value: 'enviado',    label: 'Enviado'     },
+            { value: 'aceito',     label: 'Aceito'      },
+            { value: 'processado', label: 'Processado'  },
+            { value: 'faturado',   label: 'Faturado'    },
+            { value: 'glosado',    label: 'Glosado'     },
+            { value: 'pago',       label: 'Pago'        },
+          ].map(({ value, label }) => (
+            <option key={value} value={value}>{label}</option>
           ))}
         </select>
 
@@ -107,7 +116,7 @@ export default function LotesPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[var(--color-border)]">
-                  {['Numero Lote', 'Tipo', 'Referencia', 'Guias', 'Valor Total', 'Status', 'Criado em', ''].map((h) => (
+                  {['Numero Lote', 'Tipo', 'Referencia', 'Guias', 'Valor Total', 'Status', 'Fatura/NF', 'Criado em', ''].map((h) => (
                     <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider">
                       {h}
                     </th>
@@ -123,6 +132,9 @@ export default function LotesPage() {
                     <td className="px-4 py-3 font-mono text-xs">{lote.quantidade_guias}</td>
                     <td className="px-4 py-3 font-mono text-xs">{formatCurrency(lote.valor_total)}</td>
                     <td className="px-4 py-3"><LoteStatusBadge status={lote.status} /></td>
+                    <td className="px-4 py-3 font-mono text-xs text-green-400">
+                      {lote.numero_fatura ?? <span className="text-[var(--color-text-muted)]">—</span>}
+                    </td>
                     <td className="px-4 py-3 text-xs text-[var(--color-text-muted)]">{formatDateTime(lote.created_at)}</td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">

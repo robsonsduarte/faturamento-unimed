@@ -12,6 +12,41 @@ export const VALORES_PROCEDIMENTO: Record<string, number> = {
   default: 30.36,
 }
 
+export const LOTE_STATUS_FLOW = [
+  'rascunho',
+  'gerado',
+  'enviado',
+  'aceito',
+  'processado',
+  'faturado',
+  'glosado',
+  'pago',
+] as const
+
+export type LoteStatus = (typeof LOTE_STATUS_FLOW)[number]
+
+export const LOTE_STATUS_COLORS: Record<LoteStatus, string> = {
+  rascunho: 'bg-slate-500',
+  gerado: 'bg-blue-500',
+  enviado: 'bg-amber-500',
+  aceito: 'bg-emerald-500',
+  processado: 'bg-sky-500',
+  faturado: 'bg-green-600',
+  glosado: 'bg-red-500',
+  pago: 'bg-green-500',
+}
+
+export const LOTE_STATUS_LABELS: Record<LoteStatus, string> = {
+  rascunho: 'Rascunho',
+  gerado: 'Gerado',
+  enviado: 'Enviado',
+  aceito: 'Aceito',
+  processado: 'Processado',
+  faturado: 'Faturado',
+  glosado: 'Glosado',
+  pago: 'Pago',
+}
+
 export const GUIDE_STATUS_FLOW = [
   'PENDENTE',
   'CPRO',
