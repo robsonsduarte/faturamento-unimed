@@ -148,46 +148,21 @@ export async function fetchCproData(
     if (Array.isArray(attendances) && attendances.length > 0) {
       const prof = attendances[0]?.professional
       if (prof) {
-        // Log the full professional object to discover all available fields
         console.log('[CPRO] professional completo:', JSON.stringify(prof))
 
         userId = prof.id?.toString() ?? null
 
-        // Map known field name variants from Brazilian health APIs:
-        //   council / conselho → conselho (ex: "CRP", "CRFa", "CRN")
-        //   council_number / numero_conselho / registration_number → numeroConselho
-        //   council_uf / uf / state → uf (sigla do estado)
-        //   cbos / cbo / occupation_code → cbos (codigo CBOS 6 digitos)
-        const conselho: string | null =
-          (typeof prof.council === 'string' && prof.council) ? prof.council
-          : (typeof prof.conselho === 'string' && prof.conselho) ? prof.conselho
-          : null
-
-        const numeroConselho: string | null =
-          (typeof prof.council_number === 'string' && prof.council_number) ? prof.council_number
-          : (typeof prof.numero_conselho === 'string' && prof.numero_conselho) ? prof.numero_conselho
-          : (typeof prof.registration_number === 'string' && prof.registration_number) ? prof.registration_number
-          : null
-
-        const uf: string | null =
-          (typeof prof.council_uf === 'string' && prof.council_uf) ? prof.council_uf
-          : (typeof prof.uf === 'string' && prof.uf) ? prof.uf
-          : (typeof prof.state === 'string' && prof.state) ? prof.state
-          : null
-
-        const cbos: string | null =
-          (typeof prof.cbos === 'string' && prof.cbos) ? prof.cbos
-          : (typeof prof.cbo === 'string' && prof.cbo) ? prof.cbo
-          : (typeof prof.occupation_code === 'string' && prof.occupation_code) ? prof.occupation_code
-          : null
+        // Fields match the CPro PHP endpoint: council, council_number, council_uf, cbos
+        const str = (v: unknown): string | null =>
+          typeof v === 'string' && v.trim() !== '' ? v.trim() : null
 
         profissional = {
-          cpf: prof.cpf ?? null,
-          nome: prof.name ?? null,
-          conselho,
-          numeroConselho,
-          uf,
-          cbos,
+          cpf: str(prof.cpf),
+          nome: str(prof.name),
+          conselho: str(prof.council),
+          numeroConselho: str(prof.council_number),
+          uf: str(prof.council_uf),
+          cbos: str(prof.cbos),
         }
       }
     }
