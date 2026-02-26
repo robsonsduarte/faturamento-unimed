@@ -317,7 +317,7 @@ describe('XML TISS Generation — Real Data', () => {
     const ufMatch = xml.match(/<ans:UF>([^<]+)</)
 
     console.log(`\n  Codigos normalizados:`)
-    console.log(`    tipoAtendimento: ${tipoAtendMatch?.[1]} (esperado: numerico 01-14)`)
+    console.log(`    tipoAtendimento: ${tipoAtendMatch?.[1]} (esperado: codigo SAW 01-23)`)
     console.log(`    indicacaoAcidente: ${indAcidenteMatch?.[1]} (esperado: 0, 1, 2 ou 9)`)
     console.log(`    CBOS: ${cbosMatch?.[1]} (esperado: 6 digitos)`)
     console.log(`    conselhoProfissional: ${conselhoMatch?.[1]} (esperado: 2 digitos)`)
