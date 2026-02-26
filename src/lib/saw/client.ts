@@ -578,7 +578,7 @@ class SawClient {
       let xmlContent: string | null = null
       const resData = resultado as Record<string, unknown>
 
-      if (resData.temXML && resData.chave) {
+      if (resData.chave) {
         try {
           const xmlUrl = `${SAW_BASE}/saw/tiss/SolicitacaoDeSPSADT40.do?method=gerarXMLTISSDeGuia&manterTISSSPSADT40DTO.tissSolicitacaoDeSPSADTDTO.chave=${resData.chave}`
           xmlContent = await page.evaluate(async (url: string) => {
