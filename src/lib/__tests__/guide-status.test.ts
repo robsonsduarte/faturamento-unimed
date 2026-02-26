@@ -37,8 +37,8 @@ describe('computeGuideStatus', () => {
     expect(computeGuideStatus(8, 8, 8, '', '84759912', '04/01/2026')).toBe('COMPLETA')
   })
 
-  it('COMPLETA: autorizada == realizados mesmo sem CPro', () => {
-    expect(computeGuideStatus(null, 8, 8, '', '84759912', '04/01/2026')).toBe('COMPLETA')
+  it('CPRO: autorizada == realizados mas sem CPro → CPRO (nao COMPLETA)', () => {
+    expect(computeGuideStatus(null, 8, 8, '', '84759912', '04/01/2026')).toBe('CPRO')
   })
 
   it('COMPLETA: cadastrados == realizados sem autorizada', () => {

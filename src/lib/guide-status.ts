@@ -6,8 +6,8 @@ import type { GuideStatus } from '@/lib/constants'
  * Rules:
  *   CANCELADA — SAW status contains "CANCELADA"
  *   TOKEN     — campo senha = "Realize o check-in do Paciente"
- *   COMPLETA  — qtd_cadastrada == qtd_realizada OR qtd_autorizada == qtd_realizada
  *   CPRO      — guia nao encontrada no ConsultorioPro (cadastrados null/0)
+ *   COMPLETA  — qtd_cadastrada == qtd_realizada OR qtd_autorizada == qtd_realizada
  *   PENDENTE  — tem senha + data_autorizacao mas realizados < cadastrados
  *   TOKEN     — fallback (nenhuma condicao acima)
  */
@@ -30,24 +30,24 @@ export function computeGuideStatus(
     return 'TOKEN'
   }
 
-  // 2. COMPLETA — qtd cadastrada == realizada OU qtd autorizada == realizada
-  const completaByCpro =
-    procedimentosCadastrados != null &&
-    procedimentosCadastrados > 0 &&
-    procedimentosRealizados === procedimentosCadastrados
+  // 2. CPRO — guia nao encontrada no ConsultorioPro
+  //    Se CPro nao retornou dados, status e CPRO independente de qtd autorizada/realizada
+  if (procedimentosCadastrados == null || procedimentosCadastrados === 0) {
+    return 'CPRO'
+  }
+
+  // 3. COMPLETA — qtd cadastrada == realizada OU qtd autorizada == realizada
+  if (procedimentosRealizados === procedimentosCadastrados) {
+    return 'COMPLETA'
+  }
 
   const completaByAutorizada =
     quantidadeAutorizada != null &&
     quantidadeAutorizada > 0 &&
     procedimentosRealizados === quantidadeAutorizada
 
-  if (completaByCpro || completaByAutorizada) {
+  if (completaByAutorizada) {
     return 'COMPLETA'
-  }
-
-  // 3. CPRO — guia nao encontrada no ConsultorioPro
-  if (procedimentosCadastrados == null || procedimentosCadastrados === 0) {
-    return 'CPRO'
   }
 
   // 4. PENDENTE — tem autorizacao mas falta completar cobrancas
