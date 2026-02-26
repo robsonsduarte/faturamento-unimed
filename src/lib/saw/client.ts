@@ -21,11 +21,6 @@ export interface SawReadGuideResult {
   error?: string
 }
 
-export interface SawXmlDownloadResult {
-  success: boolean
-  xmlContent?: string
-  error?: string
-}
 
 const SAW_BASE = 'https://saw.trixti.com.br'
 
@@ -608,45 +603,6 @@ class SawClient {
       return {
         success: false,
         error: err instanceof Error ? err.message : 'Erro ao ler guia no SAW',
-      }
-    } finally {
-      if (page) await page.close().catch(() => {})
-    }
-  }
-
-  /**
-   * Download the official TISS XML for a guide from SAW.
-   * Requires the guide's `chave` (extracted during readGuide).
-   */
-  async downloadGuideXml(
-    cookies: SawCookie[],
-    chave: string
-  ): Promise<SawXmlDownloadResult> {
-    let page: Page | null = null
-
-    try {
-      const browser = await this.getBrowser()
-      page = await browser.newPage()
-      await page.setDefaultTimeout(30000)
-      await this.injectCookies(page, cookies)
-
-      const xmlUrl = `${SAW_BASE}/saw/tiss/SolicitacaoDeSPSADT40.do?method=gerarXMLTISSDeGuia&manterTISSSPSADT40DTO.tissSolicitacaoDeSPSADTDTO.chave=${chave}`
-
-      const xmlContent = await page.evaluate(async (url: string) => {
-        const resp = await fetch(url, { credentials: 'include' })
-        return await resp.text()
-      }, xmlUrl)
-
-      if (!xmlContent || xmlContent.length < 100 || !xmlContent.includes('mensagemTISS')) {
-        return { success: false, error: 'XML retornado invalido ou vazio' }
-      }
-
-      console.log(`[SAW] XML baixado: ${xmlContent.length} bytes`)
-      return { success: true, xmlContent }
-    } catch (err) {
-      return {
-        success: false,
-        error: err instanceof Error ? err.message : 'Erro ao baixar XML da guia',
       }
     } finally {
       if (page) await page.close().catch(() => {})

@@ -226,7 +226,7 @@ function buildGuiaContent(guia: Guia) {
       [ans('contratadoExecutante')]: {
         [ans('codigoPrestadorNaOperadora')]: DEDICARE.CODIGO_PRESTADOR,
       },
-      [ans('CNES')]: xml?.dadosExecutante.CNES || (guia.cnes ?? DEDICARE.CNES),
+      [ans('CNES')]: DEDICARE.CNES,
     },
     [ans('dadosAtendimento')]: {
       [ans('tipoAtendimento')]: xml?.dadosAtendimento.tipoAtendimento || normalizeTipoAtendimento(guia.tipo_atendimento),
