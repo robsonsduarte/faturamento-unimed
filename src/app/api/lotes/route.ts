@@ -12,6 +12,7 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get('status')
     const page = Number(searchParams.get('page') ?? '1')
     const pageSize = Math.min(Number(searchParams.get('pageSize') ?? '20'), 100)
+    const mes = searchParams.get('mes')
 
     let query = supabase
       .from('lotes')
@@ -19,6 +20,7 @@ export async function GET(request: NextRequest) {
       .order('created_at', { ascending: false })
 
     if (status) query = query.eq('status', status)
+    if (mes && mes !== 'todos') query = query.eq('referencia', mes)
 
     const from = (page - 1) * pageSize
     query = query.range(from, from + pageSize - 1)

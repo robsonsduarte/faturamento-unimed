@@ -115,7 +115,7 @@ function BigKpi({ label, value, color = 'text-[var(--color-text)]' }: {
 
 export default function RelatoriosPage() {
   const [mes, setMes] = useState(getCurrentMonth())
-  const { data: report, isLoading, error } = useReportData(mes)
+  const { data: report, isLoading, error } = useReportData(mes !== 'todos' ? mes : undefined)
 
   return (
     <div className="space-y-6">

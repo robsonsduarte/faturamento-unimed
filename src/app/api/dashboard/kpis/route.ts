@@ -1,16 +1,32 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth, isAuthError } from '@/lib/auth'
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const auth = await requireAuth()
     if (isAuthError(auth)) return auth.response
     const { supabase } = auth
+    const { searchParams } = new URL(request.url)
+    const mes = searchParams.get('mes')
+
+    let guiasQuery = supabase.from('guias').select('status, valor_total')
+    let lotesQuery = supabase.from('lotes').select('status').in('status', ['rascunho', 'gerado', 'enviado'])
+    let cobrancasQuery = supabase.from('cobrancas').select('valor_pago, valor_glosado, valor_cobrado')
+
+    if (mes && mes !== 'todos') {
+      const startDate = `${mes}-01`
+      const [year, month] = mes.split('-').map(Number)
+      const nextM = month === 12 ? { y: year + 1, m: 1 } : { y: year, m: month + 1 }
+      const endDate = `${nextM.y}-${String(nextM.m).padStart(2, '0')}-01`
+      guiasQuery = guiasQuery.gte('data_solicitacao', startDate).lt('data_solicitacao', endDate)
+      lotesQuery = lotesQuery.eq('referencia', mes)
+      cobrancasQuery = cobrancasQuery.gte('data_cobranca', startDate).lt('data_cobranca', endDate)
+    }
 
     const [guiasResult, lotesResult, cobrancasResult] = await Promise.all([
-      supabase.from('guias').select('status, valor_total'),
-      supabase.from('lotes').select('status').in('status', ['rascunho', 'gerado', 'enviado']),
-      supabase.from('cobrancas').select('valor_pago, valor_glosado, valor_cobrado'),
+      guiasQuery,
+      lotesQuery,
+      cobrancasQuery,
     ])
 
     if (guiasResult.error) return NextResponse.json({ error: guiasResult.error.message }, { status: 400 })

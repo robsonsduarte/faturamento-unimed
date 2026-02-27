@@ -13,6 +13,7 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get('status')
     const page = Number(searchParams.get('page') ?? '1')
     const pageSize = Math.min(Number(searchParams.get('pageSize') ?? '20'), 100)
+    const mes = searchParams.get('mes')
 
     let query = supabase
       .from('cobrancas')
@@ -20,6 +21,13 @@ export async function GET(request: NextRequest) {
       .order('created_at', { ascending: false })
 
     if (status) query = query.eq('status', status)
+    if (mes && mes !== 'todos') {
+      const startDate = `${mes}-01`
+      const [year, month] = mes.split('-').map(Number)
+      const nextM = month === 12 ? { y: year + 1, m: 1 } : { y: year, m: month + 1 }
+      const endDate = `${nextM.y}-${String(nextM.m).padStart(2, '0')}-01`
+      query = query.gte('data_cobranca', startDate).lt('data_cobranca', endDate)
+    }
 
     const from = (page - 1) * pageSize
     query = query.range(from, from + pageSize - 1)

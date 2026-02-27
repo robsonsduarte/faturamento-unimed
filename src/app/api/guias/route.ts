@@ -17,6 +17,7 @@ export async function GET(request: NextRequest) {
     const periodoFim = searchParams.get('periodo_fim')
     const loteId = searchParams.get('lote_id')
     const tipoGuia = searchParams.get('tipo_guia')
+    const mes = searchParams.get('mes')
 
     let query = supabase
       .from('guias')
@@ -40,6 +41,13 @@ export async function GET(request: NextRequest) {
     }
     if (periodoInicio) query = query.gte('data_autorizacao', periodoInicio)
     if (periodoFim) query = query.lte('data_autorizacao', periodoFim)
+    if (mes && mes !== 'todos') {
+      const startDate = `${mes}-01`
+      const [year, month] = mes.split('-').map(Number)
+      const nextM = month === 12 ? { y: year + 1, m: 1 } : { y: year, m: month + 1 }
+      const endDate = `${nextM.y}-${String(nextM.m).padStart(2, '0')}-01`
+      query = query.gte('data_solicitacao', startDate).lt('data_solicitacao', endDate)
+    }
 
     const from = (page - 1) * pageSize
     query = query.range(from, from + pageSize - 1)

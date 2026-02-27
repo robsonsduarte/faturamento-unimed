@@ -21,7 +21,7 @@ import { formatCurrency } from '@/lib/utils'
 
 export default function DashboardPage() {
   const [mes, setMes] = useState(getCurrentMonth())
-  const { data: kpis, isLoading, error } = useDashboardKPIs(mes)
+  const { data: kpis, isLoading, error } = useDashboardKPIs(mes !== 'todos' ? mes : undefined)
 
   return (
     <div className="space-y-6">
