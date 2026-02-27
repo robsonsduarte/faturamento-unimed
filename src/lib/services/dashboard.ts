@@ -20,8 +20,18 @@ export async function getDashboardKPIs(): Promise<DashboardKPIs> {
   return {
     total_guias: guias.length,
     guias_pendentes: guias.filter((g) => g.status === 'PENDENTE').length,
+    guias_cpro: guias.filter((g) => g.status === 'CPRO').length,
+    guias_token: guias.filter((g) => g.status === 'TOKEN').length,
+    guias_completas: guias.filter((g) => g.status === 'COMPLETA').length,
     guias_processadas: guias.filter((g) => g.status === 'PROCESSADA').length,
     guias_faturadas: guias.filter((g) => g.status === 'FATURADA').length,
+    valor_total_guias: guias.reduce((acc, g) => acc + (g.valor_total ?? 0), 0),
+    valor_completas: guias
+      .filter((g) => g.status === 'COMPLETA')
+      .reduce((acc, g) => acc + (g.valor_total ?? 0), 0),
+    valor_processado: guias
+      .filter((g) => g.status === 'PROCESSADA')
+      .reduce((acc, g) => acc + (g.valor_total ?? 0), 0),
     valor_total_faturado: guias
       .filter((g) => g.status === 'FATURADA')
       .reduce((acc, g) => acc + (g.valor_total ?? 0), 0),

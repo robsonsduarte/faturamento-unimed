@@ -133,8 +133,14 @@ export interface TokenBiometrico {
 export interface DashboardKPIs {
   total_guias: number
   guias_pendentes: number
+  guias_cpro: number
+  guias_token: number
+  guias_completas: number
   guias_processadas: number
   guias_faturadas: number
+  valor_total_guias: number
+  valor_completas: number
+  valor_processado: number
   valor_total_faturado: number
   valor_total_pago: number
   valor_total_glosado: number

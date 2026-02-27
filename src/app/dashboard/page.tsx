@@ -1,6 +1,16 @@
 'use client'
 
-import { FileText, Package, DollarSign, AlertCircle, TrendingUp, CheckCircle } from 'lucide-react'
+import {
+  FileText,
+  Package,
+  DollarSign,
+  AlertCircle,
+  TrendingUp,
+  CheckCircle,
+  Clock,
+  UserCheck,
+  Key,
+} from 'lucide-react'
 import { useDashboardKPIs } from '@/hooks/use-dashboard'
 import { KpiCard } from '@/components/shared/kpi-card'
 import { KpiSkeleton } from '@/components/shared/loading-skeleton'
@@ -27,6 +37,7 @@ export default function DashboardPage() {
 
       {kpis && (
         <>
+          {/* Linha 1 — Pipeline de Guias */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <KpiCard
               title="Total de Guias"
@@ -41,6 +52,28 @@ export default function DashboardPage() {
               variant="warning"
             />
             <KpiCard
+              title="Guias CPro"
+              value={kpis.guias_cpro}
+              icon={UserCheck}
+              variant="warning"
+            />
+            <KpiCard
+              title="Guias Token"
+              value={kpis.guias_token}
+              icon={Key}
+              variant="warning"
+            />
+          </div>
+
+          {/* Linha 2 — Guias Avancadas */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <KpiCard
+              title="Guias Completas"
+              value={kpis.guias_completas}
+              icon={Clock}
+              variant="primary"
+            />
+            <KpiCard
               title="Guias Processadas"
               value={kpis.guias_processadas}
               icon={TrendingUp}
@@ -52,15 +85,44 @@ export default function DashboardPage() {
               icon={CheckCircle}
               variant="success"
             />
+            <KpiCard
+              title="Lotes Abertos"
+              value={kpis.lotes_abertos}
+              icon={Package}
+              variant="warning"
+            />
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {/* Linha 3 — Valores */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <KpiCard
+              title="Valor Total"
+              value={formatCurrency(kpis.valor_total_guias)}
+              icon={DollarSign}
+              variant="default"
+            />
+            <KpiCard
+              title="Valor Completas"
+              value={formatCurrency(kpis.valor_completas)}
+              icon={DollarSign}
+              variant="primary"
+            />
+            <KpiCard
+              title="Valor Processado"
+              value={formatCurrency(kpis.valor_processado)}
+              icon={DollarSign}
+              variant="primary"
+            />
             <KpiCard
               title="Valor Faturado"
               value={formatCurrency(kpis.valor_total_faturado)}
               icon={DollarSign}
               variant="success"
             />
+          </div>
+
+          {/* Linha 4 — Financeiro */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <KpiCard
               title="Valor Pago"
               value={formatCurrency(kpis.valor_total_pago)}
@@ -73,13 +135,14 @@ export default function DashboardPage() {
               icon={DollarSign}
               variant="danger"
             />
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <KpiCard
-              title="Lotes Abertos"
-              value={kpis.lotes_abertos}
-              icon={Package}
+              title="Valor a Receber"
+              value={formatCurrency(
+                (kpis.valor_total_faturado ?? 0) -
+                  (kpis.valor_total_pago ?? 0) -
+                  (kpis.valor_total_glosado ?? 0)
+              )}
+              icon={DollarSign}
               variant="warning"
             />
           </div>
