@@ -23,7 +23,6 @@ export async function getGuias(
   let query = supabase
     .from('guias')
     .select('*', { count: 'exact' })
-    .order('data_solicitacao', { ascending: false, nullsFirst: false })
     .order('guide_number', { ascending: false })
 
   if (status) {
