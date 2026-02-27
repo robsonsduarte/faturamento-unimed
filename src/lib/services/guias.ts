@@ -47,7 +47,7 @@ export async function getGuias(
     const [year, month] = mes.split('-').map(Number)
     const nextM = month === 12 ? { y: year + 1, m: 1 } : { y: year, m: month + 1 }
     const endDate = `${nextM.y}-${String(nextM.m).padStart(2, '0')}-01`
-    query = query.gte('data_solicitacao', startDate).lt('data_solicitacao', endDate)
+    query = query.gte('created_at', startDate).lt('created_at', endDate)
   }
 
   const from = (page - 1) * pageSize
