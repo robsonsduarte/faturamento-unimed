@@ -31,13 +31,14 @@ export interface LoteFilters {
   status?: string
   page?: number
   pageSize?: number
+  mes?: string
 }
 
 export async function getLotes(
   filters: LoteFilters = {}
 ): Promise<PaginatedResponse<Lote>> {
   const supabase = createClient()
-  const { status, page = 1, pageSize = 20 } = filters
+  const { status, page = 1, pageSize = 20, mes } = filters
 
   let query = supabase
     .from('lotes')
@@ -45,6 +46,7 @@ export async function getLotes(
     .order('created_at', { ascending: false })
 
   if (status) query = query.eq('status', status)
+  if (mes && mes !== 'todos') query = query.eq('referencia', mes)
 
   const from = (page - 1) * pageSize
   query = query.range(from, from + pageSize - 1)

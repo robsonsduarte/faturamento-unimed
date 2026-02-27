@@ -7,10 +7,12 @@ import { useLotes } from '@/hooks/use-lotes'
 import { LoteStatusBadge } from '@/components/shared/status-badge'
 import { PageHeader } from '@/components/shared/page-header'
 import { EmptyState } from '@/components/shared/empty-state'
+import { MonthFilter, getCurrentMonth } from '@/components/shared/month-filter'
 import { formatCurrency, cn } from '@/lib/utils'
 
 export default function XmlPage() {
-  const { data } = useLotes({ pageSize: 100 })
+  const [mes, setMes] = useState(getCurrentMonth())
+  const { data } = useLotes({ pageSize: 100, mes: mes !== 'todos' ? mes : undefined })
   const lotes = data?.data ?? []
   const [selectedLoteId, setSelectedLoteId] = useState('')
   const [generating, setGenerating] = useState(false)
@@ -58,7 +60,10 @@ export default function XmlPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="space-y-4">
           <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-5 space-y-4">
-            <h2 className="text-sm font-semibold text-[var(--color-text)]">Selecionar Lote</h2>
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="text-sm font-semibold text-[var(--color-text)]">Selecionar Lote</h2>
+              <MonthFilter value={mes} onChange={(v) => { setMes(v); setSelectedLoteId(''); setPreviewXml('') }} />
+            </div>
 
             <select
               value={selectedLoteId}

@@ -8,8 +8,10 @@ import { toast } from 'sonner'
 import { useQueryClient } from '@tanstack/react-query'
 import { useGuias } from '@/hooks/use-guias'
 import { StatusBadge } from '@/components/shared/status-badge'
+import { MonthSelect } from '@/components/shared/month-select'
 import { PageHeader } from '@/components/shared/page-header'
 import { formatCurrency, cn } from '@/lib/utils'
+import { getCurrentMonth } from '@/lib/month-utils'
 import type { GuideStatus } from '@/lib/constants'
 
 interface LoteForm {
@@ -27,7 +29,7 @@ export default function NovoLotePage() {
   const [form, setForm] = useState<LoteForm>({
     numero_lote: '',
     tipo: 'Local',
-    referencia: '',
+    referencia: getCurrentMonth(),
     observacoes: '',
   })
   const [errors, setErrors] = useState<Partial<Record<keyof LoteForm, string>>>({})
@@ -150,14 +152,9 @@ export default function NovoLotePage() {
 
             <div>
               <label className="block text-xs font-medium text-[var(--color-text-muted)] mb-1.5">Referencia (mes/ano)</label>
-              <input
+              <MonthSelect
                 value={form.referencia}
-                onChange={(e) => setForm((p) => ({ ...p, referencia: e.target.value }))}
-                placeholder="2026-02"
-                className={cn(
-                  'w-full px-3 py-2 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)] text-sm text-[var(--color-text)]',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]'
-                )}
+                onChange={(v) => setForm((p) => ({ ...p, referencia: v }))}
               />
             </div>
 

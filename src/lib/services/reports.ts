@@ -3,13 +3,27 @@ import type { ReportData } from '@/lib/types'
 import { GUIDE_STATUS_FLOW } from '@/lib/constants'
 import { LOTE_STATUS_FLOW } from '@/lib/constants'
 
-export async function getReportData(): Promise<ReportData> {
+export async function getReportData(mes?: string): Promise<ReportData> {
   const supabase = createClient()
 
+  let guiasQuery = supabase.from('guias').select('status, valor_total, lote_id')
+  let lotesQuery = supabase.from('lotes').select('status, valor_total, numero_fatura')
+  let cobrancasQuery = supabase.from('cobrancas').select('valor_cobrado, valor_pago, valor_glosado, status')
+
+  if (mes && mes !== 'todos') {
+    const startDate = `${mes}-01`
+    const [year, month] = mes.split('-').map(Number)
+    const nextM = month === 12 ? { y: year + 1, m: 1 } : { y: year, m: month + 1 }
+    const endDate = `${nextM.y}-${String(nextM.m).padStart(2, '0')}-01`
+    guiasQuery = guiasQuery.gte('data_solicitacao', startDate).lt('data_solicitacao', endDate)
+    lotesQuery = lotesQuery.eq('referencia', mes)
+    cobrancasQuery = cobrancasQuery.gte('data_cobranca', startDate).lt('data_cobranca', endDate)
+  }
+
   const [guiasResult, lotesResult, cobrancasResult] = await Promise.all([
-    supabase.from('guias').select('status, valor_total, lote_id'),
-    supabase.from('lotes').select('status, valor_total, numero_fatura'),
-    supabase.from('cobrancas').select('valor_cobrado, valor_pago, valor_glosado, status'),
+    guiasQuery,
+    lotesQuery,
+    cobrancasQuery,
   ])
 
   if (guiasResult.error) throw new Error(guiasResult.error.message)

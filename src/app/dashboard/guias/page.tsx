@@ -12,17 +12,20 @@ import { PageHeader } from '@/components/shared/page-header'
 import { formatCurrency, formatDate, cn } from '@/lib/utils'
 import { GUIDE_STATUS_FLOW, GUIDE_STATUS_LABELS } from '@/lib/constants'
 import type { GuideStatus } from '@/lib/constants'
+import { MonthFilter, getCurrentMonth } from '@/components/shared/month-filter'
 
 export default function GuiasPage() {
   const { data: profile } = useProfile()
   const isVisualizador = profile?.role === 'visualizador'
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState<string>('')
+  const [mes, setMes] = useState(getCurrentMonth())
   const [page, setPage] = useState(1)
 
   const { data, isLoading, error, refetch } = useGuias({
     search: search || undefined,
     status: status || undefined,
+    mes: mes !== 'todos' ? mes : undefined,
     page,
     pageSize: 20,
   })
@@ -99,6 +102,8 @@ export default function GuiasPage() {
               <option key={s} value={s}>{GUIDE_STATUS_LABELS[s]}</option>
             ))}
           </select>
+
+          <MonthFilter value={mes} onChange={(v) => { setMes(v); setPage(1) }} />
 
           <button
             onClick={() => refetch()}

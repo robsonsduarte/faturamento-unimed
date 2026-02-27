@@ -8,9 +8,9 @@ export function useCobrancas(filters: CobrancaFilters = {}) {
   })
 }
 
-export function useCobrancasResumo() {
+export function useCobrancasResumo(mes?: string) {
   return useQuery({
-    queryKey: ['cobrancas', 'resumo'],
-    queryFn: getCobrancasResumo,
+    queryKey: ['cobrancas', 'resumo', mes ?? 'todos'],
+    queryFn: () => getCobrancasResumo(mes),
   })
 }

@@ -10,16 +10,19 @@ import { LoteStatusBadge } from '@/components/shared/status-badge'
 import { EmptyState } from '@/components/shared/empty-state'
 import { TableSkeleton } from '@/components/shared/loading-skeleton'
 import { PageHeader } from '@/components/shared/page-header'
+import { MonthFilter, getCurrentMonth } from '@/components/shared/month-filter'
 import { formatCurrency, formatDateTime, cn } from '@/lib/utils'
 
 export default function LotesPage() {
   const [status, setStatus] = useState('')
+  const [mes, setMes] = useState(getCurrentMonth())
   const [page, setPage] = useState(1)
   const [deleting, setDeleting] = useState<string | null>(null)
   const queryClient = useQueryClient()
 
   const { data, isLoading, error, refetch } = useLotes({
     status: status || undefined,
+    mes: mes !== 'todos' ? mes : undefined,
     page,
     pageSize: 20,
   })
@@ -68,7 +71,7 @@ export default function LotesPage() {
         }
       />
 
-      <div className="flex gap-3">
+      <div className="flex gap-3 flex-wrap">
         <select
           value={status}
           onChange={(e) => { setStatus(e.target.value); setPage(1) }}
@@ -92,6 +95,8 @@ export default function LotesPage() {
             <option key={value} value={value}>{label}</option>
           ))}
         </select>
+
+        <MonthFilter value={mes} onChange={(v) => { setMes(v); setPage(1) }} />
 
         <button
           onClick={() => refetch()}

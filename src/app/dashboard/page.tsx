@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import {
   FileText,
   Package,
@@ -15,10 +16,12 @@ import { useDashboardKPIs } from '@/hooks/use-dashboard'
 import { KpiCard } from '@/components/shared/kpi-card'
 import { KpiSkeleton } from '@/components/shared/loading-skeleton'
 import { PageHeader } from '@/components/shared/page-header'
+import { MonthFilter, getCurrentMonth } from '@/components/shared/month-filter'
 import { formatCurrency } from '@/lib/utils'
 
 export default function DashboardPage() {
-  const { data: kpis, isLoading, error } = useDashboardKPIs()
+  const [mes, setMes] = useState(getCurrentMonth())
+  const { data: kpis, isLoading, error } = useDashboardKPIs(mes)
 
   return (
     <div className="space-y-6">
@@ -26,6 +29,10 @@ export default function DashboardPage() {
         title="Dashboard"
         description="Visao geral do faturamento DEDICARE"
       />
+
+      <div className="flex justify-end">
+        <MonthFilter value={mes} onChange={setMes} />
+      </div>
 
       {isLoading && <KpiSkeleton />}
 

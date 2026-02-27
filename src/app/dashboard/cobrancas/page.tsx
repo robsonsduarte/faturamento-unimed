@@ -6,6 +6,7 @@ import { useCobrancas, useCobrancasResumo } from '@/hooks/use-cobrancas'
 import { EmptyState } from '@/components/shared/empty-state'
 import { TableSkeleton, Skeleton } from '@/components/shared/loading-skeleton'
 import { PageHeader } from '@/components/shared/page-header'
+import { MonthFilter, getCurrentMonth } from '@/components/shared/month-filter'
 import { formatCurrency, formatDate, cn } from '@/lib/utils'
 
 const COBRANCA_STATUS_COLORS: Record<string, string> = {
@@ -26,14 +27,16 @@ const COBRANCA_STATUS_LABELS: Record<string, string> = {
 
 export default function CobrancasPage() {
   const [status, setStatus] = useState('')
+  const [mes, setMes] = useState(getCurrentMonth())
   const [page, setPage] = useState(1)
 
   const { data, isLoading, error, refetch } = useCobrancas({
     status: status || undefined,
+    mes: mes !== 'todos' ? mes : undefined,
     page,
     pageSize: 20,
   })
-  const { data: resumo, isLoading: resumoLoading } = useCobrancasResumo()
+  const { data: resumo, isLoading: resumoLoading } = useCobrancasResumo(mes !== 'todos' ? mes : undefined)
 
   const cobrancas = data?.data ?? []
   const total = data?.count ?? 0
@@ -63,7 +66,7 @@ export default function CobrancasPage() {
         }
       </div>
 
-      <div className="flex gap-3">
+      <div className="flex gap-3 flex-wrap">
         <select
           value={status}
           onChange={(e) => { setStatus(e.target.value); setPage(1) }}
@@ -78,6 +81,7 @@ export default function CobrancasPage() {
             <option key={s} value={s}>{COBRANCA_STATUS_LABELS[s]}</option>
           ))}
         </select>
+        <MonthFilter value={mes} onChange={(v) => { setMes(v); setPage(1) }} />
         <button
           onClick={() => refetch()}
           className={cn(

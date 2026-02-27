@@ -11,14 +11,16 @@ import { tokenValidarSchema, type TokenValidarInput } from '@/lib/validations/to
 import { PageHeader } from '@/components/shared/page-header'
 import { EmptyState } from '@/components/shared/empty-state'
 import { TableSkeleton } from '@/components/shared/loading-skeleton'
+import { MonthFilter, getCurrentMonth } from '@/components/shared/month-filter'
 import { formatDateTime, cn } from '@/lib/utils'
 
 export default function TokensPage() {
   const [validating, setValidating] = useState(false)
+  const [mes, setMes] = useState(getCurrentMonth())
 
   const { data: tokens, isLoading, refetch } = useQuery({
-    queryKey: ['tokens'],
-    queryFn: getTokens,
+    queryKey: ['tokens', mes],
+    queryFn: () => getTokens(mes !== 'todos' ? mes : undefined),
   })
 
   const {
@@ -108,8 +110,9 @@ export default function TokensPage() {
 
         <div className="lg:col-span-2">
           <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl overflow-hidden">
-            <div className="px-5 py-4 border-b border-[var(--color-border)]">
+            <div className="px-5 py-4 border-b border-[var(--color-border)] flex items-center justify-between gap-4">
               <h2 className="text-sm font-semibold text-[var(--color-text)]">Historico de Validacoes</h2>
+              <MonthFilter value={mes} onChange={setMes} />
             </div>
             {isLoading && <div className="p-6"><TableSkeleton rows={4} /></div>}
             {!isLoading && lista.length === 0 && (

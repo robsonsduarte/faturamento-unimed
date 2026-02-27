@@ -12,13 +12,14 @@ export interface GuiaFilters {
   lote_id?: string
   tipo_guia?: string
   sem_lote?: boolean
+  mes?: string
 }
 
 export async function getGuias(
   filters: GuiaFilters = {}
 ): Promise<PaginatedResponse<Guia>> {
   const supabase = createClient()
-  const { status, status_xml, search, page = 1, pageSize = 20, periodo_inicio, periodo_fim, lote_id, tipo_guia, sem_lote } = filters
+  const { status, status_xml, search, page = 1, pageSize = 20, periodo_inicio, periodo_fim, lote_id, tipo_guia, sem_lote, mes } = filters
 
   let query = supabase
     .from('guias')
@@ -41,6 +42,13 @@ export async function getGuias(
   }
   if (periodo_inicio) query = query.gte('data_autorizacao', periodo_inicio)
   if (periodo_fim) query = query.lte('data_autorizacao', periodo_fim)
+  if (mes && mes !== 'todos') {
+    const startDate = `${mes}-01`
+    const [year, month] = mes.split('-').map(Number)
+    const nextM = month === 12 ? { y: year + 1, m: 1 } : { y: year, m: month + 1 }
+    const endDate = `${nextM.y}-${String(nextM.m).padStart(2, '0')}-01`
+    query = query.gte('data_solicitacao', startDate).lt('data_solicitacao', endDate)
+  }
 
   const from = (page - 1) * pageSize
   query = query.range(from, from + pageSize - 1)

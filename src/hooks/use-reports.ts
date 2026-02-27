@@ -1,10 +1,10 @@
 import { useQuery } from '@tanstack/react-query'
 import { getReportData } from '@/lib/services/reports'
 
-export function useReportData() {
+export function useReportData(mes?: string) {
   return useQuery({
-    queryKey: ['reports', 'data'],
-    queryFn: getReportData,
+    queryKey: ['reports', 'data', mes ?? 'todos'],
+    queryFn: () => getReportData(mes),
     staleTime: 30 * 1000,
   })
 }

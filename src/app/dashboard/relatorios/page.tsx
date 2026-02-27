@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import {
   BarChart3,
   DollarSign,
@@ -12,6 +13,7 @@ import {
   Wallet,
 } from 'lucide-react'
 import { PageHeader } from '@/components/shared/page-header'
+import { MonthFilter, getCurrentMonth } from '@/components/shared/month-filter'
 import { useReportData } from '@/hooks/use-reports'
 import { formatCurrency } from '@/lib/utils'
 import { KpiSkeleton } from '@/components/shared/loading-skeleton'
@@ -112,7 +114,8 @@ function BigKpi({ label, value, color = 'text-[var(--color-text)]' }: {
 }
 
 export default function RelatoriosPage() {
-  const { data: report, isLoading, error } = useReportData()
+  const [mes, setMes] = useState(getCurrentMonth())
+  const { data: report, isLoading, error } = useReportData(mes)
 
   return (
     <div className="space-y-6">
@@ -120,6 +123,10 @@ export default function RelatoriosPage() {
         title="Relatorios"
         description="Visao consolidada de producao e financeiro"
       />
+
+      <div className="flex justify-end">
+        <MonthFilter value={mes} onChange={setMes} />
+      </div>
 
       {isLoading && <KpiSkeleton />}
 
