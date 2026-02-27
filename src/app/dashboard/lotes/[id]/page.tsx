@@ -115,7 +115,7 @@ export default function LoteDetailPage({ params }: Props) {
 
   const infoCards: { label: string; value: React.ReactNode }[] = [
     { label: 'Status', value: <LoteStatusBadge status={lote.status} /> },
-    { label: 'Tipo', value: lote.tipo },
+    { label: 'Tipo', value: lote.tipo === 'Externo' ? 'Intercambio' : lote.tipo },
     { label: 'Referencia', value: lote.referencia ?? '—' },
     { label: 'Quantidade de Guias', value: String(lote.quantidade_guias) },
     { label: 'Valor Total', value: formatCurrency(lote.valor_total) },

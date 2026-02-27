@@ -146,7 +146,7 @@ export default function NovoLotePage() {
                 )}
               >
                 <option value="Local">Local</option>
-                <option value="Externo">Externo</option>
+                <option value="Externo">Intercambio</option>
               </select>
             </div>
 

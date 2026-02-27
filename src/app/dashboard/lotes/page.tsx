@@ -132,7 +132,7 @@ export default function LotesPage() {
                 {lotes.map((lote) => (
                   <tr key={lote.id} className="hover:bg-[var(--color-surface)] transition-colors">
                     <td className="px-4 py-3 font-mono text-xs">{lote.numero_lote}</td>
-                    <td className="px-4 py-3 text-[var(--color-text-muted)]">{lote.tipo}</td>
+                    <td className="px-4 py-3 text-[var(--color-text-muted)]">{lote.tipo === 'Externo' ? 'Intercambio' : lote.tipo}</td>
                     <td className="px-4 py-3 text-[var(--color-text-muted)]">{lote.referencia ?? '—'}</td>
                     <td className="px-4 py-3 font-mono text-xs">{lote.quantidade_guias}</td>
                     <td className="px-4 py-3 font-mono text-xs">{formatCurrency(lote.valor_total)}</td>
