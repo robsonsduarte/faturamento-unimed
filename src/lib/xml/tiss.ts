@@ -15,10 +15,12 @@ function ans(tag: string): string {
   return `ans:${tag}`
 }
 
-/** Sanitize text for TISS XML — remove characters that Unimed rejects */
+/** Sanitize text for TISS XML — remove accents and characters that Unimed rejects */
 function sanitize(val: string | null | undefined): string {
   if (!val) return ''
   return val
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
     .replace(/&/g, 'E')
     .replace(/</g, '')
     .replace(/>/g, '')
