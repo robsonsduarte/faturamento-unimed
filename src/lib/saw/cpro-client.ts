@@ -24,12 +24,18 @@ export interface CproConfig {
   company: string
 }
 
+/** Max retries for transient CPro API failures (404, 502, 503, timeout) */
+const CPRO_MAX_RETRIES = 2
+const CPRO_RETRY_DELAY_MS = 1500
+
 /**
  * Makes an HTTPS GET request to ConsultorioPro API.
  * The server uses a self-signed cert on a private IP (same VPS network).
  * TLS verification is disabled because the cert is self-signed — acceptable
  * only because the API runs on the same trusted infrastructure (VPS 157.173.120.60).
  * TODO: Replace with proper CA-pinned cert when CPro migrates to a public domain.
+ *
+ * Includes automatic retry for transient errors (404, 5xx, timeout, connection errors).
  */
 function cproGet(
   config: CproConfig,
@@ -37,60 +43,90 @@ function cproGet(
 ): Promise<{ status: number; body: string } | null> {
   const url = `${config.api_url}${path}`
 
-  return new Promise((resolve) => {
-    let parsed: URL
-    try {
-      parsed = new URL(url)
-    } catch {
-      console.error('[CPRO] URL invalida:', url)
-      resolve(null)
-      return
-    }
+  let parsed: URL
+  try {
+    parsed = new URL(url)
+  } catch {
+    console.error('[CPRO] URL invalida:', url)
+    return Promise.resolve(null)
+  }
 
-    const options: https.RequestOptions = {
-      hostname: parsed.hostname,
-      port: parsed.port || 443,
-      path: parsed.pathname + parsed.search,
-      method: 'GET',
-      headers: {
-        'X-API-Key': config.api_key,
-        Host: 'consultoriopro.com.br',
-        Accept: 'application/json',
-      },
-      rejectUnauthorized: false,
-      timeout: 15000,
-    }
+  const requestPath = parsed.pathname + parsed.search
 
-    if (process.env.NODE_ENV !== 'production') {
-      console.log(`[CPRO] GET ${parsed.hostname}:${parsed.port || 443}${parsed.pathname}${parsed.search}`)
-    }
+  const doRequest = (): Promise<{ status: number; body: string } | null> =>
+    new Promise((resolve) => {
+      const options: https.RequestOptions = {
+        hostname: parsed.hostname,
+        port: parsed.port || 443,
+        path: requestPath,
+        method: 'GET',
+        headers: {
+          'X-API-Key': config.api_key,
+          Host: 'consultoriopro.com.br',
+          Accept: 'application/json',
+        },
+        rejectUnauthorized: false,
+        timeout: 15000,
+      }
 
-    const req = https.request(options, (res) => {
-      let body = ''
-      res.on('data', (chunk: Buffer) => {
-        body += chunk.toString()
+      const req = https.request(options, (res) => {
+        let body = ''
+        res.on('data', (chunk: Buffer) => {
+          body += chunk.toString()
+        })
+        res.on('end', () => {
+          resolve({ status: res.statusCode ?? 0, body })
+        })
       })
-      res.on('end', () => {
-        if (process.env.NODE_ENV !== 'production') {
-          console.log(`[CPRO] Status: ${res.statusCode}, Body: ${body.slice(0, 300)}`)
-        }
-        resolve({ status: res.statusCode ?? 0, body })
+
+      req.on('error', (err) => {
+        console.error(`[CPRO] Erro de conexao (${requestPath}):`, err.message)
+        resolve(null)
       })
+
+      req.on('timeout', () => {
+        console.error(`[CPRO] Timeout apos 15s (${requestPath})`)
+        req.destroy()
+        resolve(null)
+      })
+
+      req.end()
     })
 
-    req.on('error', (err) => {
-      console.error('[CPRO] Erro de conexao:', err.message)
-      resolve(null)
-    })
+  const isRetryable = (res: { status: number } | null): boolean => {
+    if (!res) return true // connection error or timeout
+    // 404 from CPro can be transient (nginx misconfiguration, service restart)
+    // 5xx are server errors, always retryable
+    return res.status === 404 || res.status >= 500
+  }
 
-    req.on('timeout', () => {
-      console.error('[CPRO] Timeout apos 15s')
-      req.destroy()
-      resolve(null)
-    })
+  const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 
-    req.end()
-  })
+  const execute = async (): Promise<{ status: number; body: string } | null> => {
+    for (let attempt = 0; attempt <= CPRO_MAX_RETRIES; attempt++) {
+      const res = await doRequest()
+
+      if (res && !isRetryable(res)) {
+        return res
+      }
+
+      if (attempt < CPRO_MAX_RETRIES && isRetryable(res)) {
+        const delay = CPRO_RETRY_DELAY_MS * (attempt + 1)
+        console.warn(
+          `[CPRO] Tentativa ${attempt + 1}/${CPRO_MAX_RETRIES + 1} falhou` +
+          ` (status=${res?.status ?? 'null'}, path=${requestPath}).` +
+          ` Retrying em ${delay}ms...`
+        )
+        await sleep(delay)
+        continue
+      }
+
+      return res
+    }
+    return null
+  }
+
+  return execute()
 }
 
 /**
@@ -111,7 +147,12 @@ export async function fetchCproData(
   )
 
   if (!res || res.status >= 400) {
-    console.error(`[CPRO] Endpoint retornou status ${res?.status ?? 'null'}`)
+    console.error(
+      `[CPRO] Endpoint retornou status ${res?.status ?? 'null'}` +
+      ` para guia ${guideNumber}` +
+      ` (url=${config.api_url}, company=${config.company})` +
+      ` body=${res?.body?.slice(0, 200) ?? 'null'}`
+    )
     return null
   }
 
