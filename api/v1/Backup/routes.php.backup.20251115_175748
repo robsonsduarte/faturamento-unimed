@@ -1,0 +1,163 @@
+<?php
+use API\Controllers\ScheduleController;
+use API\Controllers\ProfessionalController;
+use API\Controllers\SyncController;
+use API\Helpers\Response;
+
+class Router
+{
+    private $method;
+    private $path;
+    private $pathParts;
+    
+    public function __construct()
+    {
+        $this->method = $_SERVER['REQUEST_METHOD'];
+        $this->path = $this->getPath();
+        $this->pathParts = explode('/', trim($this->path, '/'));
+    }
+    
+    private function getPath()
+    {
+        $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+        $path = preg_replace('#^/service/api/v1#', '', $path);
+        return $path ?: '/';
+    }
+    
+    public function dispatch()
+    {
+        if ($this->matches('GET', '/schedules/{company_id}')) {
+            $controller = new ScheduleController();
+            $controller->index($this->getParam(1));
+            return;
+        }
+        
+        if ($this->matches('GET', '/schedules/{company_id}/{user_id}')) {
+            $controller = new ScheduleController();
+            $controller->show($this->getParam(1), $this->getParam(2));
+            return;
+        }
+        
+        if ($this->matches('GET', '/schedules/{company_id}/availability/{user_id}')) {
+            $controller = new ScheduleController();
+            $controller->availability($this->getParam(1), $this->getParam(3));
+            return;
+        }
+        
+        if ($this->matches('GET', '/professionals/{company_id}')) {
+            $controller = new ProfessionalController();
+            $controller->index($this->getParam(1));
+            return;
+        }
+        
+        
+        if ($this->matches('GET', '/professionals/{company_id}/occupations')) {
+            $controller = new ProfessionalController();
+            $controller->occupations($this->getParam(1));
+            return;
+        }
+        
+        
+        if ($this->matches('GET', '/professionals/{company_id}/{user_id}')) {
+            $controller = new ProfessionalController();
+            $controller->show($this->getParam(1), $this->getParam(2));
+            return;
+        }
+        
+        
+        if ($this->matches('POST', '/sync/google-calendar')) {
+            $controller = new SyncController();
+            $controller->create();
+            return;
+        }
+        
+        if ($this->matches('GET', '/sync/google-calendar/{company_id}')) {
+            $controller = new SyncController();
+            $controller->index($this->getParam(2));
+            return;
+        }
+        
+        if ($this->matches('PUT', '/sync/google-calendar/{company_id}/{user_id}/toggle')) {
+            $controller = new SyncController();
+            $controller->toggle($this->getParam(2), $this->getParam(3));
+            return;
+        }
+        
+        if ($this->matches('DELETE', '/sync/google-calendar/{company_id}/{user_id}')) {
+            $controller = new SyncController();
+            $controller->delete($this->getParam(2), $this->getParam(3));
+            return;
+        }
+        
+        if ($this->matches('GET', '/health')) {
+            Response::success([
+                'status' => 'healthy',
+                'version' => \API\Config\Config::API_VERSION,
+                'timestamp' => date('c')
+            ]);
+            return;
+        }
+        
+        if ($this->matches('GET', '/')) {
+            Response::success([
+                'name' => 'ConsultorioPro REST API',
+                'version' => \API\Config\Config::API_VERSION,
+                'documentation' => 'https://consultoriopro.com.br/api/docs',
+                'endpoints' => [
+                    'schedules' => [
+                        'GET /schedules/{company_id}',
+                        'GET /schedules/{company_id}/{user_id}',
+                        'GET /schedules/{company_id}/availability/{user_id}'
+                    ],
+                    'professionals' => [
+                        'GET /professionals/{company_id}',
+                        'GET /professionals/{company_id}/{user_id}',
+                        'GET /professionals/{company_id}/occupations'
+                    ],
+                    'sync' => [
+                        'POST /sync/google-calendar',
+                        'GET /sync/google-calendar/{company_id}',
+                        'PUT /sync/google-calendar/{company_id}/{user_id}/toggle',
+                        'DELETE /sync/google-calendar/{company_id}/{user_id}'
+                    ]
+                ]
+            ]);
+            return;
+        }
+        
+        Response::notFound('Endpoint');
+    }
+    
+    private function matches($method, $pattern)
+    {
+        if ($this->method !== $method) {
+            return false;
+        }
+        
+        $patternParts = explode('/', trim($pattern, '/'));
+        
+        if (count($this->pathParts) !== count($patternParts)) {
+            return false;
+        }
+        
+        foreach ($patternParts as $index => $part) {
+            if (strpos($part, '{') === 0) {
+                continue;
+            }
+            
+            if ($part !== $this->pathParts[$index]) {
+                return false;
+            }
+        }
+        
+        return true;
+    }
+    
+    private function getParam($index)
+    {
+        return $this->pathParts[$index] ?? null;
+    }
+}
+
+$router = new Router();
+$router->dispatch();

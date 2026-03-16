@@ -1,0 +1,7 @@
+RewriteEngine On
+RewriteBase /service/api/v1/
+
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+
+RewriteRule ^(.*)$ routes.php [QSA,L]

@@ -1,0 +1,1106 @@
+{
+  "name": "00. SAW - Ler Guias (API Puppeteer)",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -7280,
+        2032
+      ],
+      "id": "99e27968-f26e-439f-925a-c560a602bb8f",
+      "name": "Executar Workflow"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "saw-user",
+              "name": "SAW_USER",
+              "value": "cnu.robson.duarte",
+              "type": "string"
+            },
+            {
+              "id": "saw-pass",
+              "name": "SAW_PASSWORD",
+              "value": "EhNoisNaFita852*",
+              "type": "string"
+            },
+            {
+              "id": "cookie-key",
+              "name": "COOKIE_KEY",
+              "value": "saw_session_cookies",
+              "type": "string"
+            },
+            {
+              "id": "api-url",
+              "name": "API_URL",
+              "value": "http://puppeteer-api:3001",
+              "type": "string"
+            },
+            {
+              "id": "saw-login-url",
+              "name": "SAW_LOGIN_URL",
+              "value": "https://saw.trixti.com.br/saw/Logar.do?method=abrirSAW",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -7072,
+        2032
+      ],
+      "id": "d4cd323d-6791-4440-824d-8e63dcd536d1",
+      "name": "Credenciais SAW"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "propertyName": "value",
+        "key": "saw_session_cookies",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        -6848,
+        2032
+      ],
+      "id": "09378e7b-5b76-4b5e-baec-7ff02d6b09d4",
+      "name": "3. Redis GET Cookies",
+      "credentials": {
+        "redis": {
+          "id": "pUEskKGAyyCSTV1N",
+          "name": "Redis N8N - CPro"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const redisValue = $input.first().json.value;\nconst creds = $('Credenciais SAW').first().json;\n\nlet cookies = null;\nlet temCookies = false;\n\nif (redisValue && redisValue !== '' && redisValue !== 'null') {\n  try {\n    const parsed = JSON.parse(redisValue);\n    cookies = parsed.cookies || parsed;\n    temCookies = Array.isArray(cookies) && cookies.length > 0;\n    \n    const temJSession = cookies.some(c => c.name === 'JSESSIONID');\n    if (!temJSession) {\n      temCookies = false;\n      cookies = null;\n    }\n  } catch (e) {\n    console.log('Erro parse cookies:', e.message);\n  }\n}\n\nreturn [{\n  json: {\n    cookies,\n    temCookies,\n    API_URL: creds.API_URL,\n    SAW_USER: creds.SAW_USER,\n    SAW_PASSWORD: creds.SAW_PASSWORD,\n    SAW_LOGIN_URL: creds.SAW_LOGIN_URL,\n    COOKIE_KEY: creds.COOKIE_KEY\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -6640,
+        2032
+      ],
+      "id": "dcca036d-a70c-4880-a178-fa531970ea79",
+      "name": "Preparar Cookies"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.temCookies }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              },
+              "id": "578cf008-db5b-4968-bfaf-353d4f537014"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -6416,
+        2032
+      ],
+      "id": "3dceeb24-3c10-4722-ab51-d02077d2de63",
+      "name": "Tem Cookies?"
+    },
+    {
+      "parameters": {
+        "operation": "runCustomScript",
+        "scriptCode": "// ============================================\n// VALIDAR SESSÃO SAW - Puppeteer Community Node\n// $page e $browser já disponíveis pelo node\n// ============================================\nconst cookies = $('Preparar Cookies').first().json.cookies;\n\nconsole.log('[VALIDAR SESSÃO] Testando cookies...');\n\ntry {\n  // 1. Navegar para o domínio SAW para poder injetar cookies\n  await $page.goto('https://saw.trixti.com.br', {\n    waitUntil: 'domcontentloaded',\n    timeout: 20000\n  });\n\n  // 2. Injetar cookies da sessão\n  await $page.setCookie(...cookies);\n\n  // 3. Navegar para a página principal\n  await $page.goto('https://saw.trixti.com.br/saw/Principal.do', {\n    waitUntil: 'networkidle2',\n    timeout: 30000\n  });\n\n  await $page.waitForFunction(() => document.readyState === 'complete', {\n    timeout: 10000\n  }).catch(() => {});\n\n  // 4. Verificar se está logado\n  const valida = await $page.evaluate(() => {\n    return document.querySelector('#topoBarraPrincipal') !== null;\n  });\n\n  console.log('[VALIDAR SESSÃO] Resultado:', valida ? 'válida' : 'expirada');\n  return [{ json: { success: true, valida } }];\n\n} catch (error) {\n  console.error('[VALIDAR SESSÃO] Erro:', error.message);\n  return [{ json: { success: false, valida: false, erro: error.message } }];\n}",
+        "options": {
+          "headless": "new"
+        }
+      },
+      "type": "n8n-nodes-puppeteer.puppeteer",
+      "typeVersion": 1,
+      "position": [
+        -6192,
+        1952
+      ],
+      "id": "6b092b70-09ed-4c68-bb0f-727a27a59801",
+      "name": "Validar Sessão",
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.success }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              },
+              "id": "sess-check-success"
+            },
+            {
+              "leftValue": "={{ $json.valida }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              },
+              "id": "sess-check-valida"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -5968,
+        1952
+      ],
+      "id": "1b12053a-372c-4f9b-a9ca-77aba9b9a399",
+      "name": "Sessão OK?"
+    },
+    {
+      "parameters": {
+        "operation": "runCustomScript",
+        "scriptCode": "const creds = $('Credenciais SAW').first().json;\nconst { SAW_USER: username, SAW_PASSWORD: password, SAW_LOGIN_URL: loginUrl } = creds;\n\nawait $page.setViewport({ width: 1280, height: 720 });\nawait $page.goto(loginUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });\nawait new Promise(r => setTimeout(r, 3000));\n\n// Login\nfor (const [sel, val] of [['#login', username], ['#password', password]]) {\n  await $page.$eval(sel, el => el.value = '');\n  await $page.click(sel);\n  await $page.type(sel, val, { delay: 80 });\n}\n\nawait $page.click('#submitForm');\nawait new Promise(r => setTimeout(r, 15000));\n\n// Checar frames (SAW é sistema Java antigo, provavelmente usa framesets)\nconst resultado = await $page.evaluate(() => {\n  const frames = document.querySelectorAll('frame, iframe');\n  return {\n    url: window.location.href,\n    title: document.title,\n    numFrames: frames.length,\n    frames: Array.from(frames).map(f => ({ tag: f.tagName, src: f.src, id: f.id, name: f.name })),\n    allIds: Array.from(document.querySelectorAll('[id]')).slice(0, 20).map(el => el.id),\n    htmlSnippet: document.documentElement.innerHTML.substring(0, 1500)\n  };\n});\n\nreturn [{ json: resultado }];",
+        "options": {
+          "headless": true
+        }
+      },
+      "type": "n8n-nodes-puppeteer.puppeteer",
+      "typeVersion": 1,
+      "position": [
+        -6192,
+        2208
+      ],
+      "id": "ccc5c8f8-9708-4136-b256-80078c0a2d62",
+      "name": "Fazer Login (Puppeteer)"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.temCookies }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              },
+              "id": "55ddf000-222e-4d5d-a717-b602d987608d"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -5968,
+        2208
+      ],
+      "id": "5dd5a7e8-cf63-4969-ba03-d0fff898fdac",
+      "name": "Login OK?"
+    },
+    {
+      "parameters": {
+        "operation": "set",
+        "key": "saw_session_cookies",
+        "value": "={{ JSON.stringify({ cookies: $json.cookies, timestamp: new Date().toISOString() }) }}",
+        "expire": true,
+        "ttl": 43200
+      },
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        -5744,
+        2128
+      ],
+      "id": "cf04c7a2-e411-400e-9fe9-dca9d973d7c5",
+      "name": "Redis SET Cookies",
+      "credentials": {
+        "redis": {
+          "id": "pUEskKGAyyCSTV1N",
+          "name": "Redis N8N - CPro"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { success: false, erro: 'Login falhou - verifique credenciais' } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -5744,
+        2368
+      ],
+      "id": "e1f72a41-7a1d-48bb-a613-2d19ef4ebd21",
+      "name": "Erro: Login Falhou"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1RUlYY3t3_wU2JgN5cNa2yJj9CN7yLXtlneWqwnFWNnY",
+          "mode": "list",
+          "cachedResultName": "Guias Unimed",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1RUlYY3t3_wU2JgN5cNa2yJj9CN7yLXtlneWqwnFWNnY/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 701286012,
+          "mode": "list",
+          "cachedResultName": "GUIAS",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1RUlYY3t3_wU2JgN5cNa2yJj9CN7yLXtlneWqwnFWNnY/edit#gid=701286012"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "status_guide",
+              "lookupValue": "CPRO"
+            },
+            {
+              "lookupColumn": "status_xml",
+              "lookupValue": "PENDENTE"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -5520,
+        2032
+      ],
+      "id": "a3b3c165-d0d2-447a-8c1b-c5a5b1b2d560",
+      "name": "Ler Todas as Guias",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "B5d0D32wrWm8oiu0",
+          "name": "Google Sheets robsonsduarte"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const todasGuias = $input.all();\n\nconst guiasFiltradas = todasGuias.filter(item => {\n  const status = (item.json.status_guide || '').toString().toUpperCase().trim();\n  return status === 'COBRAR OU TOKEN' || status === 'CPRO';\n});\n\nif (guiasFiltradas.length === 0) {\n  return [{ json: { temGuias: false, mensagem: 'Nenhuma guia pendente' } }];\n}\n\nconsole.log('Guias filtradas:', guiasFiltradas.length, 'de', todasGuias.length, 'total');\n\nreturn guiasFiltradas.map(item => ({ json: { ...item.json, temGuias: true } }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -5296,
+        2032
+      ],
+      "id": "0e6694b6-85ad-4de8-867e-e92107afbaa9",
+      "name": "Filtrar Guias"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.temGuias }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              },
+              "id": "tem-guias-check"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -5072,
+        2032
+      ],
+      "id": "a49e20ec-f2dd-4499-b2d1-1bb669603104",
+      "name": "Tem Guias?"
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { success: true, mensagem: 'Nenhuma guia pendente para processar' } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -4848,
+        2208
+      ],
+      "id": "149d53e3-0f1b-4dee-8566-729fa5d0a39b",
+      "name": "Sem Guias"
+    },
+    {
+      "parameters": {
+        "options": {
+          "reset": false
+        }
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -4848,
+        2032
+      ],
+      "id": "dd1bb794-112d-4490-b462-f12339b852a3",
+      "name": "Loop Guias"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "tem-guia",
+              "leftValue": "={{ $json.guide_number }}",
+              "rightValue": "",
+              "operator": {
+                "type": "number",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -4624,
+        2048
+      ],
+      "id": "ceafe8d4-2987-41fb-8610-7c195f48542b",
+      "name": "Tem Número Guia?"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Credenciais SAW').first().json.API_URL }}/saw/ler-guia",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ cookies: $('Preparar Cookies').first().json.cookies, numeroGuia: $json.guide_number }) }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -4400,
+        1952
+      ],
+      "id": "c2d66012-679f-432a-bc01-629b02c5e47d",
+      "name": "Ler Guia (API)",
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "url": "=https://177.136.241.79/service/api/v1/executions/by-guide-number/{{ $json.numeroGuia }}",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "company",
+              "value": "1"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "e877ba1c49319300be89bee57a9f11581c0b65c3326ddaf9121b414bafed5960"
+            },
+            {
+              "name": "Host",
+              "value": "consultoriopro.com.br"
+            }
+          ]
+        },
+        "options": {
+          "allowUnauthorizedCerts": true,
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -4176,
+        1952
+      ],
+      "id": "6fcf979e-d9f0-4999-8cdc-025da6d934f3",
+      "name": "Buscar Dados CPro"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Combinar dados do SAW + ConsultorioPro\nconst saw = $('Ler Guia (API)').first().json;\nconst cpro = $json;\nconst guiaOriginal = $('Tem Número Guia?').first().json;\n\nreturn [{\n  json: {\n    // Identificação\n    guide_number: saw.numeroGuia || guiaOriginal.guide_number,\n    row_number: guiaOriginal.row_number,\n    \n    // Dados do SAW\n    status: saw.status,\n    senha: saw.senha,\n    dataAutorizacao: saw.dataAutorizacao,\n    dataValidadeSenha: saw.dataValidadeSenha,\n    quantidadeSolicitada: saw.quantidadeSolicitada,\n    quantidadeAutorizada: saw.quantidadeAutorizada,\n    procedimentosRealizados: saw.procedimentosRealizados,\n    numeroCarteira: saw.numeroCarteira,\n    nomeBeneficiario: saw.nomeBeneficiario,\n    codigoPrestador: saw.codigoPrestador,\n    nomeProfissional: saw.nomeProfissional,\n    cnes: saw.cnes,\n    \n    // Dados do ConsultorioPro\n    procedimentosCadastrados: cpro.data?.totals?.count || 0,\n    userId: cpro.data?.attendances?.[0]?.professional?.id || null,\n    valorTotal: cpro.data?.attendances?.[0]?.value_formatted || null,\n    \n    // Status\n    sucesso: saw.success,\n    erro: saw.erro\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -3952,
+        1952
+      ],
+      "id": "440fec13-d2fa-4c7d-a2d8-626f0d2e482f",
+      "name": "Combinar Dados"
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "1zYIhYUXLGyfUdeG7LD7YZbX3W0BgKCYD1V4vn1mXBCc",
+          "mode": "list",
+          "cachedResultName": "Guias Unimed",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1zYIhYUXLGyfUdeG7LD7YZbX3W0BgKCYD1V4vn1mXBCc/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "GUIAS",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1zYIhYUXLGyfUdeG7LD7YZbX3W0BgKCYD1V4vn1mXBCc/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "guide_number": "={{ $json.guide_number }}",
+            " Status": "={{ $json.status }}",
+            "4-Data da Autorização": "={{ $json.dataAutorizacao }}",
+            "27-Qt. Solic.": "={{ $json.quantidadeSolicitada }}",
+            "28-Qt. Autorizada": "={{ $json.quantidadeAutorizada }}",
+            "Procedimentos realizados": "={{ $json.procedimentosRealizados }}",
+            "Procedimentos Cadastrados": "={{ $json.procedimentosCadastrados }}",
+            " 5-Senha ": "={{ $json.senha }}",
+            "6-Data Validade da Senha ": "={{ $json.dataValidadeSenha }}",
+            "user_id": "={{ $json.userId }}",
+            "value": "={{ $json.valorTotal }}",
+            "Status_N8N": "VERIFICADA"
+          },
+          "matchingColumns": [
+            "guide_number"
+          ],
+          "schema": [
+            {
+              "id": "guide_number",
+              "displayName": "guide_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "provider",
+              "displayName": "provider",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "convenio",
+              "displayName": "convenio",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Convenio Formatado",
+              "displayName": "Convenio Formatado",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "paciente",
+              "displayName": "paciente",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "dataSolicitacao",
+              "displayName": "dataSolicitacao",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": " Status",
+              "displayName": " Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "4-Data da Autorização",
+              "displayName": "4-Data da Autorização",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "27-Qt. Solic.",
+              "displayName": "27-Qt. Solic.",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "28-Qt. Autorizada",
+              "displayName": "28-Qt. Autorizada",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Procedimentos realizados",
+              "displayName": "Procedimentos realizados",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Procedimentos Cadastrados",
+              "displayName": "Procedimentos Cadastrados",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": " 5-Senha ",
+              "displayName": " 5-Senha ",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "6-Data Validade da Senha ",
+              "displayName": "6-Data Validade da Senha ",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status_guide",
+              "displayName": "status_guide",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Status_N8N",
+              "displayName": "Status_N8N",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "user_id",
+              "displayName": "user_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "attdStart",
+              "displayName": "attdStart",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "attdEnd",
+              "displayName": "attdEnd",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "value",
+              "displayName": "value",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "lote",
+              "displayName": "lote",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "tipo",
+              "displayName": "tipo",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "status_xml",
+              "displayName": "status_xml",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "diffCobrancas",
+              "displayName": "diffCobrancas",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -3728,
+        1952
+      ],
+      "id": "7324cb25-bf63-431f-8566-6a0ca423df07",
+      "name": "Atualizar Google Sheets",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "B5d0D32wrWm8oiu0",
+          "name": "Google Sheets robsonsduarte"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 2
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        -3504,
+        2048
+      ],
+      "id": "7d906070-fcfc-446c-8469-4e8aea650e88",
+      "name": "Aguardar 2s",
+      "webhookId": "a86a4aac-5964-4d38-ad27-c02076c5c24a"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Relatório final\nconst items = $('Loop Guias').all();\nconsole.log('Processamento concluído:', items.length, 'guias');\nreturn [{ json: { success: true, total: items.length, mensagem: 'Processamento concluído' } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -4624,
+        1808
+      ],
+      "id": "2a12273a-3cc2-4ce7-bc45-4a26ae8a6d72",
+      "name": "Relatório Final"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Executar Workflow": {
+      "main": [
+        [
+          {
+            "node": "Credenciais SAW",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Credenciais SAW": {
+      "main": [
+        [
+          {
+            "node": "3. Redis GET Cookies",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "3. Redis GET Cookies": {
+      "main": [
+        [
+          {
+            "node": "Preparar Cookies",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar Cookies": {
+      "main": [
+        [
+          {
+            "node": "Tem Cookies?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tem Cookies?": {
+      "main": [
+        [
+          {
+            "node": "Validar Sessão",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Fazer Login (Puppeteer)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validar Sessão": {
+      "main": [
+        [
+          {
+            "node": "Sessão OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sessão OK?": {
+      "main": [
+        [
+          {
+            "node": "Ler Todas as Guias",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Fazer Login (Puppeteer)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fazer Login (Puppeteer)": {
+      "main": [
+        [
+          {
+            "node": "Login OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Login OK?": {
+      "main": [
+        [
+          {
+            "node": "Redis SET Cookies",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Erro: Login Falhou",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Redis SET Cookies": {
+      "main": [
+        [
+          {
+            "node": "Ler Todas as Guias",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ler Todas as Guias": {
+      "main": [
+        [
+          {
+            "node": "Filtrar Guias",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filtrar Guias": {
+      "main": [
+        [
+          {
+            "node": "Tem Guias?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tem Guias?": {
+      "main": [
+        [
+          {
+            "node": "Loop Guias",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Sem Guias",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Guias": {
+      "main": [
+        [
+          {
+            "node": "Relatório Final",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Tem Número Guia?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tem Número Guia?": {
+      "main": [
+        [
+          {
+            "node": "Ler Guia (API)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Aguardar 2s",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ler Guia (API)": {
+      "main": [
+        [
+          {
+            "node": "Buscar Dados CPro",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar Dados CPro": {
+      "main": [
+        [
+          {
+            "node": "Combinar Dados",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Combinar Dados": {
+      "main": [
+        [
+          {
+            "node": "Atualizar Google Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Atualizar Google Sheets": {
+      "main": [
+        [
+          {
+            "node": "Aguardar 2s",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aguardar 2s": {
+      "main": [
+        [
+          {
+            "node": "Loop Guias",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "c7443146-a57c-45d9-a1a8-d6b1fda35fcd",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "029f270710926d9ad97c0718d62a3f1453ee90afe444562138c25165861e429a"
+  },
+  "id": "yEpojgDIeLPIy7iHiyVkv",
+  "tags": []
+}

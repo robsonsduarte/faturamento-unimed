@@ -1,0 +1,127 @@
+{
+  "name": "SAW - Gerar XML TISS Faturamento",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "ae1beaf6-e370-4f62-971b-ee4ca4b76cc8",
+      "name": "Trigger Manual",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// CONFIGURAÇÃO DO LOTE\nreturn [{\n  json: {\n    numeroLote: '619',\n    tipo: 'Local',\n    limite: 100\n  }\n}];"
+      },
+      "id": "9fc51e8a-669a-4617-ba23-4fc2bf045961",
+      "name": "Configurar Parâmetros",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        208,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// GERA XML PARTE 01 - Preparar metadados\n// Cole aqui o código do node GERA XML PARTE 01\n// Disponível no arquivo: nodes/gera_xml_parte01.js\n\nconst CONSTANTS = {\n  REGISTRO_ANS: '339679',\n  CODIGO_PRESTADOR: '97498504',\n  NOME_PRESTADOR: 'DEDICARE SERVICOS DE FONOAUDIOLOGIA PSICOLOGIA E NUTRICAO',\n  CNES: '9794220',\n  PADRAO_TISS: '4.02.00'\n};\n\nconst parametros = $json;\nconst numeroLote = parametros.numeroLote;\nconst agora = new Date();\nconst dataTransacao = agora.toISOString().split('T')[0];\nconst horaTransacao = agora.toTimeString().split(' ')[0];\n\nreturn [{\n  json: {\n    numeroLote,\n    dataTransacao,\n    horaTransacao,\n    ...CONSTANTS,\n    guias: [] // Será preenchido após ler Google Sheets\n  }\n}];"
+      },
+      "id": "b088477b-02ca-41aa-a4e9-e97011dadfd0",
+      "name": "GERA XML PARTE 01",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        400,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ADD PROCEDIMENTOS - Gerar XML de cada guia\n// Cole aqui o código do node ADD PROCEDIMENTOS\n// Disponível no arquivo: nodes/add_procedimentos.js\n\nconst guia = $json;\n\n// Template de procedimento (SEM equipeSadt, SEM nomeBeneficiario)\nconst xmlProcedimento = `\n<ans:guiaSP-SADT>\n  <ans:cabecalhoGuia>\n    <ans:registroANS>${guia.registroANS}</ans:registroANS>\n    <ans:numeroGuiaPrestador>${guia.numeroGuiaPrestador}</ans:numeroGuiaPrestador>\n    <ans:guiaPrincipal>${guia.numeroGuiaOperadora}</ans:guiaPrincipal>\n  </ans:cabecalhoGuia>\n  <ans:dadosAutorizacao>\n    <ans:numeroGuiaOperadora>${guia.numeroGuiaOperadora}</ans:numeroGuiaOperadora>\n    <ans:dataAutorizacao>${guia.dataAutorizacao}</ans:dataAutorizacao>\n    <ans:senha>${guia.senha}</ans:senha>\n    <ans:dataValidadeSenha>${guia.dataValidadeSenha}</ans:dataValidadeSenha>\n  </ans:dadosAutorizacao>\n  <ans:dadosBeneficiario>\n    <ans:numeroCarteira>${guia.numeroCarteira}</ans:numeroCarteira>\n    <ans:atendimentoRN>N</ans:atendimentoRN>\n  </ans:dadosBeneficiario>\n  <!-- ... resto do XML ... -->\n</ans:guiaSP-SADT>`;\n\nreturn [{ json: { ...guia, xmlProcedimento } }];"
+      },
+      "id": "562a45c0-d13c-438d-b26f-4013b9aac288",
+      "name": "ADD PROCEDIMENTOS",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        608,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// MONTAR XML FINAL - Juntar todas as guias\n// Cole aqui o código do node MONTAR XML FINAL\n// Disponível no arquivo: nodes/montar_xml_final.js\n\nconst items = $input.all();\nconst primeiro = items[0].json;\n\nlet guiasXml = '';\nfor (const item of items) {\n  guiasXml += item.json.xmlProcedimento;\n}\n\nconst xmlFinal = `<?xml version=\"1.0\" encoding=\"ISO-8859-1\" standalone=\"yes\"?>\n<ans:mensagemTISS xmlns:ans=\"http://www.ans.gov.br/padroes/tiss/schemas\" xmlns:ds=\"http://www.w3.org/2000/09/xmldsig#\">\n  <ans:cabecalho>\n    <ans:identificacaoTransacao>\n      <ans:tipoTransacao>ENVIO_LOTE_GUIAS</ans:tipoTransacao>\n      <ans:sequencialTransacao>${primeiro.numeroLote}</ans:sequencialTransacao>\n      <ans:dataRegistroTransacao>${primeiro.dataTransacao}</ans:dataRegistroTransacao>\n      <ans:horaRegistroTransacao>${primeiro.horaTransacao}</ans:horaRegistroTransacao>\n    </ans:identificacaoTransacao>\n    <ans:origem>\n      <ans:identificacaoPrestador>\n        <ans:codigoPrestadorNaOperadora>${String(primeiro.codigoPrestador).padStart(20, '0')}</ans:codigoPrestadorNaOperadora>\n      </ans:identificacaoPrestador>\n    </ans:origem>\n    <ans:destino>\n      <ans:registroANS>${primeiro.registroANS}</ans:registroANS>\n    </ans:destino>\n    <ans:Padrao>4.02.00</ans:Padrao>\n  </ans:cabecalho>\n  <ans:prestadorParaOperadora>\n    <ans:loteGuias>\n      <ans:numeroLote>${primeiro.numeroLote}</ans:numeroLote>\n      <ans:guiasTISS>\n${guiasXml}\n      </ans:guiasTISS>\n    </ans:loteGuias>\n  </ans:prestadorParaOperadora>\n</ans:mensagemTISS>`;\n\nreturn [{ json: { xml: xmlFinal, numeroLote: primeiro.numeroLote, qtdGuias: items.length } }];"
+      },
+      "id": "e3b0aeb3-f826-4e68-b30c-180872e8910c",
+      "name": "MONTAR XML FINAL",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        800,
+        0
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Trigger Manual": {
+      "main": [
+        [
+          {
+            "node": "Configurar Parâmetros",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Configurar Parâmetros": {
+      "main": [
+        [
+          {
+            "node": "GERA XML PARTE 01",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GERA XML PARTE 01": {
+      "main": [
+        [
+          {
+            "node": "ADD PROCEDIMENTOS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ADD PROCEDIMENTOS": {
+      "main": [
+        [
+          {
+            "node": "MONTAR XML FINAL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "06105b5c-3353-46a4-9713-6977657f6506",
+  "meta": {
+    "instanceId": "029f270710926d9ad97c0718d62a3f1453ee90afe444562138c25165861e429a"
+  },
+  "id": "SO7JLHxMYDOORqKdHhfT6",
+  "tags": []
+}

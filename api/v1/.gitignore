@@ -1,0 +1,74 @@
+# =========================================
+# ConsultorioPro REST API - .gitignore
+# =========================================
+
+# =========================================
+# ARQUIVOS SENSÍVEIS (NUNCA COMMITAR!)
+# =========================================
+.env
+.env.local
+.env.production
+*.key
+*.pem
+*.crt
+
+# =========================================
+# LOGS
+# =========================================
+logs/
+*.log
+error_log
+access_log
+test_results_*.log
+
+# =========================================
+# BACKUPS
+# =========================================
+*.backup
+*.bak
+*.old
+*.sql.gz
+*.sql.zip
+
+# Backups de arquivos PHP
+*.php.backup
+*Controller.php.backup
+
+# =========================================
+# TEMPORÁRIOS E CACHE
+# =========================================
+tmp/
+temp/
+cache/
+*.cache
+*.tmp
+
+# =========================================
+# DEPENDÊNCIAS
+# =========================================
+vendor/
+composer.lock
+node_modules/
+
+# =========================================
+# SISTEMA OPERACIONAL
+# =========================================
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# =========================================
+# IDEs
+# =========================================
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+*.swp
+
+# =========================================
+# DIVERSOS
+# =========================================
+*.diff
+*.patch
+debug.log

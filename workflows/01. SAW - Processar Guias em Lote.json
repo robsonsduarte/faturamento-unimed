@@ -1,0 +1,1838 @@
+{
+  "name": "01. SAW - Processar Guias em Lote",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -3584,
+        -16
+      ],
+      "id": "f615e1f4-0d21-41c5-9bb4-603d070eade8",
+      "name": "Executar"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1zYIhYUXLGyfUdeG7LD7YZbX3W0BgKCYD1V4vn1mXBCc",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "GUIAS",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1zYIhYUXLGyfUdeG7LD7YZbX3W0BgKCYD1V4vn1mXBCc/edit#gid=0"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [
+        -3376,
+        -16
+      ],
+      "id": "a7b965be-9819-4c2b-8a62-6706d9f6a1bc",
+      "name": "1. Ler Guias Pendentes",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "B5d0D32wrWm8oiu0",
+          "name": "Google Sheets robsonsduarte"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const todasGuias = $input.all();\n\nconst guiasFiltradas = todasGuias.filter(item => {\n  const statusGuide = (item.json.status_guide || '').toString().toUpperCase().trim();\n  const statusXml = (item.json.status_xml || '').toString().toUpperCase().trim();\n  return statusGuide === 'COMPLETA' && statusXml === 'PENDENTE';\n});\n\nif (guiasFiltradas.length === 0) {\n  return [{ json: { temGuias: false, mensagem: 'Nenhuma guia pendente' } }];\n}\n\nconsole.log('Guias a processar:', guiasFiltradas.length);\n\nreturn [{\n  json: {\n    temGuias: true,\n    guias: guiasFiltradas.map(item => String(item.json.guide_number)),\n    totalGuias: guiasFiltradas.length,\n    API_URL: 'http://puppeteer-api:3001'\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -3152,
+        -16
+      ],
+      "id": "bead1f18-e00a-4c83-a811-99f092f8ef0c",
+      "name": "2. Preparar Lista de Guias"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.temGuias }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              },
+              "id": "af71d366-71a5-4900-ba08-f35a9e0d897b"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -2928,
+        -16
+      ],
+      "id": "69bdb56e-8981-4e01-bf8d-cca90d7c2c8b",
+      "name": "Tem Guias?"
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { success: false, erro: 'Nenhuma guia pendente para processar' } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2704,
+        192
+      ],
+      "id": "f6ef550d-c418-4c6a-9e29-642e22748f61",
+      "name": "Sem Guias"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "propertyName": "value",
+        "key": "saw_session_cookies",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        -2704,
+        -32
+      ],
+      "id": "f3f6009d-d90f-46ba-9bdd-bb9e150d972c",
+      "name": "3. Redis GET Cookies",
+      "credentials": {
+        "redis": {
+          "id": "pUEskKGAyyCSTV1N",
+          "name": "Redis N8N - CPro"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const redisValue = $input.first().json.value;\nconst dados = $('2. Preparar Lista de Guias').first().json;\n\nlet cookies = null;\nlet temCookies = false;\n\nif (redisValue && redisValue !== '' && redisValue !== 'null') {\n  try {\n    const parsed = JSON.parse(redisValue);\n    cookies = parsed.cookies || parsed;\n    temCookies = Array.isArray(cookies) && cookies.length > 0;\n    \n    const temJSession = cookies.some(c => c.name === 'JSESSIONID');\n    if (!temJSession) {\n      temCookies = false;\n      cookies = null;\n    }\n  } catch (e) {\n    console.log('Erro parse cookies:', e.message);\n  }\n}\n\nreturn [{\n  json: {\n    ...dados,\n    cookies,\n    temCookies\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2496,
+        -32
+      ],
+      "id": "8ab71937-efbb-4166-bc56-322318639397",
+      "name": "4. Parse Cookies"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.temCookies }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              },
+              "id": "578cf008-db5b-4968-bfaf-353d4f537014"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -2272,
+        -32
+      ],
+      "id": "4f972eac-f9d7-4e7b-9f30-ef58202e2e22",
+      "name": "Tem Cookies?"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.API_URL }}/saw/testar-sessao",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ cookies: $json.cookies }) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1856,
+        -160
+      ],
+      "id": "d7f9c665-0818-4943-ae58-5583b62f9b3a",
+      "name": "6. Validar Sessão (API)",
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.success }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              },
+              "id": "a1b2c3d4-sess-valid-check-001"
+            },
+            {
+              "id": "cee172b2-d3ee-4fa1-9f11-d48b84b91210",
+              "leftValue": "={{ $json.valida }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -1632,
+        -160
+      ],
+      "id": "2bb6e5f8-716c-4359-89e8-8f282ff06896",
+      "name": "Sessão OK?"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('4. Parse Cookies').first().json.API_URL }}/saw/login",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"usuario\":\"cnu.robson.duarte\",\"senha\":\"EhNoisNaFita852*\"}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1312,
+        -16
+      ],
+      "id": "437e33b4-0170-4477-bea7-88a85ea56d1e",
+      "name": "5a. Fazer Login (API)"
+    },
+    {
+      "parameters": {
+        "jsCode": "const loginResult = $input.first().json;\nconst dados = $('4. Parse Cookies').first().json;\n\nif (!loginResult.success) {\n  return [{ json: { ...dados, cookies: null, temCookies: false, erroLogin: loginResult.erro } }];\n}\n\nreturn [{\n  json: {\n    ...dados,\n    cookies: loginResult.cookies,\n    temCookies: true,\n    loginFresh: true\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1088,
+        -16
+      ],
+      "id": "cfa99475-4bcf-4fbc-b3d9-cd93ddfae0aa",
+      "name": "5b. Processar Login"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.temCookies }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              },
+              "id": "55ddf000-222e-4d5d-a717-b602d987608d"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -880,
+        -16
+      ],
+      "id": "da943c93-c697-47a1-a4a6-bb1c3a3a3b47",
+      "name": "Login OK?"
+    },
+    {
+      "parameters": {
+        "operation": "set",
+        "key": "saw_session_cookies",
+        "value": "={{ JSON.stringify({ cookies: $json.cookies, timestamp: new Date().toISOString() }) }}",
+        "expire": true,
+        "ttl": 43200
+      },
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        -656,
+        -32
+      ],
+      "id": "efb599d7-2eda-4578-981b-d24c0f38ac84",
+      "name": "5c. Redis SET Cookies",
+      "credentials": {
+        "redis": {
+          "id": "pUEskKGAyyCSTV1N",
+          "name": "Redis N8N - CPro"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const dados = $('4. Parse Cookies').first().json;\nreturn [{ json: { success: false, erro: 'Login falhou', guias: dados.guias } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -656,
+        208
+      ],
+      "id": "a80ad6cb-6392-43b2-bfc3-303d7dc43af1",
+      "name": "Erro: Login Falhou"
+    },
+    {
+      "parameters": {
+        "jsCode": "// IMPORTANTE: Este node recebe de 2 fontes:\n// 1. Sessão OK? (TRUE) → input é resposta do testar-sessao (NÃO tem guias)\n// 2. 5c. Redis SET Cookies → input é resultado do Redis (NÃO tem guias)\n// Por isso, SEMPRE busca guias/API_URL do node 4. Parse Cookies\n// E cookies do 5b. Processar Login (se fez login) ou do 4. Parse Cookies\n\nconst dadosBase = $('4. Parse Cookies').first().json;\nconst guias = dadosBase.guias || [];\nconst API_URL = dadosBase.API_URL;\n\n// Tenta pegar cookies do login (se passou pelo fluxo de login)\nlet cookies = dadosBase.cookies;\ntry {\n  const loginData = $('5b. Processar Login').first().json;\n  if (loginData && loginData.cookies) {\n    cookies = loginData.cookies;\n    console.log('Usando cookies do login fresh');\n  }\n} catch(e) {\n  // Não passou pelo login, usa cookies do Redis (já no dadosBase)\n  console.log('Usando cookies do Redis cache');\n}\n\nconsole.log('Separando', guias.length, 'guias em items individuais');\n\nreturn guias.map(numeroGuia => ({\n  json: {\n    numeroGuia: String(numeroGuia),\n    cookies: cookies,\n    API_URL: API_URL\n  }\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -304,
+        -176
+      ],
+      "id": "76e8d25a-4441-46e1-9c7d-a9787fdf9360",
+      "name": "7. Separar Guias em Array"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -96,
+        -176
+      ],
+      "id": "e029cf67-4027-46f7-b87e-b850a236ea15",
+      "name": "Loop Over Items"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.success }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              },
+              "id": "busca-ok-check-001"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        336,
+        -160
+      ],
+      "id": "d9d6aa92-7c2e-4336-ae47-cf20acbc73cc",
+      "name": "Busca OK?"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Busca falhou - pega dados da guia atual do Loop\n// O input vem do Busca OK? (FALSE) que recebeu a resposta HTTP com erro\nconst dados = $json;\n\n// Tenta pegar o numero da guia\nlet numeroGuia = dados.numeroGuia;\nif (!numeroGuia) {\n  try {\n    numeroGuia = $('8. Buscar XML (API)').first().json.numeroGuia;\n  } catch(e) {\n    numeroGuia = 'desconhecida';\n  }\n}\n\nreturn [{\n  json: {\n    guide_number: String(numeroGuia),\n    status_xml: 'ERRO: ' + (dados.erro || dados.message || 'Falha ao buscar XML')\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        592,
+        48
+      ],
+      "id": "808d4b8c-cca7-47fc-b9da-73f557c380f2",
+      "name": "Erro: Busca Falhou"
+    },
+    {
+      "parameters": {
+        "jsCode": "const r = $json;\n\nif (!r.xmlContent) {\n  return [{ json: { _skip: true, numeroGuia: r.numeroGuia } }];\n}\n\nreturn [{ json: r }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        560,
+        -176
+      ],
+      "id": "30dc139a-b898-4090-9e47-f82ebcc44dfc",
+      "name": "9. Extrair XML"
+    },
+    {
+      "parameters": {
+        "jsCode": "const r = $json;\n\nif (r._skip) {\n  return [{ json: { _skip: true, numeroGuia: r.numeroGuia } }];\n}\n\nconst xml = r.xmlContent;\n\nfunction getTag(tagName) {\n  const regex = new RegExp(`<ans:${tagName}>(.*?)</ans:${tagName}>`, 's');\n  const match = xml.match(regex);\n  return match ? match[1].trim() : '';\n}\n\nfunction getNested(parent, child) {\n  const pRegex = new RegExp(`<ans:${parent}>(.*?)</ans:${parent}>`, 's');\n  const pMatch = xml.match(pRegex);\n  if (!pMatch) return '';\n  const cRegex = new RegExp(`<ans:${child}>(.*?)</ans:${child}>`, 's');\n  const cMatch = pMatch[1].match(cRegex);\n  return cMatch ? cMatch[1].trim() : '';\n}\n\nreturn [{\n  json: {\n    'Nº Guia Operadora': \"'\" + getTag('numeroGuiaOperadora'),\n    'Nº Guia Prestador': \"'\" + getTag('numeroGuiaPrestador'),\n    'Data Autorização': getTag('dataAutorizacao'),\n    'Senha': \"'\" + getTag('senha'),\n    'Validade Senha': getTag('dataValidadeSenha'),\n    'Nº Carteira': \"'\" + getTag('numeroCarteira'),\n    'Nome Beneficiário': getTag('nomeBeneficiario'),\n    'Data Solicitação': getTag('dataSolicitacao'),\n    'Código Prestador': getNested('contratadoSolicitante', 'codigoPrestadorNaOperadora'),\n    'Nome Prestador': getNested('contratadoSolicitante', 'nomeContratado'),\n    'CNES': getNested('dadosExecutante', 'CNES'),\n    'Nome Profissional': getNested('profissionalSolicitante', 'nomeProfissional'),\n    'Conselho': getNested('profissionalSolicitante', 'conselhoProfissional'),\n    'Nº Conselho': getNested('profissionalSolicitante', 'numeroConselhoProfissional'),\n    'UF': getNested('profissionalSolicitante', 'UF'),\n    'CBOS': getNested('profissionalSolicitante', 'CBOS'),\n    'Tipo Atendimento': getTag('tipoAtendimento'),\n    'Indicação Acidente': getTag('indicacaoAcidente'),\n    'Indicação Clínica': getTag('indicacaoClinica'),\n    'Valor Total Geral': getTag('valorTotalGeral'),\n    'Status': 'Importado',\n    'Data Importação': new Date().toISOString(),\n    'cadastrada': 'SIM',\n    'numeroGuia': r.numeroGuia,\n    'xmlContent': xml\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        784,
+        -176
+      ],
+      "id": "e66ed161-7c2a-4c1e-bc5a-2ba00e76489a",
+      "name": "10. Parse Dados Gerais"
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "1zYIhYUXLGyfUdeG7LD7YZbX3W0BgKCYD1V4vn1mXBCc",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "FATURAMENTO_TISS",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Nº Guia Operadora": "={{ $json[\"Nº Guia Operadora\"] }}",
+            "Nº Carteira": "={{ $json[\"Nº Carteira\"] }}",
+            "Nome Beneficiário": "={{ $json[\"Nome Beneficiário\"] }}",
+            "Data Solicitação": "={{ $json[\"Data Solicitação\"] }}",
+            "Código Prestador": "=97498504",
+            "Nome Prestador": "={{ $json[\"Nome Prestador\"] }}",
+            "CNES": "9794220",
+            "Nome Profissional": "={{ $json[\"Nome Profissional\"] }}",
+            "Conselho": "={{ $json.Conselho }}",
+            "Nº Conselho": "={{ $json[\"Nº Conselho\"] }}",
+            "UF": "={{ $json.UF }}",
+            "CBOS": "={{ $json.CBOS }}",
+            "Tipo Atendimento": "={{ $json[\"Tipo Atendimento\"] }}",
+            "Indicação Acidente": "={{ $json[\"Indicação Acidente\"] }}",
+            "Indicação Clínica": "={{ $json[\"Indicação Clínica\"] }}",
+            "value": "={{ $json[\"Valor Total Geral\"] }}",
+            "Status": "={{ $json.Status }}",
+            "Data Importação": "={{ $json[\"Data Importação\"] }}",
+            "cadastrada": "={{ $json.cadastrada }}",
+            "Nº Guia Prestador": "={{ $json[\"Nº Guia Prestador\"] }}",
+            "Data Autorização": "={{ $json[\"Data Autorização\"] }}",
+            "Senha": "={{ $json.Senha }}",
+            "Validade Senha": "={{ $json[\"Validade Senha\"] }}"
+          },
+          "matchingColumns": [
+            "Nº Guia Operadora"
+          ],
+          "schema": [
+            {
+              "id": "Referencia",
+              "displayName": "Referencia",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Nº Guia Operadora",
+              "displayName": "Nº Guia Operadora",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Nº Guia Prestador",
+              "displayName": "Nº Guia Prestador",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Data Autorização",
+              "displayName": "Data Autorização",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Senha",
+              "displayName": "Senha",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Validade Senha",
+              "displayName": "Validade Senha",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Nº Carteira",
+              "displayName": "Nº Carteira",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Nome Beneficiário",
+              "displayName": "Nome Beneficiário",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Data Solicitação",
+              "displayName": "Data Solicitação",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Código Prestador",
+              "displayName": "Código Prestador",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Nome Prestador",
+              "displayName": "Nome Prestador",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "CNES",
+              "displayName": "CNES",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Nome Profissional",
+              "displayName": "Nome Profissional",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Conselho",
+              "displayName": "Conselho",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Nº Conselho",
+              "displayName": "Nº Conselho",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "UF",
+              "displayName": "UF",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "CBOS",
+              "displayName": "CBOS",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Tipo Atendimento",
+              "displayName": "Tipo Atendimento",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Indicação Acidente",
+              "displayName": "Indicação Acidente",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Indicação Clínica",
+              "displayName": "Indicação Clínica",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "value",
+              "displayName": "value",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Data Importação",
+              "displayName": "Data Importação",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "type",
+              "displayName": "type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "cadastrada",
+              "displayName": "cadastrada",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [
+        992,
+        -288
+      ],
+      "id": "969bdb8e-1529-40f4-a0fc-36bd8fc420a4",
+      "name": "11a. Salvar FATURAMENTO",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "B5d0D32wrWm8oiu0",
+          "name": "Google Sheets robsonsduarte"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const dados = $json;\n\nif (dados._skip) {\n  return [{ json: { _skip: true, numeroGuia: dados.numeroGuia } }];\n}\n\nconst xml = dados.xmlContent;\n\nfunction getTag(tagName) {\n  const regex = new RegExp(`<ans:${tagName}>(.*?)</ans:${tagName}>`, 's');\n  const match = xml.match(regex);\n  return match ? match[1].trim() : '';\n}\n\nfunction getNested(parent, child) {\n  const pRegex = new RegExp(`<ans:${parent}>(.*?)</ans:${parent}>`, 's');\n  const pMatch = xml.match(pRegex);\n  if (!pMatch) return '';\n  const cRegex = new RegExp(`<ans:${child}>(.*?)</ans:${child}>`, 's');\n  const cMatch = pMatch[1].match(cRegex);\n  return cMatch ? cMatch[1].trim() : '';\n}\n\nconst numeroGuiaOperadora = getTag('numeroGuiaOperadora');\nconst numeroGuiaPrestador = getTag('numeroGuiaPrestador');\nconst nomeBeneficiario = getTag('nomeBeneficiario');\nconst nomeProfissional = getNested('profissionalSolicitante', 'nomeProfissional');\nconst conselho = getNested('profissionalSolicitante', 'conselhoProfissional');\nconst numeroConselho = getNested('profissionalSolicitante', 'numeroConselhoProfissional');\nconst uf = getNested('profissionalSolicitante', 'UF');\nconst cbos = getNested('profissionalSolicitante', 'CBOS');\n\nconst procedimentosRegex = /<ans:procedimentoExecutado>(.*?)<\\/ans:procedimentoExecutado>/gs;\nconst matches = [...xml.matchAll(procedimentosRegex)];\n\nif (matches.length === 0) {\n  return [{ json: { _noProcedimentos: true, numeroGuia: dados.numeroGuia } }];\n}\n\nconst procedimentos = matches.map((match, index) => {\n  const procXML = match[1];\n  \n  function getProcTag(tagName) {\n    const regex = new RegExp(`<ans:${tagName}>(.*?)</ans:${tagName}>`, 's');\n    const m = procXML.match(regex);\n    return m ? m[1].trim() : '';\n  }\n  \n  const descricao = getProcTag('descricaoProcedimento');\n  let valorUnitario = 30.36;\n  if (descricao.toLowerCase().includes('psicomotricidade') || descricao.toLowerCase().includes('psicomotricista')) {\n    valorUnitario = 70.00;\n  } else if (descricao.toLowerCase().includes('fonoaudi')) {\n    valorUnitario = 35.00;\n  }\n  \n  const qtd = parseFloat(getProcTag('quantidadeExecutada') || 1);\n  \n  return {\n    'Chave': numeroGuiaOperadora + '-' + (index + 1),\n    'Nº Guia Operadora': \"'\" + numeroGuiaOperadora,\n    'Nº Guia Prestador': \"'\" + numeroGuiaPrestador,\n    'Sequência': index + 1,\n    'Nome Beneficiário': nomeBeneficiario,\n    'Data Execução': getProcTag('dataExecucao'),\n    'Hora Início': getProcTag('horaInicial'),\n    'Hora Fim': getProcTag('horaFinal'),\n    'Código Tabela': getProcTag('codigoTabela'),\n    'Código Procedimento': \"'\" + getProcTag('codigoProcedimento'),\n    'Descrição Procedimento': descricao,\n    'Quantidade Executada': qtd,\n    'Via Acesso': getProcTag('viaAcesso'),\n    'Técnica Utilizada': getProcTag('tecnicaUtilizada'),\n    'Redução/Acréscimo': getProcTag('reducaoAcrescimo'),\n    'Valor Unitário': valorUnitario.toFixed(2),\n    'Valor Total': (valorUnitario * qtd).toFixed(2),\n    'Nome Profissional': nomeProfissional,\n    'Conselho': conselho,\n    'Nº Conselho': numeroConselho,\n    'UF': uf,\n    'CBOS': cbos,\n    'Status': 'Importado',\n    'Data Importação': new Date().toISOString()\n  };\n});\n\nreturn procedimentos.map(p => ({ json: p }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        992,
+        -80
+      ],
+      "id": "70b0929a-2d70-44c7-b3aa-2e9352632ff3",
+      "name": "11. Parse Procedimentos"
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "1zYIhYUXLGyfUdeG7LD7YZbX3W0BgKCYD1V4vn1mXBCc",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "PROCEDIMENTOS_TISS",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Chave": "={{ $json.Chave }}",
+            "Nº Guia Operadora": "={{ $json[\"Nº Guia Operadora\"] }}",
+            "Nº Guia Prestador": "={{ $json[\"Nº Guia Prestador\"] }}",
+            "Sequência": "={{ $json[\"Sequência\"] }}",
+            "Nome Beneficiário": "={{ $json[\"Nome Beneficiário\"] }}",
+            "Data Execução": "={{ $json[\"Data Execução\"] }}",
+            "Hora Início": "={{ $json[\"Hora Início\"] }}",
+            "Hora Fim": "={{ $json[\"Hora Fim\"] }}",
+            "Código Tabela": "={{ $json[\"Código Tabela\"] }}",
+            "Código Procedimento": "={{ $json[\"Código Procedimento\"] }}",
+            "Descrição Procedimento": "={{ $json[\"Descrição Procedimento\"] }}",
+            "Quantidade Executada": "={{ $json[\"Quantidade Executada\"] }}",
+            "Via Acesso": "=1",
+            "Técnica Utilizada": "=1",
+            "Redução/Acréscimo": "=1",
+            "Valor Unitário": "={{ $json[\"Valor Unitário\"] }}",
+            "Valor Total": "={{ $json[\"Valor Total\"] }}",
+            "Nome Profissional": "={{ $json[\"Nome Profissional\"] }}",
+            "Conselho": "={{ $json.Conselho }}",
+            "Nº Conselho": "={{ $json[\"Nº Conselho\"] }}",
+            "UF": "={{ $json.UF }}",
+            "CBOS": "={{ $json.CBOS }}",
+            "Status": "={{ $json.Status }}",
+            "Data Importação": "={{ $json[\"Data Importação\"] }}"
+          },
+          "matchingColumns": [
+            "Chave"
+          ],
+          "schema": [
+            {
+              "id": "Chave",
+              "displayName": "Chave",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Nº Guia Operadora",
+              "displayName": "Nº Guia Operadora",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Nº Guia Prestador",
+              "displayName": "Nº Guia Prestador",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Sequência",
+              "displayName": "Sequência",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Nome Beneficiário",
+              "displayName": "Nome Beneficiário",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Data Execução",
+              "displayName": "Data Execução",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Hora Início",
+              "displayName": "Hora Início",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Hora Fim",
+              "displayName": "Hora Fim",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Código Tabela",
+              "displayName": "Código Tabela",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Código Procedimento",
+              "displayName": "Código Procedimento",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Descrição Procedimento",
+              "displayName": "Descrição Procedimento",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Quantidade Executada",
+              "displayName": "Quantidade Executada",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Via Acesso",
+              "displayName": "Via Acesso",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Técnica Utilizada",
+              "displayName": "Técnica Utilizada",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Redução/Acréscimo",
+              "displayName": "Redução/Acréscimo",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Valor Unitário",
+              "displayName": "Valor Unitário",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Valor Total",
+              "displayName": "Valor Total",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Cód Operadora/CPF",
+              "displayName": "Cód Operadora/CPF",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Nome Profissional",
+              "displayName": "Nome Profissional",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Conselho",
+              "displayName": "Conselho",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Nº Conselho",
+              "displayName": "Nº Conselho",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "UF",
+              "displayName": "UF",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "CBOS",
+              "displayName": "CBOS",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Data Importação",
+              "displayName": "Data Importação",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [
+        1376,
+        -80
+      ],
+      "id": "635bfe44-a2f7-4b0d-9765-8e00112bf26d",
+      "name": "11b. Salvar PROCEDIMENTOS",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "B5d0D32wrWm8oiu0",
+          "name": "Google Sheets robsonsduarte"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Pega o numero da guia atual do loop\nconst buscaResult = $('8. Buscar XML (API)').first().json;\nconst numeroGuia = buscaResult.numeroGuia || 'desconhecida';\nconst success = buscaResult.success;\n\nreturn [{\n  json: {\n    guide_number: numeroGuia,\n    status_xml: success ? 'COLETADA' : ('ERRO: ' + (buscaResult.erro || 'Falha'))\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1888,
+        -176
+      ],
+      "id": "829d888a-a505-4985-9192-8f11fcadc38e",
+      "name": "13. Preparar Update"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "1zYIhYUXLGyfUdeG7LD7YZbX3W0BgKCYD1V4vn1mXBCc",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "GUIAS",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "guide_number": "={{ $json.guide_number }}",
+            "row_number": 0,
+            "status_guide": "VERIFICADA"
+          },
+          "matchingColumns": [
+            "guide_number"
+          ],
+          "schema": [
+            {
+              "id": "guide_number",
+              "displayName": "guide_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "provider",
+              "displayName": "provider",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "convenio",
+              "displayName": "convenio",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Convenio Formatado",
+              "displayName": "Convenio Formatado",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "paciente",
+              "displayName": "paciente",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "dataSolicitacao",
+              "displayName": "dataSolicitacao",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": " Status",
+              "displayName": " Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "4-Data da Autorização",
+              "displayName": "4-Data da Autorização",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "27-Qt. Solic.",
+              "displayName": "27-Qt. Solic.",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "28-Qt. Autorizada",
+              "displayName": "28-Qt. Autorizada",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Procedimentos realizados",
+              "displayName": "Procedimentos realizados",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Procedimentos Cadastrados",
+              "displayName": "Procedimentos Cadastrados",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": " 5-Senha ",
+              "displayName": " 5-Senha ",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "6-Data Validade da Senha ",
+              "displayName": "6-Data Validade da Senha ",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "status_guide",
+              "displayName": "status_guide",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Status_N8N",
+              "displayName": "Status_N8N",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "user_id",
+              "displayName": "user_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "attdStart",
+              "displayName": "attdStart",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "attdEnd",
+              "displayName": "attdEnd",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "value",
+              "displayName": "value",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "lote",
+              "displayName": "lote",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "tipo",
+              "displayName": "tipo",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "status_xml",
+              "displayName": "status_xml",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "diffCobrancas",
+              "displayName": "diffCobrancas",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [
+        2416,
+        48
+      ],
+      "id": "e2a1600a-ac3a-4836-80c5-ffcca156283d",
+      "name": "14. Atualizar GUIA",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "B5d0D32wrWm8oiu0",
+          "name": "Google Sheets robsonsduarte"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Relatório final após todas as guias processadas\nconst totalGuias = $('7. Separar Guias em Array').first().json;\n\nreturn [{\n  json: {\n    success: true,\n    timestamp: new Date().toISOString(),\n    mensagem: 'Processamento concluído'\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        112,
+        -400
+      ],
+      "id": "20eca777-c27b-4719-a335-418e3d100cdf",
+      "name": "15. Relatório Final"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.API_URL }}/saw/buscar-xml",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ cookies: $json.cookies, numeroGuia: $json.numeroGuia }) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        128,
+        -160
+      ],
+      "id": "21b2419a-c70d-4bea-be82-c1855cbb2762",
+      "name": "8. Buscar XML (API)",
+      "continueOnFail": true
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1664,
+        -176
+      ],
+      "id": "c30ace8b-ba32-4f3f-a8e3-fef99d9e5caa",
+      "name": "12. Merge"
+    },
+    {
+      "parameters": {
+        "amount": 2
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        2096,
+        -176
+      ],
+      "id": "5e181abf-b3cc-40ac-a15e-024776fa1162",
+      "name": "Wait",
+      "webhookId": "8709f163-b5e3-4364-b569-e9854cb72120"
+    },
+    {
+      "parameters": {
+        "amount": 2
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1184,
+        -80
+      ],
+      "id": "ff2d845f-8954-481a-beb0-804efe12d4e2",
+      "name": "Wait1",
+      "webhookId": "8709f163-b5e3-4364-b569-e9854cb72120"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Executar": {
+      "main": [
+        [
+          {
+            "node": "1. Ler Guias Pendentes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "1. Ler Guias Pendentes": {
+      "main": [
+        [
+          {
+            "node": "2. Preparar Lista de Guias",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "2. Preparar Lista de Guias": {
+      "main": [
+        [
+          {
+            "node": "Tem Guias?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tem Guias?": {
+      "main": [
+        [
+          {
+            "node": "3. Redis GET Cookies",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Sem Guias",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "3. Redis GET Cookies": {
+      "main": [
+        [
+          {
+            "node": "4. Parse Cookies",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "4. Parse Cookies": {
+      "main": [
+        [
+          {
+            "node": "Tem Cookies?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tem Cookies?": {
+      "main": [
+        [
+          {
+            "node": "6. Validar Sessão (API)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "5a. Fazer Login (API)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "6. Validar Sessão (API)": {
+      "main": [
+        [
+          {
+            "node": "Sessão OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sessão OK?": {
+      "main": [
+        [
+          {
+            "node": "7. Separar Guias em Array",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "5a. Fazer Login (API)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "5a. Fazer Login (API)": {
+      "main": [
+        [
+          {
+            "node": "5b. Processar Login",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "5b. Processar Login": {
+      "main": [
+        [
+          {
+            "node": "Login OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Login OK?": {
+      "main": [
+        [
+          {
+            "node": "5c. Redis SET Cookies",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Erro: Login Falhou",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "5c. Redis SET Cookies": {
+      "main": [
+        [
+          {
+            "node": "7. Separar Guias em Array",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "7. Separar Guias em Array": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items": {
+      "main": [
+        [
+          {
+            "node": "15. Relatório Final",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "8. Buscar XML (API)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Busca OK?": {
+      "main": [
+        [
+          {
+            "node": "9. Extrair XML",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Erro: Busca Falhou",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Erro: Busca Falhou": {
+      "main": [
+        [
+          {
+            "node": "14. Atualizar GUIA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "9. Extrair XML": {
+      "main": [
+        [
+          {
+            "node": "10. Parse Dados Gerais",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "10. Parse Dados Gerais": {
+      "main": [
+        [
+          {
+            "node": "11a. Salvar FATURAMENTO",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "11. Parse Procedimentos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "11a. Salvar FATURAMENTO": {
+      "main": [
+        [
+          {
+            "node": "12. Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "11. Parse Procedimentos": {
+      "main": [
+        [
+          {
+            "node": "Wait1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "11b. Salvar PROCEDIMENTOS": {
+      "main": [
+        [
+          {
+            "node": "12. Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "13. Preparar Update": {
+      "main": [
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "14. Atualizar GUIA": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "8. Buscar XML (API)": {
+      "main": [
+        [
+          {
+            "node": "Busca OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "12. Merge": {
+      "main": [
+        [
+          {
+            "node": "13. Preparar Update",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "14. Atualizar GUIA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait1": {
+      "main": [
+        [
+          {
+            "node": "11b. Salvar PROCEDIMENTOS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "b445bcfe-760e-4db0-a138-3942042a3629",
+  "meta": {
+    "instanceId": "029f270710926d9ad97c0718d62a3f1453ee90afe444562138c25165861e429a"
+  },
+  "id": "inHAQGzqrwbIUrWdpRB1B",
+  "tags": []
+}

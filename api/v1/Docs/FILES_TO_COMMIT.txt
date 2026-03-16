@@ -1,0 +1,59 @@
+# =========================================
+# ARQUIVOS SEGUROS PARA COMMIT
+# =========================================
+
+## Arquivos de Configuração:
+- .htaccess
+- .env.example (SEM senhas!)
+- .gitignore
+
+## Código Fonte:
+- index.php
+- routes.php
+
+## Config/
+- Config/Database.php
+- Config/Config.php
+
+## Models/
+- Models/BaseModel.php
+- Models/Schedule.php
+- Models/User.php
+- Models/GoogleCalendar.php
+
+## Controllers/
+- Controllers/ScheduleController.php
+- Controllers/ProfessionalController.php
+- Controllers/SyncController.php
+
+## Middleware/
+- Middleware/AuthMiddleware.php
+
+## Helpers/
+- Helpers/Response.php
+- Helpers/Validator.php
+- Helpers/DateHelper.php
+- Helpers/EnvLoader.php
+
+## Documentação:
+- README.md
+- API_DOCUMENTATION.md
+- N8N_EXAMPLES.md
+
+## Scripts (SEM senhas hardcoded!):
+- generate_api_key.php
+- install_database.php
+- sync_professionals.php
+- test_api.php
+- run_all_tests.sh
+
+## SQL:
+- api_agendamento_sql_setup.sql
+
+# =========================================
+# NUNCA COMMITAR:
+# =========================================
+❌ .env (contém senhas!)
+❌ *.log (logs)
+❌ *.backup (backups)
+❌ diagnostico.php (pode ter senha hardcoded)

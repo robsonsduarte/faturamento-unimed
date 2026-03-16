@@ -1,0 +1,888 @@
+<?php
+
+// Bootstrap — autoloader + config (routes.php is called directly by the webserver)
+if (!defined('API_PATH')) {
+    define('API_PATH', __DIR__);
+}
+
+// Production settings
+$isProduction = (getenv('APP_ENV') === 'production' || !getenv('APP_ENV'));
+if ($isProduction) {
+    ini_set('xdebug.mode', 'off');
+    ini_set('display_errors', '0');
+    error_reporting(0);
+    ini_set('log_errors', '1');
+    ini_set('error_log', __DIR__ . '/../../logs/php_errors.log');
+}
+
+// PSR-4 autoloader
+spl_autoload_register(function ($class) {
+    $prefix = 'API\\';
+    $base_dir = API_PATH . '/';
+    $len = strlen($prefix);
+    if (strncmp($prefix, $class, $len) !== 0) {
+        return;
+    }
+    $relative_class = substr($class, $len);
+    $file = $base_dir . str_replace('\\', '/', $relative_class) . '.php';
+    if (file_exists($file)) {
+        require $file;
+    }
+});
+
+\API\Config\Config::init();
+
+use API\Controllers\ScheduleController;
+use API\Controllers\ProfessionalController;
+use API\Controllers\SyncController;
+use API\Controllers\AppointmentController;
+use API\Controllers\HistoricController;
+use API\Controllers\DocumentController;
+use API\Controllers\PatientController;
+use API\Controllers\NotificationController;
+use API\Controllers\TissController;
+use API\Controllers\ExecutionController;
+use API\Controllers\BiometryController;
+use API\Config\Database;
+use API\Helpers\Response;
+
+class Router
+{
+    private $method;
+    private $path;
+    private $pathParts;
+
+    public function __construct()
+    {
+        $this->method = $_SERVER['REQUEST_METHOD'];
+        $this->path = $this->getPath();
+        $this->pathParts = explode('/', trim($this->path, '/'));
+    }
+
+    private function getPath()
+    {
+        $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+        $path = preg_replace('#^/service/api/v1#', '', $path);
+        return $path ?: '/';
+    }
+
+    public function dispatch()
+    {
+        // ========================================================================
+        // PROFESSIONALS (Profissionais) - ORDEM: Mais Específico → Genérico
+        // ========================================================================
+
+        // GET /professionals/{company_id}/occupations
+        if ($this->matches('GET', '/professionals/{company_id}/occupations')) {
+            $companyId = $this->getParam(1);
+            $controller = new ProfessionalController();
+            $controller->listOccupations($companyId);
+            return;
+        }
+
+        // GET /professionals/{company_id}/{user_id}/tiss - Dados para XML TISS
+        if ($this->matches('GET', '/professionals/{company_id}/{user_id}/tiss')) {
+            $companyId = $this->getParam(1);
+            $userId = $this->getParam(2);
+            $controller = new ProfessionalController();
+            $controller->getTissData($companyId, $userId);
+            return;
+        }
+
+        // GET /professionals/{company_id}/{user_id}
+        if ($this->matches('GET', '/professionals/{company_id}/{user_id}')) {
+            $companyId = $this->getParam(1);
+            $userId = $this->getParam(2);
+            $controller = new ProfessionalController();
+            $controller->getProfessional($companyId, $userId);
+            return;
+        }
+
+        // GET /professionals/{company_id}
+        if ($this->matches('GET', '/professionals/{company_id}')) {
+            $companyId = $this->getParam(1);
+            $search = $_GET['search'] ?? null;
+            $limit = (int)($_GET['limit'] ?? 50);
+            $controller = new ProfessionalController();
+            $controller->listProfessionals($companyId, $search, $limit);
+            return;
+        }
+
+        // GET /professionals (query params)
+        if ($this->matches('GET', '/professionals')) {
+            $companyId = $_GET['company_id'] ?? null;
+
+            if (!$companyId) {
+                Response::validationError(['company_id' => 'ID da empresa é obrigatório']);
+                return;
+            }
+
+            $search = $_GET['search'] ?? null;
+            $limit = (int)($_GET['limit'] ?? 50);
+            $controller = new ProfessionalController();
+            $controller->listProfessionals($companyId, $search, $limit);
+            return;
+        }
+
+        // ========================================================================
+        // SCHEDULES (Agendas) - ORDEM: Mais Específico → Genérico
+        // ========================================================================
+
+        // GET /schedules/{company_id}/available-slots/{user_id}
+        if ($this->matches('GET', '/schedules/{company_id}/available-slots/{user_id}')) {
+            $companyId = $this->getParam(1);
+            $userId = $this->getParam(3);
+            $controller = new ScheduleController();
+            $controller->availableSlots($companyId, $userId);
+            return;
+        }
+
+        // GET /schedules/{company_id}/availability/{user_id}
+        if ($this->matches('GET', '/schedules/{company_id}/availability/{user_id}')) {
+            $companyId = $this->getParam(1);
+            $userId = $this->getParam(3);
+            $controller = new ScheduleController();
+            $controller->availability($companyId, $userId);
+            return;
+        }
+
+        // GET /schedules/{company_id}/{user_id}
+        if ($this->matches('GET', '/schedules/{company_id}/{user_id}')) {
+            $companyId = $this->getParam(1);
+            $userId = $this->getParam(2);
+            $controller = new ScheduleController();
+            $controller->show($companyId, $userId);
+            return;
+        }
+
+        // GET /schedules/{company_id}
+        if ($this->matches('GET', '/schedules/{company_id}')) {
+            $companyId = $this->getParam(1);
+            $controller = new ScheduleController();
+            $controller->index($companyId);
+            return;
+        }
+
+        // ========================================================================
+        // APPOINTMENTS (Agendamentos) - ORDEM: Mais Específico → Genérico
+        // ========================================================================
+
+        // GET /appointments/by-google-event/{google_event_id}
+        if ($this->matches('GET', '/appointments/by-google-event/{google_event_id}')) {
+            $googleEventId = $this->getParam(2);
+            $controller = new AppointmentController();
+            $controller->findByGoogleEvent($googleEventId);
+            return;
+        }
+
+        // POST /appointments/search-by-patient
+        if ($this->matches('POST', '/appointments/search-by-patient')) {
+            $data = json_decode(file_get_contents('php://input'), true);
+            $controller = new AppointmentController();
+            $controller->searchByPatient($data);
+            return;
+        }
+
+        // GET /appointments/check-availability
+        if ($this->matches('GET', '/appointments/check-availability')) {
+            $params = $_GET;
+            $controller = new AppointmentController();
+            $controller->checkAvailability($params);
+            return;
+        }
+
+        // GET /appointments/{id}
+        if ($this->matches('GET', '/appointments/{id}')) {
+            $id = $this->getParam(1);
+            $controller = new AppointmentController();
+            $controller->show($id);
+            return;
+        }
+
+        // PUT /appointments/{id}
+        if ($this->matches('PUT', '/appointments/{id}')) {
+            $id = $this->getParam(1);
+            $data = json_decode(file_get_contents('php://input'), true);
+            $controller = new AppointmentController();
+            $controller->update($id, $data);
+            return;
+        }
+
+        // DELETE /appointments/{id} - Cancela o agendamento
+        if ($this->matches('DELETE', '/appointments/{id}')) {
+            $id = $this->getParam(1);
+            $data = $_GET;
+            $controller = new AppointmentController();
+            $controller->cancel($id, $data);
+            return;
+        }
+
+        // POST /appointments
+        if ($this->matches('POST', '/appointments')) {
+            $data = json_decode(file_get_contents('php://input'), true);
+            $controller = new AppointmentController();
+            $controller->create($data);
+            return;
+        }
+
+        // GET /appointments
+        if ($this->matches('GET', '/appointments')) {
+            $params = $_GET;
+            $controller = new AppointmentController();
+            $controller->list($params);
+            return;
+        }
+
+        // ========================================================================
+        // HISTORIC (Documentos do Histórico)
+        // ========================================================================
+
+        // POST /historic
+        if ($this->matches('POST', '/historic')) {
+            $data = array_merge($_POST, $_GET);
+            $controller = new HistoricController();
+            $controller->upload($data);
+            return;
+        }
+
+        // POST /historic-drive
+        if ($this->matches('POST', '/historic-drive')) {
+            $data = json_decode(file_get_contents('php://input'), true);
+            $controller = new HistoricController();
+            $controller->saveDriveDocument($data);
+            return;
+        }
+
+        // POST /historic-base64
+        if ($this->matches('POST', '/historic-base64')) {
+            $data = json_decode(file_get_contents('php://input'), true);
+            $controller = new HistoricController();
+            $controller->uploadBase64($data);
+            return;
+        }
+
+        // GET /historic/by-appointment/{appointment_id}
+        if ($this->matches('GET', '/historic/by-appointment/{appointment_id}')) {
+            $appointmentId = $this->getParam(2);
+            $controller = new HistoricController();
+            $controller->getByAppointment($appointmentId);
+            return;
+        }
+
+        // GET /historic/{id}
+        if ($this->matches('GET', '/historic/{id}')) {
+            $id = $this->getParam(1);
+            $controller = new HistoricController();
+            $controller->show($id);
+            return;
+        }
+
+        // ========================================================================
+        // HELPERS (Rotas de apoio) - ORDEM: Mais Específico → Genérico
+        // ========================================================================
+
+        // POST /documents/convert-to-image
+        if ($this->matches('POST', '/documents/convert-to-image')) {
+            $data = json_decode(file_get_contents('php://input'), true);
+            $controller = new DocumentController();
+            $controller->convertToImage($data);
+            return;
+        }
+
+        // ============================================================================
+        // ROTAS PATIENTS - VERSÃO CORRIGIDA
+        // ============================================================================
+
+        // POST /patients/find-or-create
+        if ($this->matches('POST', '/patients/find-or-create')) {
+            $data = json_decode(file_get_contents('php://input'), true);
+            $controller = new PatientController();
+            $controller->findOrCreate($data);
+            return;
+        }
+
+        // POST /patients/validate-lgpd
+        if ($this->matches('POST', '/patients/validate-lgpd')) {
+            $data = json_decode(file_get_contents('php://input'), true);
+            $controller = new PatientController();
+            $controller->validateLgpd($data);
+            return;
+        }
+
+        // GET /patients/search
+        if ($this->matches('GET', '/patients/search')) {
+            $request = [
+                'company' => $_GET['company'] ?? null,
+                'query' => $_GET['query'] ?? null,
+                'limit' => $_GET['limit'] ?? null
+            ];
+
+            $controller = new PatientController();
+            $controller->search($request);
+            return;
+        }
+
+        // PUT /patients/{id}
+        if ($this->matches('PUT', '/patients/([0-9]+)')) {
+            $id = $this->getParam(1);
+            $data = json_decode(file_get_contents('php://input'), true);
+            $data['id'] = $id;
+
+            $controller = new PatientController();
+            $controller->update($data);
+            return;
+        }
+
+        // GET /patients/{id}
+        if ($this->matches('GET', '/patients/([0-9]+)')) {
+            $id = $this->getParam(1);
+            $request = [
+                'id' => $id,
+                'company' => $_GET['company'] ?? null
+            ];
+
+            $controller = new PatientController();
+            $controller->show($request);
+            return;
+        }
+
+        // GET /patients (deve ser a ÚLTIMA rota)
+        if ($this->matches('GET', '/patients')) {
+            $request = [
+                'company' => $_GET['company'] ?? null,
+                'limit' => $_GET['limit'] ?? null,
+                'offset' => $_GET['offset'] ?? null
+            ];
+
+            $controller = new PatientController();
+            $controller->list($request);
+            return;
+        }
+
+        // ========================================================================
+        // SYNC (Sincronização Google Calendar) - ORDEM: Mais Específico → Genérico
+        // ========================================================================
+
+        // PUT /sync/google-calendar/{company_id}/{user_id}/toggle
+        if ($this->matches('PUT', '/sync/google-calendar/{company_id}/{user_id}/toggle')) {
+            $companyId = $this->getParam(2);
+            $userId = $this->getParam(3);
+            $controller = new SyncController();
+            $controller->toggleSync($companyId, $userId);
+            return;
+        }
+
+        // DELETE /sync/google-calendar/{company_id}/{user_id}
+        if ($this->matches('DELETE', '/sync/google-calendar/{company_id}/{user_id}')) {
+            $companyId = $this->getParam(2);
+            $userId = $this->getParam(3);
+            $controller = new SyncController();
+            $controller->deleteSync($companyId, $userId);
+            return;
+        }
+
+        // GET /sync/google-calendar/{company_id}
+        if ($this->matches('GET', '/sync/google-calendar/{company_id}')) {
+            $companyId = $this->getParam(2);
+            $controller = new SyncController();
+            $controller->getSyncStatus($companyId);
+            return;
+        }
+
+        // POST /sync/google-calendar
+        if ($this->matches('POST', '/sync/google-calendar')) {
+            $data = json_decode(file_get_contents('php://input'), true);
+            $controller = new SyncController();
+            $controller->createSync($data);
+            return;
+        }
+
+        // ========================================================================
+        // TISS (Faturamento XML) - ORDEM: Mais Específico → Genérico
+        // ========================================================================
+
+        // POST /tiss/guias/importar-completa - NOVA ESTRUTURA (1 guia + N procedimentos)
+        if ($this->matches('POST', '/tiss/guias/importar-completa')) {
+            $data = json_decode(file_get_contents('php://input'), true);
+            $controller = new TissController();
+            $controller->importarGuiaCompleta($data);
+            return;
+        }
+
+        // GET /tiss/guias/pendentes - Lista guias pendentes (não faturadas)
+        if ($this->matches('GET', '/tiss/guias/pendentes')) {
+            $params = $_GET;
+            $controller = new TissController();
+            $controller->guiasPendentes($params);
+            return;
+        }
+
+        // GET /tiss/guias/resumo - Resumo por type (local/intercambio)
+        if ($this->matches('GET', '/tiss/guias/resumo')) {
+            $params = $_GET;
+            $controller = new TissController();
+            $controller->resumoPendentes($params);
+            return;
+        }
+
+        // GET /tiss/guias/{id} - Detalhes de uma guia com procedimentos
+        if ($this->matches('GET', '/tiss/guias/{id}')) {
+            $id = $this->getParam(2);
+            $params = $_GET;
+            $controller = new TissController();
+            $controller->getGuia($id, $params);
+            return;
+        }
+
+        // POST /tiss/guias - Insere uma guia (LEGADO - mantido para compatibilidade)
+        if ($this->matches('POST', '/tiss/guias')) {
+            $data = json_decode(file_get_contents('php://input'), true);
+            $controller = new TissController();
+            $controller->inserirGuia($data);
+            return;
+        }
+
+        // POST /tiss/lotes/gerar - Gera lote XML das guias pendentes
+        if ($this->matches('POST', '/tiss/lotes/gerar')) {
+            $data = json_decode(file_get_contents('php://input'), true);
+            $controller = new TissController();
+            $controller->gerarLote($data);
+            return;
+        }
+
+        // POST /tiss/lotes/{numeroLote}/reverter - Reverte lote para pendente
+        if ($this->matches('POST', '/tiss/lotes/{numeroLote}/reverter')) {
+            $numeroLote = $this->getParam(2);
+            $data = json_decode(file_get_contents('php://input'), true);
+            $controller = new TissController();
+            $controller->reverterLote($numeroLote, $data);
+            return;
+        }
+
+        // GET /tiss/lotes/{numeroLote}/xml - Download do XML do lote
+        if ($this->matches('GET', '/tiss/lotes/{numeroLote}/xml')) {
+            $numeroLote = $this->getParam(2);
+            $params = $_GET;
+            $controller = new TissController();
+            $controller->downloadXml($numeroLote, $params);
+            return;
+        }
+
+        // GET /tiss/lotes/{numeroLote} - Busca guias de um lote específico
+        if ($this->matches('GET', '/tiss/lotes/{numeroLote}')) {
+            $numeroLote = $this->getParam(2);
+            $params = $_GET;
+            $controller = new TissController();
+            $controller->getLote($numeroLote, $params);
+            return;
+        }
+
+        // GET /tiss/lotes - Lista todos os lotes gerados
+        if ($this->matches('GET', '/tiss/lotes')) {
+            $params = $_GET;
+            $controller = new TissController();
+            $controller->listarLotes($params);
+            return;
+        }
+
+        // ========================================================================
+        // EXECUTIONS (Guias/Execuções) - ORDEM: Mais Específico → Genérico
+        // ========================================================================
+
+        // GET /executions/unimed - Lista guias específicas da Unimed
+        if ($this->matches('GET', '/executions/unimed')) {
+            $params = $_GET;
+            $controller = new ExecutionController();
+            $controller->listUnimed($params);
+            return;
+        }
+
+        // GET /executions/agreements - Lista convênios disponíveis
+        if ($this->matches('GET', '/executions/agreements')) {
+            $params = $_GET;
+            $controller = new ExecutionController();
+            $controller->listAgreements($params);
+            return;
+        }
+
+        // GET /executions/statistics - Estatísticas das guias
+        if ($this->matches('GET', '/executions/statistics')) {
+            $params = $_GET;
+            $controller = new ExecutionController();
+            $controller->statistics($params);
+            return;
+        }
+
+        // GET /executions/by-guide-number/{guide_number} - Busca por número da guia
+        if ($this->matches('GET', '/executions/by-guide-number/{guide_number}')) {
+            $guideNumber = $this->getParam(2);
+            $controller = new ExecutionController();
+            $controller->findByGuideNumber($guideNumber);
+            return;
+        }
+
+        // GET /executions/{id} - Detalhes de uma guia
+        if ($this->matches('GET', '/executions/{id}')) {
+            $id = $this->getParam(1);
+            $controller = new ExecutionController();
+            $controller->show($id);
+            return;
+        }
+
+        // GET /executions - Lista todas as guias
+        if ($this->matches('GET', '/executions')) {
+            $params = $_GET;
+            $controller = new ExecutionController();
+            $controller->list($params);
+            return;
+        }
+
+        // ========================================================================
+        // REPORTS (Relatórios de Sublotação) — auth via AuthMiddleware
+        // Os controllers recebem PDO direto, auth é feita aqui no route level
+        // ========================================================================
+
+        // Reports/Shifts routes need PDO — get from Database singleton
+        if (strpos($this->path, '/reports') === 0) {
+            $this->dispatchReports();
+            return;
+        }
+
+        // ========================================================================
+        // NOTIFICATIONS (Notificações) - ORDEM: Mais Específico → Genérico
+        // ========================================================================
+
+        // GET /notifications/check-whatsapp/{phone}
+        if ($this->matches('GET', '/notifications/check-whatsapp/{phone}')) {
+            $phone = $this->getParam(2);
+            $controller = new NotificationController();
+            $controller->checkWhatsApp($phone);
+            return;
+        }
+
+        // GET /notifications/status
+        if ($this->matches('GET', '/notifications/status')) {
+            $controller = new NotificationController();
+            $controller->getStatus();
+            return;
+        }
+
+        // POST /notifications/send-batch
+        if ($this->matches('POST', '/notifications/send-batch')) {
+            $data = json_decode(file_get_contents('php://input'), true);
+            $controller = new NotificationController();
+            $controller->sendBatch($data);
+            return;
+        }
+
+        // POST /notifications/send-whatsapp
+        if ($this->matches('POST', '/notifications/send-whatsapp')) {
+            $data = json_decode(file_get_contents('php://input'), true);
+
+            if (!isset($data['phone']) || !isset($data['message'])) {
+                Response::validationError([
+                    'phone' => 'Telefone é obrigatório',
+                    'message' => 'Mensagem é obrigatória'
+                ]);
+                return;
+            }
+
+            $controller = new NotificationController();
+            $controller->sendWhatsApp($data);
+            return;
+        }
+
+        // ========================================================================
+        // CHATWOOT (Integração Chatwoot)
+        // ========================================================================
+
+        // POST /chatwoot/sync-contact
+        if ($this->matches('POST', '/chatwoot/sync-contact')) {
+            $data = json_decode(file_get_contents('php://input'), true);
+
+            if (!isset($data['phone'])) {
+                Response::validationError(['phone' => 'Telefone é obrigatório']);
+                return;
+            }
+
+            $chatwoootSync = new \API\Helpers\ChatwootSync();
+            $result = $chatwoootSync->syncContactAfterMessage(
+                $data['phone'],
+                $data['patient_name'] ?? null
+            );
+
+            if ($result['success']) {
+                Response::success($result, $result['action'] === 'created' ? 201 : 200);
+            } else {
+                Response::error('CHATWOOT_SYNC_ERROR', $result['error'], 500);
+            }
+            return;
+        }
+
+        // ========================================================================
+        // BIOMETRY (Validação Biométrica) - ORDEM: Mais Específico → Genérico
+        // ========================================================================
+
+        // PUT /biometry/status/{guide_number}?company={id}
+        if ($this->matches('PUT', '/biometry/status/{guide_number}')) {
+            $guideNumber = $this->getParam(2);
+            $controller = new BiometryController();
+            $controller->updateStatus(['guide_number' => $guideNumber]);
+            return;
+        }
+
+        // GET /biometry/photo/{guide_number}?company={id}
+        if ($this->matches('GET', '/biometry/photo/{guide_number}')) {
+            $guideNumber = $this->getParam(2);
+            $controller = new BiometryController();
+            $controller->getPhoto(['guide_number' => $guideNumber]);
+            return;
+        }
+
+        // ========================================================================
+        // UTILITY (Health Check & Docs)
+        // ========================================================================
+
+        // GET /health
+        if ($this->matches('GET', '/health')) {
+            Response::success([
+                'status' => 'healthy',
+                'version' => \API\Config\Config::API_VERSION,
+                'timestamp' => date('c'),
+                'features' => [
+                    'professionals_api' => 'enabled',
+                    'schedules_api' => 'enabled',
+                    'appointments_api' => 'enabled',
+                    'patients_api' => 'enabled',
+                    'notifications_api' => 'enabled',
+                    'sync_api' => 'enabled',
+                    'tiss_api' => 'enabled',
+                    'executions_api' => 'enabled',
+                    'chatwoot_sync' => 'enabled',
+                    'biometry_api' => 'enabled',
+                    'reports_api' => 'enabled'
+                ]
+            ]);
+            return;
+        }
+
+        // XML Upload
+        if ($this->matches('POST', '/xml/upload')) {
+            require_once __DIR__ . '/Controllers/XmlController.php';
+            $controller = new API\Controllers\XmlController();
+            return $controller->upload();
+        }
+
+        // GET / (Documentação)
+        if ($this->matches('GET', '/')) {
+            Response::success([
+                'name' => 'ConsultorioPro REST API',
+                'version' => \API\Config\Config::API_VERSION,
+                'documentation' => 'https://consultoriopro.com.br/api/docs',
+                'endpoints' => [
+                    'professionals' => [
+                        'GET /professionals?company_id={id}&search={query}&limit={n}',
+                        'GET /professionals/{company_id}',
+                        'GET /professionals/{company_id}/{user_id}',
+                        'GET /professionals/{company_id}/{user_id}/tiss',
+                        'GET /professionals/{company_id}/occupations'
+                    ],
+                    'schedules' => [
+                        'GET /schedules/{company_id}',
+                        'GET /schedules/{company_id}/{user_id}',
+                        'GET /schedules/{company_id}/availability/{user_id}',
+                        'GET /schedules/{company_id}/available-slots/{user_id}'
+                    ],
+                    'appointments' => [
+                        'POST /appointments',
+                        'GET /appointments',
+                        'GET /appointments/{id}',
+                        'PUT /appointments/{id}',
+                        'DELETE /appointments/{id}',
+                        'GET /appointments/check-availability',
+                        'GET /appointments/by-patient-name',
+                        'GET /appointments/by-google-event/{google_event_id}'
+                    ],
+                    'patients' => [
+                        'POST /patients/find-or-create',
+                        'GET /patients',
+                        'GET /patients/{id}',
+                        'GET /patients/search',
+                        'PUT /patients/{id}'
+                    ],
+                    'sync' => [
+                        'POST /sync/google-calendar',
+                        'GET /sync/google-calendar/{company_id}',
+                        'PUT /sync/google-calendar/{company_id}/{user_id}/toggle',
+                        'DELETE /sync/google-calendar/{company_id}/{user_id}'
+                    ],
+                    'tiss' => [
+                        'GET /tiss/guias/pendentes?company={id}',
+                        'POST /tiss/guias/importar-completa',
+                        'GET /tiss/lotes?company={id}',
+                        'POST /tiss/lotes/gerar',
+                        'GET /tiss/lotes/{id}?company={id}',
+                        'GET /tiss/lotes/{id}/xml?company={id}'
+                    ],
+                    'executions' => [
+                        'GET /executions?company={id}',
+                        'GET /executions/unimed?company={id}',
+                        'GET /executions/{id}?company={id}',
+                        'GET /executions/by-guide-number/{guide_number}?company={id}',
+                        'GET /executions/agreements?company={id}',
+                        'GET /executions/statistics?company={id}'
+                    ],
+                    'reports' => [
+                        'GET /reports/generate?user_id=X&month=YYYY-MM',
+                        'GET /reports/professionals',
+                        'GET /reports/operator-value?operator_id=X&occupation_id=Y',
+                        'DELETE /reports/appointment/{id}',
+                        'GET /reports/shifts',
+                        'POST /reports/shifts',
+                        'POST /reports/shifts/bulk',
+                        'GET /reports/shifts/infer',
+                        'PUT|DELETE /reports/shifts/{id}',
+                        'GET|PUT /reports/config'
+                    ],
+                    'notifications' => [
+                        'POST /notifications/send-whatsapp',
+                        'POST /notifications/send-batch',
+                        'GET /notifications/check-whatsapp/{phone}',
+                        'GET /notifications/status'
+                    ],
+                    'chatwoot' => [
+                        'POST /chatwoot/sync-contact'
+                    ],
+                    'biometry' => [
+                        'GET /biometry/photo/{guide_number}?company={id}',
+                        'PUT /biometry/status/{guide_number}?company={id}'
+                    ]
+                ]
+            ]);
+            return;
+        }
+
+        // ========================================================================
+        // 404 - Endpoint não encontrado
+        // ========================================================================
+
+        Response::notFound('Endpoint');
+    }
+
+    /**
+     * Reports & Shifts sub-router.
+     * These controllers receive PDO directly (legacy pattern).
+     * Auth is validated via AuthMiddleware at the route level.
+     */
+    private function dispatchReports()
+    {
+        // Validate API key via database (same as other controllers)
+        $auth = new \API\Middleware\AuthMiddleware();
+        $apiKeyData = $auth->validate();
+        if (!$apiKeyData) {
+            return; // AuthMiddleware already sent 401 response
+        }
+
+        $pdo = Database::getInstance()->getConnection();
+
+        require_once __DIR__ . '/Controllers/ReportController.php';
+        $rc = new \ReportController($pdo);
+
+        // PUT|DELETE /reports/shifts/{id}
+        if (preg_match('#^/reports/shifts/(\d+)$#', $this->path, $m)) {
+            require_once __DIR__ . '/Controllers/ShiftsController.php';
+            $sc = new \ShiftsController($pdo);
+            if ($this->method === 'PUT') { $sc->updateShift((int)$m[1]); }
+            elseif ($this->method === 'DELETE') { $sc->deleteShift((int)$m[1]); }
+            else { Response::error('METHOD_NOT_ALLOWED', 'Use PUT or DELETE', 405); }
+            return;
+        }
+
+        // DELETE /reports/appointment/{id}
+        if (preg_match('#^/reports/appointment/(\d+)$#', $this->path, $m)) {
+            if ($this->method === 'DELETE') { $rc->deleteAppointment((int)$m[1]); }
+            else { Response::error('METHOD_NOT_ALLOWED', 'Use DELETE', 405); }
+            return;
+        }
+
+        switch ($this->path) {
+            case '/reports/generate':
+                $rc->generate();
+                break;
+
+            case '/reports/professionals':
+                $rc->professionals();
+                break;
+
+            case '/reports/operator-value':
+                $rc->getOperatorValue();
+                break;
+
+            case '/reports/shifts':
+                require_once __DIR__ . '/Controllers/ShiftsController.php';
+                $sc = new \ShiftsController($pdo);
+                if ($this->method === 'GET') $sc->listShifts();
+                elseif ($this->method === 'POST') $sc->createShift();
+                else { Response::error('METHOD_NOT_ALLOWED', 'Method not allowed', 405); }
+                break;
+
+            case '/reports/shifts/bulk':
+                require_once __DIR__ . '/Controllers/ShiftsController.php';
+                $sc = new \ShiftsController($pdo);
+                if ($this->method === 'POST') $sc->bulkCreateShifts();
+                else { Response::error('METHOD_NOT_ALLOWED', 'Method not allowed', 405); }
+                break;
+
+            case '/reports/shifts/infer':
+                require_once __DIR__ . '/Controllers/ShiftsController.php';
+                $sc = new \ShiftsController($pdo);
+                if ($this->method === 'GET') $sc->inferShifts();
+                else { Response::error('METHOD_NOT_ALLOWED', 'Method not allowed', 405); }
+                break;
+
+            case '/reports/config':
+                require_once __DIR__ . '/Controllers/ShiftsController.php';
+                $sc = new \ShiftsController($pdo);
+                if ($this->method === 'GET') $sc->getConfigEndpoint();
+                elseif ($this->method === 'PUT') $sc->updateConfig();
+                else { Response::error('METHOD_NOT_ALLOWED', 'Method not allowed', 405); }
+                break;
+
+            default:
+                Response::notFound('Report endpoint');
+        }
+    }
+
+    private function matches($method, $pattern)
+    {
+        if ($this->method !== $method) {
+            return false;
+        }
+
+        $patternParts = explode('/', trim($pattern, '/'));
+
+        if (count($this->pathParts) !== count($patternParts)) {
+            return false;
+        }
+
+        foreach ($patternParts as $index => $part) {
+            if (strpos($part, '{') === 0) {
+                continue;
+            }
+
+            if ($part !== $this->pathParts[$index]) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private function getParam($index)
+    {
+        return $this->pathParts[$index] ?? null;
+    }
+}
+
+$router = new Router();
+$router->dispatch();

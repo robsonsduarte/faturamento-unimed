@@ -1,0 +1,112 @@
+# =========================================
+# ConsultorioPro REST API - Apache Config
+# =========================================
+
+# Habilitar RewriteEngine
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteBase /service/api/v1/
+    
+    # Redirecionar tudo para index.php, exceto arquivos/diretórios existentes
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule ^(.*)$ index.php [QSA,L]
+</IfModule>
+
+# =========================================
+# Segurança
+# =========================================
+
+# Prevenir listagem de diretórios
+Options -Indexes
+
+# Prevenir acesso a arquivos sensíveis
+<FilesMatch "^\.">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Proteger arquivos de configuração
+<FilesMatch "(\.env|\.ini|\.sql|composer\.(json|lock))$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# =========================================
+# Headers de Segurança
+# =========================================
+
+<IfModule mod_headers.c>
+    Header set X-XSS-Protection "1; mode=block"
+    Header set X-Frame-Options "DENY"
+    Header set X-Content-Type-Options "nosniff"
+    Header unset Server
+    Header unset X-Powered-By
+</IfModule>
+
+# =========================================
+# Performance
+# =========================================
+
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE application/json
+    AddOutputFilterByType DEFLATE text/plain
+    AddOutputFilterByType DEFLATE text/html
+</IfModule>
+
+<IfModule mod_headers.c>
+    <FilesMatch "\.(json|php)$">
+        Header set Cache-Control "no-cache, no-store, must-revalidate"
+        Header set Pragma "no-cache"
+        Header set Expires "0"
+    </FilesMatch>
+</IfModule>
+
+# =========================================
+# Limites
+# =========================================
+
+php_value max_execution_time 30
+php_value upload_max_filesize 5M
+php_value post_max_size 5M
+php_value memory_limit 128M
+
+# =========================================
+# Tratamento de Erros (PRODUÇÃO)
+# =========================================
+
+<IfModule mod_php7.c>
+    # FIX: Desabilita xdebug e display de erros
+    php_flag xdebug.mode off
+    php_flag display_errors Off
+    php_flag display_startup_errors Off
+    php_value error_reporting 0
+    
+    # Mantém log de erros ativo
+    php_flag log_errors On
+    php_value error_log /home/consult6/public_html/service/logs/php_errors.log
+</IfModule>
+
+<IfModule mod_php8.c>
+    # FIX: Desabilita xdebug e display de erros
+    php_flag xdebug.mode off
+    php_flag display_errors Off
+    php_flag display_startup_errors Off
+    php_value error_reporting 0
+    
+    # Mantém log de erros ativo
+    php_flag log_errors On
+    php_value error_log /home/consult6/public_html/service/logs/php_errors.log
+</IfModule>
+
+# =========================================
+
+# =========================================
+# Configurações adicionais
+# =========================================
+
+<LimitExcept GET POST PUT DELETE OPTIONS>
+    Deny from all
+</LimitExcept>
+
+AddDefaultCharset UTF-8
