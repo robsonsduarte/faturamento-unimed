@@ -50,9 +50,12 @@ COPY --from=builder /app/.next/static ./.next/static
 RUN mkdir -p ./public
 COPY --from=builder /app/public* ./public/
 
-# Copy Playwright browsers from deps stage
-COPY --from=deps /root/.cache/ms-playwright /home/nextjs/.cache/ms-playwright
-RUN chown -R nextjs:nodejs /home/nextjs/.cache
+# Copy Playwright browsers to a fixed path accessible by nextjs
+COPY --from=deps /root/.cache/ms-playwright /app/.playwright-browsers
+RUN chown -R nextjs:nodejs /app/.playwright-browsers
+
+# Tell Playwright where browsers are
+ENV PLAYWRIGHT_BROWSERS_PATH=/app/.playwright-browsers
 
 # Copy playwright package for runtime
 COPY --from=deps /app/node_modules/playwright /app/node_modules/playwright
