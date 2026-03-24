@@ -1,10 +1,19 @@
-FROM node:20-alpine AS base
+FROM node:20-slim AS base
+
+# Playwright needs these system deps for Chromium
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \
+    libxkbcommon0 libxcomposite1 libxdamage1 libxrandr2 libgbm1 \
+    libpango-1.0-0 libcairo2 libasound2 libxshmfence1 wget \
+    && rm -rf /var/lib/apt/lists/*
 
 # --- Dependencies ---
 FROM base AS deps
 WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN npm ci --omit=dev
+# Install Playwright Chromium for production
+RUN npx playwright install chromium
 
 # --- Build ---
 FROM base AS builder
@@ -13,7 +22,6 @@ COPY package.json package-lock.json* ./
 RUN npm ci
 COPY . .
 
-# Build args become env vars at build time (needed for NEXT_PUBLIC_*)
 ARG NEXT_PUBLIC_SUPABASE_URL
 ARG NEXT_PUBLIC_SUPABASE_ANON_KEY
 ARG NEXT_PUBLIC_APP_URL
@@ -38,9 +46,17 @@ RUN adduser --system --uid 1001 nextjs
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 
-# Copy public folder if it exists (create empty dir as fallback)
+# Copy public folder if it exists
 RUN mkdir -p ./public
 COPY --from=builder /app/public* ./public/
+
+# Copy Playwright browsers from deps stage
+COPY --from=deps /root/.cache/ms-playwright /home/nextjs/.cache/ms-playwright
+RUN chown -R nextjs:nodejs /home/nextjs/.cache
+
+# Copy playwright package for runtime
+COPY --from=deps /app/node_modules/playwright /app/node_modules/playwright
+COPY --from=deps /app/node_modules/playwright-core /app/node_modules/playwright-core
 
 USER nextjs
 

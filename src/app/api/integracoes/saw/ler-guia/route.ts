@@ -1,8 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
+import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { requireRole, isAuthError } from '@/lib/auth'
 import { getSawClient } from '@/lib/saw/client'
 import type { SawCookie } from '@/lib/saw/client'
+
+function getServiceClient() {
+  return createAdminClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  )
+}
 
 const lerGuiaSchema = z.object({
   guide_number: z.string().min(1, 'guide_number e obrigatorio').max(50),
@@ -12,25 +20,15 @@ export async function POST(request: NextRequest) {
   try {
     const auth = await requireRole(['admin', 'operador'])
     if (isAuthError(auth)) return auth.response
-    const { supabase } = auth
+    const { user } = auth
 
-    const { data: integracao, error: integracaoError } = await supabase
-      .from('integracoes')
-      .select('config, ativo')
-      .eq('slug', 'saw')
-      .single()
+    const db = getServiceClient()
 
-    if (integracaoError || !integracao) {
-      return NextResponse.json({ error: 'Configuracao SAW nao encontrada' }, { status: 500 })
-    }
-
-    if (!integracao.ativo) {
-      return NextResponse.json({ error: 'Integracao SAW esta desativada' }, { status: 400 })
-    }
-
-    const { data: session } = await supabase
+    // Busca sessao do usuario autenticado
+    const { data: session } = await db
       .from('saw_sessions')
       .select('cookies')
+      .eq('user_id', user.id)
       .eq('valida', true)
       .gte('expires_at', new Date().toISOString())
       .order('created_at', { ascending: false })
@@ -51,7 +49,7 @@ export async function POST(request: NextRequest) {
     }
 
     const cookies = session.cookies as SawCookie[]
-    const result = await getSawClient().readGuide(cookies, parsed.data.guide_number)
+    const result = await getSawClient().readGuide(user.id, cookies, parsed.data.guide_number)
 
     if (!result.success) {
       return NextResponse.json(

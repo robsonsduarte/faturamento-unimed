@@ -5,7 +5,7 @@ import { rateLimit } from '@/lib/rate-limit'
 import { getSawClient } from '@/lib/saw/client'
 import type { SawCookie } from '@/lib/saw/client'
 import { fetchCproData } from '@/lib/saw/cpro-client'
-import type { SawConfig, CproConfig } from '@/lib/types'
+import type { SawCredentials, CproConfig } from '@/lib/types'
 import { computeGuideStatus } from '@/lib/guide-status'
 import { classifyGuia } from '@/lib/carteira'
 import { parseSawXml } from '@/lib/xml/saw-xml-parser'
@@ -101,28 +101,23 @@ export async function POST(request: NextRequest) {
       try {
         send('info', 'Iniciando importacao...')
 
-        // Load SAW config
-        const { data: sawIntegracao, error: sawErr } = await db
-          .from('integracoes')
-          .select('config, ativo')
-          .eq('slug', 'saw')
+        // Load SAW credentials for authenticated user
+        const { data: sawCred, error: sawCredErr } = await db
+          .from('saw_credentials')
+          .select('*')
+          .eq('user_id', user.id)
+          .eq('ativo', true)
           .single()
 
-        if (sawErr || !sawIntegracao) {
-          send('error', 'Configuracao SAW nao encontrada. Verifique as integracoes.')
+        if (sawCredErr || !sawCred) {
+          send('error', 'Credenciais SAW nao configuradas. Acesse Configuracoes > Credenciais SAW.')
           controller.close()
           return
         }
 
-        if (!sawIntegracao.ativo) {
-          send('error', 'Integracao SAW esta desativada.')
-          controller.close()
-          return
-        }
+        const sawCredentials = sawCred as SawCredentials
 
-        const sawConfig = sawIntegracao.config as SawConfig
-
-        // Load CPro config
+        // Load CPro config (global, compartilhada)
         const { data: cproIntegracao } = await db
           .from('integracoes')
           .select('config, ativo')
@@ -131,12 +126,13 @@ export async function POST(request: NextRequest) {
 
         const cproConfig = cproIntegracao?.config as CproConfig | undefined
 
-        // Check/create SAW session
+        // Check/create SAW session for this user
         send('processing', 'Verificando sessao SAW...')
 
         const { data: existingSession } = await db
           .from('saw_sessions')
           .select('cookies, expires_at')
+          .eq('user_id', user.id)
           .eq('valida', true)
           .gte('expires_at', new Date().toISOString())
           .order('created_at', { ascending: false })
@@ -147,17 +143,17 @@ export async function POST(request: NextRequest) {
           ? (existingSession.cookies as SawCookie[])
           : null
 
-        // Validate cached session against SAW (cookies may have expired server-side)
+        // Validate cached session against SAW
         if (sessionCookies) {
           send('processing', 'Validando sessao salva no SAW...')
-          const valid = await getSawClient().validateSession(sessionCookies)
+          const valid = await getSawClient().validateSession(user.id, sessionCookies)
           if (!valid) {
             send('info', 'Sessao salva expirou no SAW. Fazendo novo login...')
             sessionCookies = null
-            // Mark old session as invalid
             await db
               .from('saw_sessions')
               .update({ valida: false })
+              .eq('user_id', user.id)
               .eq('valida', true)
           }
         }
@@ -165,16 +161,10 @@ export async function POST(request: NextRequest) {
         if (!sessionCookies) {
           send('processing', 'Fazendo login no SAW...')
 
-          if (!sawConfig.login_url || !sawConfig.usuario || !sawConfig.senha) {
-            send('error', 'Configuracao SAW incompleta: login_url, usuario e senha sao obrigatorios.')
-            controller.close()
-            return
-          }
-
-          const loginResult = await getSawClient().login({
-            login_url: sawConfig.login_url,
-            usuario: sawConfig.usuario,
-            senha: sawConfig.senha,
+          const loginResult = await getSawClient().login(user.id, {
+            login_url: sawCredentials.login_url,
+            usuario: sawCredentials.usuario,
+            senha: sawCredentials.senha,
           })
 
           if (!loginResult.success) {
@@ -186,6 +176,7 @@ export async function POST(request: NextRequest) {
           sessionCookies = loginResult.cookies
 
           await db.from('saw_sessions').insert({
+            user_id: user.id,
             cookies: sessionCookies,
             valida: true,
             expires_at: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
@@ -221,21 +212,16 @@ export async function POST(request: NextRequest) {
 
         const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 
-        // Re-login helper: reconnects Browserless + does fresh SAW login
+        // Re-login helper: reconnects browser context + does fresh SAW login
         const reloginSaw = async (): Promise<boolean> => {
           try {
-            await getSawClient().forceReconnect()
-            send('info', 'Reconexao com Browserless realizada. Refazendo login no SAW...')
+            await getSawClient().forceReconnect(user.id)
+            send('info', 'Reconexao realizada. Refazendo login no SAW...')
 
-            if (!sawConfig.login_url || !sawConfig.usuario || !sawConfig.senha) {
-              send('error', 'Impossivel refazer login: configuracao SAW incompleta.')
-              return false
-            }
-
-            const loginResult = await getSawClient().login({
-              login_url: sawConfig.login_url,
-              usuario: sawConfig.usuario,
-              senha: sawConfig.senha,
+            const loginResult = await getSawClient().login(user.id, {
+              login_url: sawCredentials.login_url,
+              usuario: sawCredentials.usuario,
+              senha: sawCredentials.senha,
             })
 
             if (!loginResult.success) {
@@ -246,13 +232,15 @@ export async function POST(request: NextRequest) {
             // Update session cookies for remaining guides
             sessionCookies = loginResult.cookies
 
-            // Invalidate old sessions and save new one
+            // Invalidate old sessions and save new one (per user)
             await db
               .from('saw_sessions')
               .update({ valida: false })
+              .eq('user_id', user.id)
               .eq('valida', true)
 
             await db.from('saw_sessions').insert({
+              user_id: user.id,
               cookies: sessionCookies,
               valida: true,
               expires_at: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
@@ -284,7 +272,7 @@ export async function POST(request: NextRequest) {
             // Wrap readGuide in try-catch to capture both returned errors AND thrown exceptions
             let sawResult: { success: boolean; data?: Record<string, unknown>; error?: string }
             try {
-              sawResult = await getSawClient().readGuide(sessionCookies!, guideNumber)
+              sawResult = await getSawClient().readGuide(user.id, sessionCookies!, guideNumber)
             } catch (readErr) {
               const errMsg = readErr instanceof Error ? readErr.message : 'Erro desconhecido'
               sawResult = { success: false, error: errMsg }

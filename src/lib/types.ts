@@ -211,6 +211,17 @@ export interface SawConfig {
   cookie_key: string
 }
 
+export interface SawCredentials {
+  id: string
+  user_id: string
+  usuario: string
+  senha: string
+  login_url: string
+  ativo: boolean
+  created_at: string
+  updated_at: string
+}
+
 export interface CproConfig {
   api_url: string
   api_key: string
