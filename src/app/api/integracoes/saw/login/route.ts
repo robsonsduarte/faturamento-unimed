@@ -4,7 +4,7 @@ import { requireRole, isAuthError } from '@/lib/auth'
 import { rateLimit } from '@/lib/rate-limit'
 import { auditLog } from '@/lib/audit'
 import { getSawClient } from '@/lib/saw/client'
-import type { SawCredentials } from '@/lib/types'
+import type { SawCredentials } from '@/lib/types'  
 
 function getServiceClient() {
   return createAdminClient(
@@ -24,27 +24,46 @@ export async function POST(request: NextRequest) {
 
     const db = getServiceClient()
 
-    // Busca credenciais SAW do usuario autenticado
-    const { data: sawCred, error: credErr } = await db
+    // Busca credenciais SAW: per-user primeiro, fallback global
+    const { data: sawCred } = await db
       .from('saw_credentials')
       .select('*')
       .eq('user_id', user.id)
       .eq('ativo', true)
       .single()
 
-    if (credErr || !sawCred) {
-      return NextResponse.json(
-        { error: 'Credenciais SAW nao configuradas. Acesse Configuracoes > Credenciais SAW.' },
-        { status: 400 }
-      )
+    let loginUrl: string
+    let usuario: string
+    let senha: string
+
+    if (sawCred) {
+      const cred = sawCred as SawCredentials
+      loginUrl = cred.login_url
+      usuario = cred.usuario
+      senha = cred.senha
+    } else {
+      const { data: integ } = await supabase
+        .from('integracoes')
+        .select('config, ativo')
+        .eq('slug', 'saw')
+        .single()
+
+      if (!integ?.ativo) {
+        return NextResponse.json({ error: 'Credenciais SAW nao configuradas.' }, { status: 400 })
+      }
+      const cfg = integ.config as Record<string, string>
+      if (!cfg.usuario || !cfg.senha || !cfg.login_url) {
+        return NextResponse.json({ error: 'Config SAW incompleta.' }, { status: 400 })
+      }
+      loginUrl = cfg.login_url
+      usuario = cfg.usuario
+      senha = cfg.senha
     }
 
-    const cred = sawCred as SawCredentials
-
     const result = await getSawClient().login(user.id, {
-      login_url: cred.login_url,
-      usuario: cred.usuario,
-      senha: cred.senha,
+      login_url: loginUrl,
+      usuario,
+      senha,
     })
 
     if (!result.success) {

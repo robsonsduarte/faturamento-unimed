@@ -101,21 +101,51 @@ export async function POST(request: NextRequest) {
       try {
         send('info', 'Iniciando importacao...')
 
-        // Load SAW credentials for authenticated user
-        const { data: sawCred, error: sawCredErr } = await db
+        // Load SAW credentials: per-user first, fallback to global integracoes
+        const { data: sawCred } = await db
           .from('saw_credentials')
           .select('*')
           .eq('user_id', user.id)
           .eq('ativo', true)
           .single()
 
-        if (sawCredErr || !sawCred) {
-          send('error', 'Credenciais SAW nao configuradas. Acesse Configuracoes > Credenciais SAW.')
-          controller.close()
-          return
-        }
+        let sawCredentials: SawCredentials
 
-        const sawCredentials = sawCred as SawCredentials
+        if (sawCred) {
+          sawCredentials = sawCred as SawCredentials
+        } else {
+          // Fallback: busca config global da tabela integracoes
+          send('info', 'Credenciais per-user nao encontradas. Usando config global...')
+          const { data: sawInteg, error: sawIntegErr } = await db
+            .from('integracoes')
+            .select('config, ativo')
+            .eq('slug', 'saw')
+            .single()
+
+          if (sawIntegErr || !sawInteg?.ativo) {
+            send('error', 'Credenciais SAW nao configuradas. Acesse Configuracoes > Credenciais SAW ou Integracoes.')
+            controller.close()
+            return
+          }
+
+          const globalConfig = sawInteg.config as Record<string, string>
+          if (!globalConfig.usuario || !globalConfig.senha || !globalConfig.login_url) {
+            send('error', 'Config SAW global incompleta: usuario, senha e login_url sao obrigatorios.')
+            controller.close()
+            return
+          }
+
+          sawCredentials = {
+            id: 'global',
+            user_id: user.id,
+            usuario: globalConfig.usuario,
+            senha: globalConfig.senha,
+            login_url: globalConfig.login_url,
+            ativo: true,
+            created_at: '',
+            updated_at: '',
+          }
+        }
 
         // Load CPro config (global, compartilhada)
         const { data: cproIntegracao } = await db
