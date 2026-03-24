@@ -19,7 +19,7 @@ except ImportError:
 
 mcp = FastMCP(
     "redis-task-manager",
-    description="Gerenciador de tasks multi-agente — cria, atribui, bloqueia e executa tasks com dependencias",
+    instructions="Gerenciador de tasks multi-agente — cria, atribui, bloqueia e executa tasks com dependencias",
 )
 
 # --- Constants ---

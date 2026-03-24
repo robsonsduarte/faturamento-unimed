@@ -1,0 +1,48 @@
+# Process Card: Listar Squads
+# Comando: /DUARTEOS:squad:list-squads
+# "Without data, you're just another person with an opinion."
+
+process_card:
+  name: "list-squads"
+  version: "1.0.0"
+  aim: >
+    Listar todos os squads customizados criados com descricoes e status.
+  type: "informativo"
+  scale: "micro-tarefa"
+  risk: "baixo"
+  teoria: >
+    Visibilidade do sistema e pre-requisito para gestao.
+    Listar squads permite ao usuario decidir qual ativar.
+
+  triggers:
+    - "Listar squads disponiveis"
+    - "/DUARTEOS:squad:list-squads"
+
+  steps:
+    - step: 1
+      acao: "Escanear diretorio squads/ por squad.yaml files"
+      responsavel: "pm"
+      output: "Lista de squads encontrados"
+      checkpoint: false
+
+    - step: 2
+      acao: "Para cada squad, extrair: nome, descricao, agentes, ultimo uso"
+      responsavel: "pm"
+      output: "Tabela formatada com squads"
+      checkpoint: false
+
+    - step: 3
+      acao: "Apresentar ao usuario com opcoes de acao"
+      responsavel: "pm"
+      output: "Output visual"
+      checkpoint: false
+
+  metricas:
+    variacao_aceitavel: "Informacao correta e atualizada"
+    criterio_sucesso: "Lista completa apresentada"
+    review_cycle: "N/A (informativo)"
+
+  omega:
+    task_type: "research"
+    threshold: 80
+    max_iterations: 1

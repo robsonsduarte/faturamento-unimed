@@ -9,7 +9,7 @@ import json
 import os
 import re
 
-mcp = FastMCP("input-analyzer", description="Analisa PRDs, workflows N8N e URLs para gerar blueprints de sistema")
+mcp = FastMCP("input-analyzer", instructions="Analisa PRDs, workflows N8N e URLs para gerar blueprints de sistema")
 
 
 @mcp.tool()

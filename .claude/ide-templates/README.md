@@ -13,8 +13,8 @@ Este diretorio contem templates para gerar configs de IDEs automaticamente.
 ## Como Usar
 
 ```bash
-/squad:sync-ide              # gera para todas IDEs habilitadas
-/squad:sync-ide cursor       # gera apenas para Cursor
+/DUARTEOS:squad:sync-ide              # gera para todas IDEs habilitadas
+/DUARTEOS:squad:sync-ide cursor       # gera apenas para Cursor
 ```
 
 ## Habilitando IDEs
@@ -31,7 +31,7 @@ ide_sync:
 ## Customizando Templates
 
 Edite os `.tmpl` files neste diretorio. Na proxima execucao de
-`/squad:sync-ide`, os arquivos serao regenerados com suas customizacoes.
+`/DUARTEOS:squad:sync-ide`, os arquivos serao regenerados com suas customizacoes.
 
 ## Protocolo
 

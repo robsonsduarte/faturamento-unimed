@@ -1,0 +1,102 @@
+# Process Card: Conselho de Especialistas (Advisory Board)
+# Comandos: /DUARTEOS:conselho:{categoria}
+# "Management is prediction." — um conselho fornece multiplas predicoes.
+
+process_card:
+  name: "conselho-advisory"
+  version: "1.0.0"
+  aim: >
+    Convocar conselho de especialistas para analise coletiva, debate de
+    perspectivas e recomendacao consolidada sobre uma demanda especifica.
+  type: "knowledge"
+  scale: "tarefa"
+  risk: "baixo"
+  teoria: >
+    Multiplas perspectivas especializadas reduzem vieses individuais.
+    Deliberacao ao vivo (nao documento de referencia — para isso use Dossie).
+    Protocolo: spawn paralelo > briefing > analise individual > sintese.
+
+  triggers:
+    - "Decisao complexa que precisa de multiplas perspectivas"
+    - "/DUARTEOS:conselho:{ia|marketing|copywriting|ux|tech|business|content|product|saude|juridico|process}"
+
+  conselhos_disponiveis:
+    - nome: "IA"
+      membros: 5
+      experts: "LeCun, Ng, Hinton, Bengio, Hassabis"
+    - nome: "Marketing"
+      membros: 9
+      experts: "Dan Kennedy, Ogilvy, Diego Carmona, Kobata, Marcello Safe, Sobral, Sexta-feira, Georgi, Tessmann"
+    - nome: "Copywriting"
+      membros: 7
+      experts: "Khayat, Hopkins, Schwartz, Bencivenga, Halbert, Sugarman, Collier"
+    - nome: "UX"
+      membros: 6
+      experts: "Frost, Norman, Nielsen, Wroblewski, Curtis, Krug"
+    - nome: "Tech"
+      membros: 5
+      experts: "Moskovitz, Spiegel, Koum, Page, Zuckerberg, Durov"
+    - nome: "Business"
+      membros: 6
+      experts: "Gates, Cavalcante, Allen, Bifi, Lopez, Forte, Finch, Greco"
+    - nome: "Content"
+      membros: 4
+      experts: "Camila Porto, Papini, MrBeast, Virginia Fonseca"
+    - nome: "Product"
+      membros: 3
+      experts: "Brennan Dunn, Firestone, Julie Zhuo"
+    - nome: "Saude"
+      membros: 7
+      experts: "Gawande, Drauzio, Miyake, Trentini, Iaconelli, Atalla, Leite, Castanharo"
+    - nome: "Juridico"
+      membros: 7
+      experts: "Peck, Lemos, Martins, Nybo, Coelho, Calcini, Faleiros Jr"
+    - nome: "Process"
+      membros: 5
+      experts: "Deming, Allen, Forte, Gawande, Kahneman"
+
+  steps:
+    - step: 1
+      acao: "Convocar membros em PARALELO via Agent tool"
+      responsavel: "pm"
+      output: "Membros spawnados com briefing"
+      checkpoint: false
+
+    - step: 2
+      acao: "Cada membro analisa sob SUA perspectiva unica"
+      responsavel: "mind clones"
+      output: "Diagnostico + recomendacoes + riscos por membro"
+      checkpoint: true
+
+    - step: 3
+      acao: "Sintetizar: consensos, divergencias, recomendacao final"
+      responsavel: "pm"
+      output: "Parecer consolidado do conselho"
+      checkpoint: true
+
+  checkpoints:
+    - nome: "Analises Recebidas"
+      step: 2
+      checklist:
+        - "Todos os membros contribuiram?"
+        - "Cada contribuicao tem perspectiva unica (nao generica)?"
+        - "Max 3 recomendacoes por membro?"
+      kill_item: true
+
+    - nome: "Sintese Completa"
+      step: 3
+      checklist:
+        - "Consensos e divergencias separados?"
+        - "Recomendacao final e acionavel?"
+        - "Vozes dissidentes registradas?"
+      kill_item: true
+
+  metricas:
+    variacao_aceitavel: "100% dos membros contribuem"
+    criterio_sucesso: "Recomendacao final acionavel e fundamentada"
+    review_cycle: "Nao aplica (sob demanda)"
+
+  omega:
+    task_type: "research"
+    threshold: 80
+    max_iterations: 3

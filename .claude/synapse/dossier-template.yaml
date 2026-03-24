@@ -1,0 +1,52 @@
+# Dossie Tematico: {Tema}
+# Synapse Dossier — Conhecimento Consolidado
+# Criado em: {data}
+# Ultima atualizacao: {data}
+
+tema: "{nome do tema}"
+slug: "{tema-normalizado}"
+descricao: "{o que este dossie cobre}"
+
+# Fontes que contribuiram
+fontes:
+  - mind_clone: "{nome}"
+    perspectiva: "{resumo da visao deste expert sobre o tema}"
+    insights_chave:
+      - "{insight 1}"
+      - "{insight 2}"
+  - mind_clone: "{nome 2}"
+    perspectiva: "{visao}"
+    insights_chave:
+      - "{insight 1}"
+      - "{insight 2}"
+
+# Sintese consolidada
+consensos:
+  - ponto: "{algo que todos/maioria concordam}"
+    defendido_por:
+      - "{expert1}"
+      - "{expert2}"
+
+divergencias:
+  - posicao_a: "{visao A}"
+    defendida_por:
+      - "{expert1}"
+    posicao_b: "{visao B}"
+    defendida_por:
+      - "{expert2}"
+
+frameworks_combinados:
+  - name: "{framework sintese}"
+    origem: "{quem contribuiu}"
+    steps:
+      - "{passo 1}"
+      - "{passo 2}"
+
+recomendacao_consolidada: "{posicao final do dossie}"
+confianca: "{alta/media/baixa}"
+
+stats:
+  total_fontes: 0
+  total_insights: 0
+  ultima_atualizacao: "{YYYY-MM-DD}"
+  versao: 1

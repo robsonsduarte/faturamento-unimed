@@ -1,0 +1,46 @@
+omega:
+  version: "1.1.0"
+  enabled: true
+
+  # Thresholds by task type
+  thresholds:
+    research: 80
+    planning: 85
+    implementation: 90
+    validation: 95
+    mind_clone: 95
+    mind_update: 95
+
+  # Circuit breaker settings
+  circuit_breaker:
+    no_progress_threshold: 3
+    same_error_threshold: 5
+    cooldown_minutes: 30
+    auto_reset: false
+
+  # Loop settings
+  loop:
+    max_iterations: 3
+    escalation_order: ["same_agent", "vertical", "horizontal", "human"]
+
+  # Model routing by complexity
+  model_routing:
+    low: "haiku"      # complexity 1-4
+    medium: "sonnet"   # complexity 5-6
+    high: "opus"       # complexity 7-10
+
+  # Task Lifecycle Protocol (Secao 11 do OMEGA.md)
+  task_lifecycle:
+    enabled: true
+    task_dir: ".planning/tasks"
+    history_file: ".planning/tasks/HISTORY.md"
+    memory_target: ".claude/session-context.md"
+    auto_cleanup_completed: true
+    keep_failed_tasks: true
+    simplified_threshold_seconds: 30
+
+  # Logging
+  logging:
+    enabled: true
+    progress_log: ".claude/omega/progress.log"
+    state_file: ".claude/omega/state.json"

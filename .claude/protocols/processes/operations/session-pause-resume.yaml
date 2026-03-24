@@ -1,0 +1,62 @@
+# Process Card: Pausar e Retomar Sessao
+# Comandos: /DUARTEOS:squad:pause + /DUARTEOS:squad:resume
+# "Constancy of purpose" — trabalho nao se perde entre sessoes.
+
+process_card:
+  name: "session-pause-resume"
+  version: "1.0.0"
+  aim: >
+    Salvar estado completo de uma sessao de trabalho (pause) e restaurar
+    para continuar sem perda de contexto (resume).
+  type: "operacao"
+  scale: "micro-tarefa"
+  risk: "baixo"
+  teoria: >
+    Context switching e a maior fonte de variacao em trabalho do conhecimento.
+    Handoff estruturado (onde parou, o que fez, o que falta, decisoes tomadas)
+    elimina retrabalho ao retomar.
+
+  triggers:
+    - "Encerrar sessao no meio de fase"
+    - "Retomar trabalho apos pausa"
+    - "/DUARTEOS:squad:pause + /DUARTEOS:squad:resume"
+
+  steps:
+    - step: 1
+      acao: "[PAUSE] Salvar estado em .planning/STATE.md"
+      responsavel: "pm"
+      output: "STATE.md com: onde parou, feito, pendente, decisoes, contexto"
+      checkpoint: true
+
+    - step: 2
+      acao: "[RESUME] Ler STATE.md e restaurar contexto"
+      responsavel: "pm"
+      output: "Contexto restaurado, proximo passo claro"
+      checkpoint: true
+
+  checkpoints:
+    - nome: "Handoff Completo"
+      step: 1
+      checklist:
+        - "Fase atual registrada?"
+        - "Progresso documentado?"
+        - "Decisoes tomadas listadas?"
+        - "Proximo passo claro?"
+      kill_item: true
+
+    - nome: "Contexto Restaurado"
+      step: 2
+      checklist:
+        - "STATE.md lido com sucesso?"
+        - "Proximo passo identificado?"
+      kill_item: true
+
+  metricas:
+    variacao_aceitavel: "Zero retrabalho ao retomar"
+    criterio_sucesso: "Continuidade sem perda de contexto"
+    review_cycle: "Nao aplica"
+
+  omega:
+    task_type: "planning"
+    threshold: 85
+    max_iterations: 3

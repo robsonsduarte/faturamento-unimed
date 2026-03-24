@@ -1,0 +1,58 @@
+# Process Card: Sync IDE
+# Comando: /DUARTEOS:squad:sync-ide
+# Gerar configs para Cursor, Windsurf, GitHub Copilot a partir do DuarteOS.
+
+process_card:
+  name: "sync-ide"
+  version: "1.0.0"
+  aim: >
+    Gerar arquivos de configuracao para IDEs alternativas a partir das
+    configuracoes centrais do DuarteOS. Single source of truth.
+  type: "operacao"
+  scale: "micro-tarefa"
+  risk: "baixo"
+  teoria: >
+    Uma fonte de verdade (DuarteOS configs) gera N representacoes.
+    Eliminacao de variacao: IDEs diferentes, mesmas regras.
+
+  triggers:
+    - "Configuracao do projeto mudou"
+    - "Nova IDE habilitada"
+    - "/DUARTEOS:squad:sync-ide"
+
+  steps:
+    - step: 1
+      acao: "Coletar contexto (CONSTITUTION.md, GOVERNANCE.md, project.yaml)"
+      responsavel: "processamento"
+      output: "Contexto consolidado"
+      checkpoint: false
+
+    - step: 2
+      acao: "Verificar IDEs habilitadas em project.yaml"
+      responsavel: "processamento"
+      output: "Lista de IDEs a gerar"
+      checkpoint: false
+
+    - step: 3
+      acao: "Gerar arquivos: .cursorrules, .windsurfrules, copilot-instructions.md"
+      responsavel: "processamento"
+      output: "Arquivos gerados"
+      checkpoint: true
+
+  checkpoints:
+    - nome: "Configs Geradas"
+      step: 3
+      checklist:
+        - "Cada IDE habilitada tem arquivo gerado?"
+        - "Regras sao consistentes entre IDEs?"
+      kill_item: true
+
+  metricas:
+    variacao_aceitavel: "100% das IDEs habilitadas com config"
+    criterio_sucesso: "Configs refletem estado atual do DuarteOS"
+    review_cycle: "Apos mudanca em CONSTITUTION ou GOVERNANCE"
+
+  omega:
+    task_type: "implementation"
+    threshold: 90
+    max_iterations: 3

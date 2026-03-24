@@ -1,0 +1,86 @@
+# Process Card: Planejar Fase
+# Comando: /DUARTEOS:squad:plan-phase
+# "In God we trust. All others must bring data."
+
+process_card:
+  name: "plan-phase"
+  version: "1.0.0"
+  aim: >
+    Planejar uma fase do roadmap com pipeline COMPASS > NEXUS > SHADOW.
+    Cada etapa tem criterios de handoff verificaveis.
+  type: "planejamento"
+  scale: "tarefa"
+  risk: "medio"
+  teoria: >
+    Pipeline de 3 perspectivas sequenciais elimina vieses: Context Engineer
+    resolve ambiguidade, Architect gera plano concreto, Devil's Advocate
+    contesta antes da execucao. Handoff verificavel impede avanco sem qualidade.
+
+  triggers:
+    - "Planejar proxima fase do roadmap"
+    - "Fase complexa que precisa de plano detalhado"
+    - "/DUARTEOS:squad:plan-phase"
+
+  steps:
+    - step: 1
+      acao: "COMPASS (Context Engineer) — resolver gray areas e gerar CONTEXT.md"
+      responsavel: "context-engineer"
+      output: "CONTEXT.md com decisoes resolvidas e gray areas abertas"
+      checkpoint: true
+
+    - step: 2
+      acao: "NEXUS (Architect) — gerar PLAN.md com tasks, criterios de aceite, estimativas"
+      responsavel: "architect"
+      output: "PLAN.md referenciando CONTEXT.md"
+      checkpoint: true
+
+    - step: 3
+      acao: "SHADOW (Devil's Advocate) — contestar plano com cenarios de falha"
+      responsavel: "devils-advocate"
+      output: "Verdict: APPROVED / CAVEATS / BLOCKED"
+      checkpoint: true
+
+  checkpoints:
+    - nome: "COMPASS → NEXUS Handoff"
+      step: 1
+      checklist:
+        - "CONTEXT.md foi criado?"
+        - "Secao 'Decisoes Resolvidas' presente com >= 1 decisao?"
+        - "Secao 'Gray Areas Abertas' presente?"
+      kill_item: true
+
+    - nome: "NEXUS → SHADOW Handoff"
+      step: 2
+      checklist:
+        - "PLAN.md foi criado?"
+        - "Cada task tem descricao + criterio de aceite + estimativa?"
+        - "PLAN.md referencia CONTEXT.md?"
+      kill_item: true
+
+    - nome: "SHADOW Verdict"
+      step: 3
+      checklist:
+        - "Verdict emitido (APPROVED/CAVEATS/BLOCKED)?"
+        - "Se CAVEATS: cada caveat tem severidade?"
+        - "Se BLOCKED: cada blocker tem justificativa?"
+        - "Critica sem alternativa e INVALIDA?"
+      kill_item: true
+
+  bias_alerts:
+    - step: 1
+      vies: "Assumir que gray areas nao existem porque parece simples"
+      mitigacao: "Sempre gerar lista minima de 3 gray areas potenciais"
+
+    - step: 3
+      vies: "Rubber-stamping — aprovar sem realmente contestar"
+      mitigacao: "Devil's Advocate DEVE gerar pelo menos 1 cenario de falha"
+
+  metricas:
+    variacao_aceitavel: "Plano aprovado em <= 2 iteracoes"
+    criterio_sucesso: "Verdict APPROVED ou CAVEATS (low severity)"
+    review_cycle: "Apos execucao da fase planejada"
+
+  omega:
+    task_type: "planning"
+    threshold: 85
+    max_iterations: 3

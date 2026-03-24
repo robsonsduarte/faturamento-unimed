@@ -1,0 +1,30 @@
+{
+  "version": "1.0.0",
+  "session": {
+    "id": "",
+    "started_at": "",
+    "last_updated": ""
+  },
+  "circuit_breaker": {
+    "state": "CLOSED",
+    "consecutive_no_progress": 0,
+    "consecutive_same_error": 0,
+    "last_progress_at": "",
+    "opened_at": null,
+    "cooldown_minutes": 30,
+    "total_opens": 0,
+    "reason": ""
+  },
+  "current_task": {
+    "id": "",
+    "type": "",
+    "agent": "",
+    "iteration": 0,
+    "max_iterations": 3,
+    "threshold": 0,
+    "scores": [],
+    "status": "pending",
+    "escalation_path": null
+  },
+  "history": []
+}

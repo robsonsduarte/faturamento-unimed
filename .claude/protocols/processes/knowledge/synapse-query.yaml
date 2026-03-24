@@ -1,0 +1,52 @@
+# Process Card: Synapse Query — Dashboard de Estado
+# Comando: /DUARTEOS:squad:synapse
+# "Without data, you're just another person with an opinion."
+
+process_card:
+  name: "synapse-query"
+  version: "1.0.0"
+  aim: >
+    Consultar estado atual dos agentes e memoria incremental do Synapse.
+    Dashboard de visibilidade do sistema.
+  type: "operacao"
+  scale: "micro-tarefa"
+  risk: "baixo"
+  teoria: >
+    Visibilidade e pre-requisito para gestao. Sem saber o estado do sistema,
+    nao e possivel tomar decisoes informadas. Synapse v2 e a memoria viva.
+
+  triggers:
+    - "Verificar estado dos agentes"
+    - "Consultar DNA de mind clone"
+    - "/DUARTEOS:squad:synapse"
+
+  steps:
+    - step: 1
+      acao: "Ler todos os .yaml em .claude/synapse/"
+      responsavel: "processamento"
+      output: "Estado de cada agente"
+      checkpoint: false
+
+    - step: 2
+      acao: "Apresentar em formato tabular"
+      responsavel: "processamento"
+      output: "Dashboard visual"
+      checkpoint: true
+
+  checkpoints:
+    - nome: "Dashboard Completo"
+      step: 2
+      checklist:
+        - "Todos os agentes rastreados listados?"
+        - "Estado (idle/executing/blocked/completed) correto?"
+      kill_item: false
+
+  metricas:
+    variacao_aceitavel: "Dashboard em < 10 segundos"
+    criterio_sucesso: "Informacao precisa e atualizada"
+    review_cycle: "Nao aplica (sob demanda)"
+
+  omega:
+    task_type: "research"
+    threshold: 80
+    max_iterations: 3

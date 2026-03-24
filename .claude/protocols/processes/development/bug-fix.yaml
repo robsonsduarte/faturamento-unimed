@@ -1,0 +1,72 @@
+# Process Card: Correcao de Bug
+# "94% belongs to the system." — o bug provavelmente e do processo, nao do dev.
+
+process_card:
+  name: "bug-fix"
+  version: "1.0.0"
+  aim: >
+    Corrigir bug de forma sistematica. Se simples, usa quick-task.
+    Se complexo (falhou 2x), escala para debug-systematic.
+  type: "implementacao"
+  scale: "micro-tarefa"
+  risk: "baixo a medio"
+  teoria: >
+    Bugs sao sintomas do sistema. A correcao deve atacar causa raiz,
+    nao sintoma. Regra do 2x: se falhou 2 vezes, o problema e mais
+    profundo e precisa de investigacao sistematica (debug).
+
+  triggers:
+    - "Bug reportado pelo usuario"
+    - "Erro em producao"
+    - "Teste falhando"
+
+  steps:
+    - step: 1
+      acao: "Classificar bug: simples (reproducao obvia) ou complexo (nao-obvio)"
+      responsavel: "pm"
+      output: "Classificacao + roteamento"
+      checkpoint: true
+
+    - step: 2a
+      acao: "[SIMPLES] Rotear para /DUARTEOS:squad:quick com descricao do bug"
+      responsavel: "pm → agente correto"
+      output: "Fix commitado"
+      checkpoint: false
+
+    - step: 2b
+      acao: "[COMPLEXO ou 2x falhou] Rotear para /DUARTEOS:squad:debug"
+      responsavel: "pm → qa"
+      output: "Root cause identificado + fix plan"
+      checkpoint: false
+
+    - step: 3
+      acao: "Verificar que o fix resolve o problema (nao regressao)"
+      responsavel: "qa"
+      output: "Teste de regressao pass"
+      checkpoint: true
+
+  checkpoints:
+    - nome: "Classificacao Correta"
+      step: 1
+      checklist:
+        - "Bug reproduzivel?"
+        - "Ja tentou corrigir antes (regra 2x)?"
+        - "Modulos afetados identificados?"
+      kill_item: false
+
+    - nome: "Fix Validado"
+      step: 3
+      checklist:
+        - "Bug original nao reproduz mais?"
+        - "Nenhuma regressao introduzida?"
+      kill_item: true
+
+  metricas:
+    variacao_aceitavel: "Fix em <= 2 tentativas"
+    criterio_sucesso: "Bug resolvido sem regressao"
+    review_cycle: "Se mesmo tipo de bug recorre 3x, revisar processo"
+
+  omega:
+    task_type: "implementation"
+    threshold: 90
+    max_iterations: 3

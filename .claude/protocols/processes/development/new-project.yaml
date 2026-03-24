@@ -1,0 +1,103 @@
+# Process Card: Novo Projeto / Milestone
+# Comando: /DUARTEOS:squad:new-project
+# "Constancy of purpose." — W. Edwards Deming
+
+process_card:
+  name: "new-project"
+  version: "1.0.0"
+  aim: >
+    Ir de "ideia verbal" ate "roadmap aprovado e commitado". Captura requisitos,
+    pesquisa dominio, define requirements e gera roadmap com fases.
+  type: "planejamento"
+  scale: "projeto"
+  risk: "alto"
+  teoria: >
+    Projeto sem discovery e projeto que descobre tarde demais. A pesquisa
+    paralela (4 agentes) reduz vies de ancoragem. O roadmap e hipotese —
+    cada fase e um ciclo PDSA implcito.
+
+  triggers:
+    - "Iniciar refatoracao grande"
+    - "Planejar feature nova significativa"
+    - "Iniciar novo milestone"
+    - "/DUARTEOS:squad:new-project"
+
+  steps:
+    - step: 1
+      acao: "Detectar se e brownfield (codebase existente) ou greenfield"
+      responsavel: "pm"
+      output: "Decisao: brownfield (oferecer map-codebase) ou greenfield"
+      checkpoint: false
+
+    - step: 2
+      acao: "Questionamento profundo sobre a demanda"
+      responsavel: "pm"
+      output: "Requisitos capturados do usuario"
+      checkpoint: false
+
+    - step: 3
+      acao: "Pesquisa de dominio com 4 agentes paralelos (Stack, Features, Architecture, Pitfalls)"
+      responsavel: "context-engineer + architect + backend + qa"
+      output: ".planning/research/SUMMARY.md"
+      checkpoint: true
+
+    - step: 4
+      acao: "Sintetizar pesquisa em Requirements"
+      responsavel: "pm"
+      output: ".planning/REQUIREMENTS.md com REQ-IDs"
+      checkpoint: false
+
+    - step: 5
+      acao: "Gerar roadmap com fases, goals e success criteria"
+      responsavel: "pm"
+      output: ".planning/ROADMAP.md"
+      checkpoint: true
+
+    - step: 6
+      acao: "Apresentar roadmap ao usuario para aprovacao"
+      responsavel: "pm"
+      output: "Aprovacao ou revisao"
+      checkpoint: true
+
+  checkpoints:
+    - nome: "Pesquisa Completa"
+      step: 3
+      checklist:
+        - "4 agentes paralelos executaram?"
+        - "SUMMARY.md consolida todas as perspectivas?"
+        - "Riscos e pitfalls documentados?"
+      kill_item: true
+
+    - nome: "Roadmap Coerente"
+      step: 5
+      checklist:
+        - "Fases seguem fluxo Discovery > Arquitetura > Implementacao > Validacao?"
+        - "Cada fase tem goal e success criteria?"
+        - "Riscos mapeados por fase?"
+      kill_item: true
+
+    - nome: "Aprovacao do Usuario"
+      step: 6
+      checklist:
+        - "Usuario revisou o roadmap?"
+        - "Prioridades confirmadas?"
+      kill_item: true
+
+  knowledge_map:
+    - step: 1
+      precisa_de: "Estado do codebase"
+      onde_encontrar: "git status, package.json, README"
+
+    - step: 3
+      precisa_de: "Contexto do dominio"
+      onde_encontrar: "WebSearch, EXA, Context7 (via haiku — model routing)"
+
+  metricas:
+    variacao_aceitavel: "Roadmap aprovado sem mais de 2 revisoes"
+    criterio_sucesso: "Todas as fases do roadmap executaveis"
+    review_cycle: "Apos conclusao de cada milestone"
+
+  omega:
+    task_type: "planning"
+    threshold: 85
+    max_iterations: 3

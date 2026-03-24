@@ -19,7 +19,7 @@ except ImportError:
 
 mcp = FastMCP(
     "redis-session",
-    description="Gerenciador de sessoes Redis — salva, restaura e gerencia contexto entre sessoes",
+    instructions="Gerenciador de sessoes Redis — salva, restaura e gerencia contexto entre sessoes",
 )
 
 # --- Constants ---

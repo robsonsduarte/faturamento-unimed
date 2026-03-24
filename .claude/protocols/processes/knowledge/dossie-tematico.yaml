@@ -1,0 +1,73 @@
+# Process Card: Dossie Tematico
+# Comando: /DUARTEOS:squad:dossie
+# "A system cannot understand itself" — mas pode compilar conhecimento cross-source.
+
+process_card:
+  name: "dossie-tematico"
+  version: "1.0.0"
+  aim: >
+    Compilar dossie completo sobre um tema, consolidando perspectivas de
+    todos os mind clones relevantes. Documento de referencia permanente.
+  type: "knowledge"
+  scale: "tarefa"
+  risk: "baixo"
+  teoria: >
+    Dossie != Conselho. Conselho delibera ao vivo sobre demanda especifica.
+    Dossie e documento permanente com consensos, divergencias e frameworks
+    combinados de multiplos especialistas. Salvo no Synapse para consulta futura.
+
+  triggers:
+    - "Compilar conhecimento sobre tema especifico"
+    - "Criar referencia cross-expert sobre topico"
+    - "/DUARTEOS:squad:dossie {tema}"
+
+  steps:
+    - step: 1
+      acao: "MAPEAMENTO — identificar mind clones relevantes para o tema"
+      responsavel: "processamento"
+      output: "Lista de experts com justificativa de relevancia"
+      checkpoint: false
+
+    - step: 2
+      acao: "CONSULTA — spawnar cada expert em paralelo com a demanda"
+      responsavel: "criacao (opus)"
+      output: "Contribuicoes individuais de cada expert"
+      checkpoint: true
+
+    - step: 3
+      acao: "SINTESE — consolidar em consensos, divergencias, frameworks"
+      responsavel: "criacao (opus)"
+      output: "Dossie estruturado"
+      checkpoint: true
+
+    - step: 4
+      acao: "PERSISTENCIA — salvar no Synapse para consulta futura"
+      responsavel: "processamento"
+      output: ".claude/synapse/dossiers/{tema}.yaml"
+      checkpoint: false
+
+  checkpoints:
+    - nome: "Consulta Completa"
+      step: 2
+      checklist:
+        - "Todos os experts relevantes consultados?"
+        - "Cada contribuicao tem perspectiva unica (nao generica)?"
+      kill_item: true
+
+    - nome: "Sintese Coerente"
+      step: 3
+      checklist:
+        - "Consensos identificados?"
+        - "Divergencias documentadas (nao escondidas)?"
+        - "Frameworks combinados sao acionaveis?"
+      kill_item: true
+
+  metricas:
+    variacao_aceitavel: "Dossie cobre >= 3 perspectivas"
+    criterio_sucesso: "Documento reutilizavel e incrementavel"
+    review_cycle: "Quando novo expert ou fonte e adicionado"
+
+  omega:
+    task_type: "research"
+    threshold: 80
+    max_iterations: 3

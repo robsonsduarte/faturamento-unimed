@@ -1,0 +1,73 @@
+# Process Card: Code Review
+# "Quality comes not from inspection." — mas inspecao sistematica previne propagacao.
+
+process_card:
+  name: "code-review"
+  version: "1.0.0"
+  aim: >
+    Revisar codigo antes de merge com perspectivas multiplas:
+    arquitetura, seguranca, performance, manutenabilidade.
+  type: "validacao"
+  scale: "micro-tarefa"
+  risk: "baixo"
+  teoria: >
+    Review nao melhora codigo ja escrito — melhora o SISTEMA de escrita
+    de codigo ao capturar padroes de erro recorrentes. O valor do review
+    esta no feedback loop, nao na inspecao pontual.
+
+  triggers:
+    - "PR pronto para review"
+    - "Codigo implementado precisa de segunda opiniao"
+    - "/DUARTEOS:squad:task qa-code-review"
+
+  steps:
+    - step: 1
+      acao: "Ler diff completo e entender contexto"
+      responsavel: "qa"
+      output: "Entendimento do que mudou e por que"
+      checkpoint: false
+
+    - step: 2
+      acao: "Verificar: corretude, seguranca, performance, manutenabilidade"
+      responsavel: "qa"
+      output: "Lista de findings com severidade"
+      checkpoint: true
+
+    - step: 3
+      acao: "Classificar findings: blocker / warning / suggestion"
+      responsavel: "qa"
+      output: "Findings classificados"
+      checkpoint: false
+
+    - step: 4
+      acao: "Emitir verdict: APPROVED / CHANGES_REQUESTED / BLOCKED"
+      responsavel: "qa"
+      output: "Verdict com justificativa"
+      checkpoint: true
+
+  checkpoints:
+    - nome: "Review Completo"
+      step: 2
+      checklist:
+        - "Todos os arquivos do diff revisados?"
+        - "Seguranca verificada (no secrets, no injection)?"
+        - "Convencoes do projeto seguidas (TypeScript strict, zero any)?"
+        - "Desenvolvimento incremental respeitado (Edit > Write)?"
+      kill_item: true
+
+    - nome: "Verdict Emitido"
+      step: 4
+      checklist:
+        - "Cada finding tem severidade?"
+        - "Blockers tem sugestao de fix?"
+      kill_item: true
+
+  metricas:
+    variacao_aceitavel: "Review em <= 15 minutos para diff < 500 linhas"
+    criterio_sucesso: "Zero blockers no merge final"
+    review_cycle: "Continuo"
+
+  omega:
+    task_type: "validation"
+    threshold: 95
+    max_iterations: 3

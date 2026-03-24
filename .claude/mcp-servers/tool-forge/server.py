@@ -10,7 +10,7 @@ import json
 import os
 from datetime import datetime
 
-mcp = FastMCP("tool-forge", description="Forge de ferramentas — cria, registra e gerencia tools customizadas")
+mcp = FastMCP("tool-forge", instructions="Forge de ferramentas — cria, registra e gerencia tools customizadas")
 
 TOOLS_DIR = os.path.join(os.getcwd(), ".claude", "mcp-servers", "custom-tools")
 REGISTRY_FILE = os.path.join(TOOLS_DIR, "registry.json")

@@ -1,0 +1,72 @@
+# DuarteOS Process Catalog — Indice Geral
+# Mantido pelo Process Chief (Deming)
+# "A system cannot understand itself." — mas pode documentar seus processos.
+#
+# Estrutura: {categoria}/{nome-do-processo}.yaml
+# Cada arquivo e uma Process Card reutilizavel.
+#
+# Ultima atualizacao: 2026-03-06
+# Total de processos catalogados: 28
+
+catalog_version: "1.0.0"
+maintained_by: "Process Chief (Deming)"
+theory: >
+  Todo sistema precisa de constancia de proposito. Processos documentados
+  eliminam variacao de causa especial (cada pessoa fazendo diferente) e
+  permitem melhoria via PDSA. 94% dos problemas pertencem ao sistema —
+  processos claros SAO o sistema.
+
+categories:
+  - name: "meta"
+    description: "Processos sobre processos — bootstrapping, mapeamento, melhoria"
+    processes:
+      - meta/process-mapping.yaml
+      - meta/process-review-pdsa.yaml
+      - meta/process-creation.yaml
+
+  - name: "development"
+    description: "Construcao de software — do PRD ao deploy"
+    processes:
+      - development/new-project.yaml
+      - development/build-system.yaml
+      - development/plan-phase.yaml
+      - development/execute-phase.yaml
+      - development/quick-task.yaml
+      - development/bug-fix.yaml
+      - development/debug-systematic.yaml
+      - development/code-review.yaml
+      - development/map-codebase.yaml
+
+  - name: "validation"
+    description: "Verificacao, auditoria, qualidade"
+    processes:
+      - validation/verify-work.yaml
+      - validation/validate-plan.yaml
+      - validation/audit-milestone.yaml
+      - validation/omega-quality-gate.yaml
+
+  - name: "knowledge"
+    description: "Gestao de conhecimento — ingestao, clonagem, dossies"
+    processes:
+      - knowledge/mind-clone-mmos.yaml
+      - knowledge/mind-update.yaml
+      - knowledge/ingest-content.yaml
+      - knowledge/dossie-tematico.yaml
+      - knowledge/conselho-advisory.yaml
+      - knowledge/synapse-query.yaml
+
+  - name: "operations"
+    description: "Operacoes do sistema — setup, sync, estado"
+    processes:
+      - operations/setup-mcps.yaml
+      - operations/sync-ide.yaml
+      - operations/session-pause-resume.yaml
+      - operations/progress-check.yaml
+      - operations/release.yaml
+
+  - name: "squad"
+    description: "Gestao de squads customizados"
+    processes:
+      - squad/create-squad.yaml
+      - squad/run-squad.yaml
+      - squad/list-squads.yaml

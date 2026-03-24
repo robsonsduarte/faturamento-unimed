@@ -1,0 +1,140 @@
+# Process Card: Mapeamento de Processos (META)
+# "Experience by itself teaches nothing." — W. Edwards Deming
+# Este e o meta-processo que gera todos os outros processos.
+
+process_card:
+  name: "process-mapping"
+  version: "1.0.0"
+  aim: >
+    Mapear TODAS as operacoes do DuarteOS, identificar gaps de processo,
+    e criar Process Cards reutilizaveis para cada tipo de demanda.
+    Objetivo: zero demanda sem processo definido.
+  type: "meta"
+  scale: "projeto"  # >4h
+  risk: "alto"  # Erro aqui propaga para todos os processos filhos
+  teoria: >
+    Um sistema nao pode entender a si mesmo (Deming). Por isso, o mapeamento
+    precisa ser sistematico: enumerar comandos, enumerar agentes, enumerar
+    fluxos, e so entao desenhar processos. Exploracao ANTES de criacao.
+    Cada processo e uma hipotese — revisavel via PDSA.
+
+  steps:
+    - step: 1
+      acao: "Inventariar todos os comandos slash do DuarteOS"
+      responsavel: "process-chief"
+      output: "Lista completa de comandos com tipo, agente lider, motor"
+      checkpoint: false
+
+    - step: 2
+      acao: "Inventariar todos os agentes e seus dominios"
+      responsavel: "process-chief"
+      output: "Mapa agente → responsabilidades → comandos que lidera"
+      checkpoint: false
+
+    - step: 3
+      acao: "Inventariar todos os protocolos existentes"
+      responsavel: "process-chief"
+      output: "Lista de protocolos com status e cobertura"
+      checkpoint: false
+
+    - step: 4
+      acao: "Classificar demandas em categorias (meta, dev, validacao, knowledge, ops, squad)"
+      responsavel: "process-chief"
+      output: "Taxonomia de demandas com exemplos concretos"
+      checkpoint: true
+
+    - step: 5
+      acao: "Para cada categoria, desenhar Process Cards"
+      responsavel: "process-chief"
+      output: "Process Cards em .claude/protocols/processes/{categoria}/"
+      checkpoint: false
+
+    - step: 6
+      acao: "Validar cobertura: toda demanda tem processo?"
+      responsavel: "process-chief"
+      output: "Gap analysis: demandas sem processo"
+      checkpoint: true
+
+    - step: 7
+      acao: "Criar indice geral (README.yaml)"
+      responsavel: "process-chief"
+      output: "Indice navegavel de todos os processos"
+      checkpoint: false
+
+    - step: 8
+      acao: "Definir ciclo PDSA para revisao dos processos"
+      responsavel: "process-chief"
+      output: "Calendario e criterios de revisao"
+      checkpoint: true
+
+  checkpoints:
+    - nome: "Taxonomia Validada"
+      step: 4
+      checklist:
+        - "Todas as categorias cobrem todos os comandos existentes?"
+        - "Nenhum comando ficou orfao (sem categoria)?"
+        - "As categorias sao mutuamente exclusivas?"
+        - "Cada categoria tem pelo menos 2 processos?"
+      kill_item: true
+
+    - nome: "Cobertura Completa"
+      step: 6
+      checklist:
+        - "Cada comando slash tem process card correspondente?"
+        - "Cada fluxo de agente tem processo documentado?"
+        - "Processos implicitos foram explicitados?"
+      kill_item: true
+
+    - nome: "PDSA Definido"
+      step: 8
+      checklist:
+        - "Frequencia de revisao definida?"
+        - "Criterios de quarentena claros?"
+        - "Metrica de variacao definida?"
+      kill_item: false
+
+  bias_alerts:
+    - step: 4
+      vies: "Anchoring — fixar na primeira taxonomia que parece boa"
+      mitigacao: "Gerar pelo menos 2 taxonomias alternativas antes de escolher"
+
+    - step: 5
+      vies: "Completeness bias — querer detalhar demais cada processo"
+      mitigacao: "Quick Process para micro-tarefas. Process Card completa so para escala >= tarefa"
+
+    - step: 6
+      vies: "Confirmation bias — achar que cobriu tudo porque listou muitos processos"
+      mitigacao: "Validar contra lista exaustiva de comandos, nao contra 'sensacao de completude'"
+
+  knowledge_map:
+    - step: 1
+      precisa_de: "Lista de comandos slash"
+      onde_encontrar: ".claude/commands/DUARTEOS/ (recursivo)"
+
+    - step: 2
+      precisa_de: "Definicao de cada agente"
+      onde_encontrar: ".claude/commands/DUARTEOS/agents/ + .claude/agents/"
+
+    - step: 3
+      precisa_de: "Protocolos vigentes"
+      onde_encontrar: ".claude/protocols/"
+
+    - step: 5
+      precisa_de: "Template de Process Card"
+      onde_encontrar: ".claude/commands/agents/process-chief.md (secao Process Card)"
+
+  metricas:
+    variacao_aceitavel: "Cobertura >= 95% dos comandos existentes"
+    criterio_sucesso: "Todo comando tem Process Card. Todo fluxo tem checkpoint."
+    review_cycle: "Trimestral ou apos adicao de novo comando/agente"
+
+  omega:
+    task_type: "planning"
+    threshold: 85
+    max_iterations: 3
+
+  pdsa:
+    plan: "Mapear todos os processos do DuarteOS em 28 Process Cards"
+    do: "Criar Process Cards seguindo as 5 lentes (Deming, Allen, Forte, Gawande, Kahneman)"
+    study: "Validar cobertura contra lista exaustiva de comandos e fluxos"
+    act: "Padronizar se cobertura >= 95%. Revisar se gaps encontrados."

@@ -10,7 +10,7 @@ import json
 import os
 from datetime import datetime
 
-mcp = FastMCP("memory-graph", description="Grafo de conhecimento persistente — decisoes, padroes, preferencias")
+mcp = FastMCP("memory-graph", instructions="Grafo de conhecimento persistente — decisoes, padroes, preferencias")
 
 MEMORY_FILE = os.path.join(os.getcwd(), ".claude", "memory.json")
 

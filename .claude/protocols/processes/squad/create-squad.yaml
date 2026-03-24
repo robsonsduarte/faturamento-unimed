@@ -1,0 +1,83 @@
+# Process Card: Criar Squad Customizado
+# Comando: /DUARTEOS:squad:create-squad
+# "Joy in work" — squads customizados permitem experimentacao sem medo.
+
+process_card:
+  name: "create-squad"
+  version: "1.0.0"
+  aim: >
+    Criar squad customizado com nome, agentes, tasks e config.
+    PM coleta requisitos, NEXUS/TITAN cria estrutura.
+  type: "operacao"
+  scale: "tarefa"
+  risk: "baixo"
+  teoria: >
+    PM e orquestrador PURO — coleta requisitos e valida resultado.
+    Nunca escreve arquivos diretamente. Delegacao clara reduz variacao.
+
+  triggers:
+    - "Necessidade de squad para fluxo nao coberto pelos defaults"
+    - "/DUARTEOS:squad:create-squad {nome}"
+
+  steps:
+    - step: 1
+      acao: "Validar nome (normalize: lowercase, sem acentos, hifens)"
+      responsavel: "pm"
+      output: "Nome canonico validado"
+      checkpoint: false
+
+    - step: 2
+      acao: "Escolher base (template ou blank)"
+      responsavel: "pm"
+      output: "Template selecionado"
+      checkpoint: false
+
+    - step: 3
+      acao: "Definir agentes, tasks, config"
+      responsavel: "pm"
+      output: "Especificacao do squad"
+      checkpoint: true
+
+    - step: 4
+      acao: "NEXUS/TITAN cria estrutura de arquivos"
+      responsavel: "architect | system-builder"
+      output: "squads/{nome}/ com squad.yaml + agents/ + tasks/"
+      checkpoint: true
+
+    - step: 5
+      acao: "PM valida resultado"
+      responsavel: "pm"
+      output: "Squad pronto para uso"
+      checkpoint: true
+
+  checkpoints:
+    - nome: "Especificacao Completa"
+      step: 3
+      checklist:
+        - "Agentes definidos?"
+        - "Tasks com dependencias mapeadas?"
+        - "Config valida?"
+      kill_item: true
+
+    - nome: "Estrutura Criada"
+      step: 4
+      checklist:
+        - "squad.yaml existe e e valido?"
+        - "Agentes referenciados existem?"
+      kill_item: true
+
+    - nome: "Squad Funcional"
+      step: 5
+      checklist:
+        - "Squad pode ser executado com /DUARTEOS:squad:run-squad?"
+      kill_item: true
+
+  metricas:
+    variacao_aceitavel: "Squad funcional na primeira tentativa"
+    criterio_sucesso: "Squad executavel sem erros"
+    review_cycle: "Apos primeira execucao"
+
+  omega:
+    task_type: "implementation"
+    threshold: 90
+    max_iterations: 3

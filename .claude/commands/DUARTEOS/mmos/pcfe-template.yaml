@@ -1,0 +1,230 @@
+# PCFE — Pre-Clone Fidelity Estimation
+# Template for fidelity estimation artifact
+# Pipeline: MMOS Engine v3 (11 Phases, PCFE Sub-Workflow)
+# Formula: FE = (VS * 0.20) + (DS * 0.15) + (CS * 0.30) + (PS * 0.20) + (QS * 0.15)
+# Generated at: {timestamp}
+
+metadata:
+  slug: "{slug}"
+  name: "{Nome Completo}"
+  category: "{categoria}"
+  pipeline_version: "3"
+  pcfe_version: "1.0.0"
+  timestamp: "{ISO8601}"
+  enrichment_loop: 1          # 1-3 (max 3 loops)
+
+# === COMPONENT SCORES ===
+
+components:
+  volume_score:
+    code: "VS"
+    weight: 0.20
+    score: 0                   # 0-100
+    details:
+      total_sources: 0
+      sources_by_type:
+        livros: 0
+        videos_podcasts: 0
+        entrevistas: 0
+        artigos: 0
+        tweets_threads: 0
+        palestras: 0
+      base_score: 0            # from lookup table
+      bonus_livros: 0          # +5 per book, max +15
+      bonus_entrevistas: 0     # +3 per interview >60min, max +9
+      final_score: 0           # min(base + bonus, 100)
+
+  diversity_score:
+    code: "DS"
+    weight: 0.15
+    score: 0                   # 0-100
+    details:
+      livros_presentes: false          # +15
+      videos_podcasts_presentes: false # +15
+      entrevistas_presentes: false     # +15
+      artigos_presentes: false         # +15
+      tweets_presentes: false          # +10
+      palestras_presentes: false       # +10
+      multiplos_idiomas: false         # +10
+      span_temporal_5_anos: false      # +10
+      points_breakdown:
+        livros: 0
+        videos_podcasts: 0
+        entrevistas: 0
+        artigos: 0
+        tweets: 0
+        palestras: 0
+        idiomas: 0
+        span_temporal: 0
+      final_score: 0           # min(SUM, 100)
+
+  coverage_score:
+    code: "CS"
+    weight: 0.30
+    score: 0                   # 0-100
+    details:
+      # Coverage per DNA layer based on MIU sample count
+      # Scoring: 0 MIUs = 0%, 1-2 = 40%, 3-5 = 70%, 6+ = 100%
+      layers:
+        - layer: "filosofia_core"
+          relative_weight: 0.15
+          miu_count: 0
+          coverage_pct: 0
+
+        - layer: "filosofia_subcamadas"  # hierarquia_valores + motivacao_profunda
+          relative_weight: 0.10
+          miu_count: 0
+          coverage_pct: 0
+
+        - layer: "frameworks"
+          relative_weight: 0.15
+          miu_count: 0
+          coverage_pct: 0
+
+        - layer: "heuristicas_core"
+          relative_weight: 0.10
+          miu_count: 0
+          coverage_pct: 0
+
+        - layer: "heuristicas_modelo_social"
+          relative_weight: 0.05
+          miu_count: 0
+          coverage_pct: 0
+
+        - layer: "metodologias"
+          relative_weight: 0.10
+          miu_count: 0
+          coverage_pct: 0
+
+        - layer: "dilemas"
+          relative_weight: 0.10
+          miu_count: 0
+          coverage_pct: 0
+
+        - layer: "paradoxos_produtivos"  # GOLD LAYER — highest weight
+          relative_weight: 0.15
+          miu_count: 0
+          coverage_pct: 0
+
+        - layer: "associacoes_conceituais"
+          relative_weight: 0.05
+          miu_count: 0
+          coverage_pct: 0
+
+        - layer: "comunicacao_avancada"
+          relative_weight: 0.05
+          miu_count: 0
+          coverage_pct: 0
+
+      weighted_score: 0        # SUM(coverage_pct * relative_weight) * 100
+
+  profundidade_score:
+    code: "PS"
+    weight: 0.20
+    score: 0                   # 0-100
+    details:
+      fontes_profundas: 0      # count of sources with depth "profunda"
+      fontes_medias: 0         # count of sources with depth "media"
+      criteria:
+        gte_3_profundas: false         # +30
+        gte_1_profunda: false          # +15 (only if above is false)
+        gte_5_medias: false            # +25
+        gte_3_medias: false            # +15 (only if above is false)
+        decisoes_reais: false          # +15
+        fracasso_vulnerabilidade: false # +15
+        contradicoes_evolucao: false   # +15
+      bonus_entrevistas_longas: 0      # +10 if any >60min interview
+      penalidade_tweets: 0            # -20 if >70% are tweets/posts
+      final_score: 0           # min(max(SUM + bonus - penalty, 0), 100)
+
+  quality_score:
+    code: "QS"
+    weight: 0.15
+    score: 0                   # 0-100
+    details:
+      criteria:
+        pct_100_primarias: false       # +25
+        pct_90_primarias: false        # +15 (only if above is false)
+        fontes_verificaveis: false     # +20
+        transcricoes_completas: false  # +20
+        material_recente_3anos: false  # +15
+        material_historico_5anos: false # +10
+        sem_paywall: false             # +10
+      final_score: 0           # min(SUM, 100)
+
+# === FIDELITY ESTIMATION ===
+
+fidelity_estimation:
+  FE: 0                        # VS*0.20 + DS*0.15 + CS*0.30 + PS*0.20 + QS*0.15
+  classification: "INSUFICIENTE"  # EXCELENTE | BOM | MODERADO | FRACO | INSUFICIENTE
+  recommendation: "ABORTAR"       # GO | GO COM RESSALVAS | ENRIQUECER | ENRIQUECER OBRIGATORIO | ABORTAR
+
+  # Classification thresholds:
+  # >= 85: EXCELENTE   → GO
+  # 70-84: BOM         → GO COM RESSALVAS
+  # 55-69: MODERADO    → ENRIQUECER
+  # 40-54: FRACO       → ENRIQUECER OBRIGATORIO
+  #  < 40: INSUFICIENTE → ABORTAR
+
+  real_fidelity_range:
+    min: 0                     # FE * 0.85 (worst case)
+    provavel: 0                # FE * 0.95 (typical case)
+    max: 0                     # FE * 1.10 (best case, capped at 100)
+
+# === GAP REPORT ===
+
+gaps: []
+  # Each gap entry follows this schema:
+  # - camada: "{layer_name}"
+  #   cobertura: "{pct}%"
+  #   impacto: "CRITICO | MODERADO | BAIXO"
+  #   impacto_detalhe: "{description of impact on fidelity}"
+  #   recomendacao: "{actionable recommendation to fill the gap}"
+
+# === SOURCE CATALOG SUMMARY ===
+
+source_catalog:
+  total_sources: 0
+  source_types_count: 0
+  temporal_span_years: 0
+  idiomas: []
+  fontes:
+    # Compact list of all sources evaluated
+    # - tipo: "{livro|video|podcast|entrevista|artigo|tweet|palestra}"
+    #   titulo: "{titulo}"
+    #   profundidade: "{superficial|media|profunda}"
+    #   primaria: true
+    #   duracao_estimada: "{curta|media|longa}"
+    []
+
+# === MIU SAMPLE SUMMARY ===
+
+miu_sample:
+  total_mius: 0
+  distribution_by_layer:
+    filosofia_core: 0
+    filosofia_subcamadas: 0
+    frameworks: 0
+    heuristicas_core: 0
+    heuristicas_modelo_social: 0
+    metodologias: 0
+    dilemas: 0
+    paradoxos_produtivos: 0
+    associacoes_conceituais: 0
+    comunicacao_avancada: 0
+  distribution_by_type:
+    comportamental: 0
+    linguistico: 0
+    narrativo: 0
+    decisorio: 0
+    framework: 0
+    interacao_social: 0
+    argumentativo: 0
+    associativo: 0
+
+# === HUMAN GATE DECISION ===
+
+human_gate:
+  decision: null               # APROVAR | ENRIQUECER | ABORTAR
+  decided_at: null             # ISO8601 timestamp
+  notes: null                  # Optional human notes

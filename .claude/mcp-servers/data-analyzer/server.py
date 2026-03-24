@@ -9,7 +9,7 @@ import json
 import os
 import tempfile
 
-mcp = FastMCP("data-analyzer", description="Analise de dados, estatisticas e visualizacoes")
+mcp = FastMCP("data-analyzer", instructions="Analise de dados, estatisticas e visualizacoes")
 
 
 @mcp.tool()

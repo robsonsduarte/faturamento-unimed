@@ -1,0 +1,67 @@
+# Process Card: Task Rapida
+# Comando: /DUARTEOS:squad:quick
+# "Drive out fear." — coisas simples devem ser simples de fazer.
+
+process_card:
+  name: "quick-task"
+  version: "1.0.0"
+  aim: >
+    Executar tarefa ad-hoc pequena (1-3 steps) com garantias de qualidade GSD
+    sem overhead de fase completa. PM roteia para agente correto.
+  type: "implementacao"
+  scale: "micro-tarefa"
+  risk: "baixo"
+  teoria: >
+    Nem toda demanda justifica processo completo. Quick tasks tem plano simples
+    (1-3 tasks), execucao direta e commits atomicos. A opcao --full adiciona
+    verificacao para quando o risco e maior que o habitual.
+
+  triggers:
+    - "Bug fix simples e pontual"
+    - "Adicionar campo no banco + ajustar UI"
+    - "Qualquer task que cabe em 1-3 passos"
+    - "/DUARTEOS:squad:quick"
+
+  steps:
+    - step: 1
+      acao: "PM roteia para agente correto (backend/frontend/devops/fullstack)"
+      responsavel: "pm"
+      output: "Agente selecionado"
+      checkpoint: false
+
+    - step: 2
+      acao: "Plano rapido (1-3 tasks atomicas)"
+      responsavel: "agente selecionado"
+      output: "Plano em .planning/quick/"
+      checkpoint: false
+
+    - step: 3
+      acao: "Executar tasks com commits atomicos"
+      responsavel: "agente selecionado"
+      output: "Codigo implementado e commitado"
+      checkpoint: true
+
+    - step: 4
+      acao: "(Opcional --full) Verificar resultado"
+      responsavel: "qa"
+      output: "Verificacao pass/fail"
+      checkpoint: false
+
+  checkpoints:
+    - nome: "Execucao Completa"
+      step: 3
+      checklist:
+        - "Todas as tasks do plano executadas?"
+        - "Commits atomicos gerados?"
+        - "Codigo compila sem erros?"
+      kill_item: true
+
+  metricas:
+    variacao_aceitavel: "Execucao em <= 30 minutos"
+    criterio_sucesso: "Task completa sem retrabalho"
+    review_cycle: "Nao aplica (one-off por natureza)"
+
+  omega:
+    task_type: "implementation"
+    threshold: 90
+    max_iterations: 3

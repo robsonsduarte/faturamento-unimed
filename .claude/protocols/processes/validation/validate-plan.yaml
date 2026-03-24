@@ -1,0 +1,66 @@
+# Process Card: Validar Plano
+# Comando: /DUARTEOS:squad:validate-plan
+# "Critica sem alternativa e INVALIDA."
+
+process_card:
+  name: "validate-plan"
+  version: "1.0.0"
+  aim: >
+    Contestar planos antes da execucao. Devil's Advocate verifica se
+    o plano VAI funcionar, nao se "esta bem escrito".
+  type: "validacao"
+  scale: "micro-tarefa"
+  risk: "baixo"
+  teoria: >
+    Pre-mortem sistematico: "este plano ja falhou — por que?" Cada critica
+    DEVE ter alternativa concreta. Contestacao sem solucao e ruido.
+
+  triggers:
+    - "Planos gerados precisam de segunda opiniao"
+    - "Gate de qualidade antes de execucao"
+    - "/DUARTEOS:squad:validate-plan"
+
+  steps:
+    - step: 1
+      acao: "Ler todos os PLAN.md da fase"
+      responsavel: "devils-advocate"
+      output: "Planos carregados"
+      checkpoint: false
+
+    - step: 2
+      acao: "Contestar: arquitetura, completude, verificabilidade, escopo"
+      responsavel: "devils-advocate"
+      output: "Criticas com alternativas"
+      checkpoint: true
+
+    - step: 3
+      acao: "Emitir verdict: APPROVED / CAVEATS / BLOCKED"
+      responsavel: "devils-advocate"
+      output: "Verdict formal"
+      checkpoint: true
+
+  checkpoints:
+    - nome: "Contestacao Valida"
+      step: 2
+      checklist:
+        - "Cada critica tem alternativa concreta?"
+        - "Cenarios de falha identificados?"
+        - "Scope creep verificado?"
+      kill_item: true
+
+    - nome: "Verdict Final"
+      step: 3
+      checklist:
+        - "Verdict e um dos 3 valores validos?"
+        - "Se BLOCKED, cada blocker tem justificativa?"
+      kill_item: true
+
+  metricas:
+    variacao_aceitavel: "Verdict em <= 1 iteracao"
+    criterio_sucesso: "Plano aprovado (APPROVED ou CAVEATS low)"
+    review_cycle: "Continuo"
+
+  omega:
+    task_type: "validation"
+    threshold: 95
+    max_iterations: 3

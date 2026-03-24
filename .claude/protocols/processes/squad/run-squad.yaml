@@ -1,0 +1,91 @@
+# Process Card: Executar Squad Customizado
+# Comando: /DUARTEOS:squad:run-squad
+# "The obligation of management is to understand the system." — e executar com constancia.
+
+process_card:
+  name: "run-squad"
+  version: "1.0.0"
+  aim: >
+    Executar squad customizado em demanda especifica com orquestracao
+    completa de agentes, wave-based parallelism e commits atomicos.
+  type: "implementacao"
+  scale: "tarefa a projeto"
+  risk: "medio"
+  teoria: >
+    Squads sao equipes pre-configuradas com agentes, tasks e config.
+    A execucao em waves permite paralelismo seguro (tasks sem dependencia
+    rodam juntas) e commits atomicos garantem rastreabilidade.
+
+  triggers:
+    - "Executar squad customizado em demanda"
+    - "/DUARTEOS:squad:run-squad {nome} 'descricao'"
+
+  steps:
+    - step: 1
+      acao: "Parse argumentos — extrair nome do squad + descricao da demanda"
+      responsavel: "pm"
+      output: "Nome + demanda parseados"
+      checkpoint: false
+
+    - step: 2
+      acao: "Carregar config do squad — ler squad.yaml, agentes, tasks"
+      responsavel: "pm"
+      output: "Config carregada e validada"
+      checkpoint: true
+
+    - step: 3
+      acao: "Montar contexto — PROJECT.md, STATE.md, ROADMAP.md (se existem)"
+      responsavel: "pm"
+      output: "Contexto completo montado"
+      checkpoint: false
+
+    - step: 4
+      acao: "Criar plano de execucao — quebrar em tasks, atribuir agentes, mapear deps, agrupar waves"
+      responsavel: "pm"
+      output: "Plano com waves definidas"
+      checkpoint: true
+
+    - step: 5
+      acao: "Executar waves — para cada wave, spawnar agentes em paralelo"
+      responsavel: "agentes do squad"
+      output: "Commits atomicos por task"
+      checkpoint: false
+
+    - step: 6
+      acao: "Validar resultado — verificar tasks completas, gerar relatorio"
+      responsavel: "pm"
+      output: "Relatorio de execucao em squads/{nome}/runs/"
+      checkpoint: true
+
+  checkpoints:
+    - nome: "Config Valida"
+      step: 2
+      checklist:
+        - "squad.yaml existe e e parseavel?"
+        - "Todos agentes referenciados tem arquivos?"
+        - "Tasks tem dependencias validas?"
+      kill_item: true
+
+    - nome: "Plano Aprovado"
+      step: 4
+      checklist:
+        - "Tasks agrupadas em waves sem dependencia circular?"
+        - "Cada task atribuida a agente competente?"
+      kill_item: false
+
+    - nome: "Execucao Completa"
+      step: 6
+      checklist:
+        - "Todas tasks do plano concluidas ou documentadas?"
+        - "Commits atomicos rastreaveis?"
+      kill_item: true
+
+  metricas:
+    variacao_aceitavel: "Todas tasks do plano concluidas"
+    criterio_sucesso: "Squad entrega resultado conforme demanda"
+    review_cycle: "Apos cada execucao de squad"
+
+  omega:
+    task_type: "implementation"
+    threshold: 90
+    max_iterations: 3

@@ -39,3 +39,17 @@ next-env.d.ts
 # DuarteOS — configs pessoais (nao versionar)
 .claude/config/user.yaml
 .claude/settings.local.json
+
+# DuarteOS — configs pessoais (nao versionar)
+.env.local
+.mcp.json
+.env.agents
+
+# Scripts de scraping (debug/local)
+scripts/*.json
+scripts/*.png
+scripts/.saw-cookies.json
+scripts/scrap-guia-saw.mjs
+
+# Inbox
+inbox/

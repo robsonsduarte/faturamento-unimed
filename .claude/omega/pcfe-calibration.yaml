@@ -1,0 +1,71 @@
+# PCFE Calibration Data
+# Stores FE (estimated) vs F (real) comparisons for future weight tuning
+# Pipeline: MMOS Engine v3
+# Updated automatically at Phase 9 (Profile) of each clone creation
+#
+# Purpose:
+#   - Track accuracy of PCFE predictions over time
+#   - Identify systematic over/under-estimation patterns
+#   - Inform future adjustments to component weights (VS, DS, CS, PS, QS)
+
+version: "1.0.0"
+description: "Calibration store for PCFE (Pre-Clone Fidelity Estimation) accuracy tracking"
+created_at: "2026-03-03T00:00:00Z"
+last_updated: null
+
+# === CALIBRATION ENTRIES ===
+# Each entry is added after Phase 9 completes for a clone
+
+calibrations: []
+  # Expected schema for each entry:
+  #
+  # - slug: "{clone-slug}"
+  #   category: "{categoria}"
+  #   FE: 0                    # Fidelidade Estimada (from PCFE, Phase 3)
+  #   FE_breakdown:
+  #     VS: 0                  # Volume Score at estimation time
+  #     DS: 0                  # Diversity Score at estimation time
+  #     CS: 0                  # Coverage Score at estimation time
+  #     PS: 0                  # Profundidade Score at estimation time
+  #     QS: 0                  # Quality Score at estimation time
+  #   F_real: 0                # Fidelidade Real (from Phase 9 validation)
+  #   F_real_breakdown:
+  #     L: 0                   # Linguistic Accuracy
+  #     B: 0                   # Behavioral Fidelity
+  #     C: 0                   # Contradiction Handling
+  #     K: 0                   # Knowledge/Framework
+  #     V: 0                   # Voice Authenticity
+  #   delta: 0                 # F_real - FE (positive = underestimation, negative = overestimation)
+  #   accuracy: 0              # 100 - abs(delta)
+  #   anomaly: false           # true if accuracy < 70%
+  #   enrichment_loops: 0      # how many times user chose ENRIQUECER (0-3)
+  #   timestamp: "ISO8601"     # when Phase 9 completed
+
+# === AGGREGATE STATS ===
+# Recalculated after each new calibration entry
+
+stats:
+  total_clones: 0
+  avg_delta: 0                 # average(F_real - FE) across all clones
+  avg_accuracy: 0              # average(100 - abs(delta)) across all clones
+  overestimation_count: 0      # how many times FE > F_real
+  underestimation_count: 0     # how many times FE < F_real
+  anomaly_count: 0             # how many clones had accuracy < 70%
+  avg_delta_by_category: {}    # {categoria: avg_delta} — reveals category-specific bias
+  weight_adjustment_history: []
+    # Records of weight changes if manual calibration is applied
+    #
+    # - date: "ISO8601"
+    #   reason: "{why weights were adjusted}"
+    #   old_weights:
+    #     VS: 0.20
+    #     DS: 0.15
+    #     CS: 0.30
+    #     PS: 0.20
+    #     QS: 0.15
+    #   new_weights:
+    #     VS: 0.20
+    #     DS: 0.15
+    #     CS: 0.30
+    #     PS: 0.20
+    #     QS: 0.15

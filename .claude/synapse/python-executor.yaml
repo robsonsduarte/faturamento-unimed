@@ -1,0 +1,9 @@
+agent: python-executor
+codename: SPARK
+state: idle
+task: null
+started: null
+last_transition: null
+transitions: []
+blocked_by: null
+notes: null

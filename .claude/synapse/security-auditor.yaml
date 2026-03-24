@@ -1,0 +1,9 @@
+agent: security-auditor
+codename: SPECTER
+state: idle
+task: null
+started: null
+last_transition: null
+transitions: []
+blocked_by: null
+notes: null

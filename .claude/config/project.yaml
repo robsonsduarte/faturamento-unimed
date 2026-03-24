@@ -1,0 +1,20 @@
+# DuarteOS Project Config — Layer 1 (Configuracao do Projeto)
+#
+# Edite este arquivo para customizar o DuarteOS para seu projeto.
+# Valores aqui sobrescrevem os defaults de system.yaml.
+# Veja .claude/protocols/CONFIG-PROTOCOL.md para detalhes.
+#
+# Descomente e ajuste as chaves que quiser sobrescrever:
+
+# agents:
+#   default_model: "sonnet"       # sonnet | opus | haiku
+#   greeting_style: "named"       # minimal | named | archetypal
+
+# quality:
+#   min_test_coverage: 80         # % minimo de cobertura
+#   bundle_size_alert_kb: 500     # alerta se bundle > 500KB
+
+# ide_sync:
+#   cursor: true                  # gerar .cursorrules
+#   windsurf: true                # gerar .windsurfrules
+#   copilot: true                 # gerar copilot-instructions.md

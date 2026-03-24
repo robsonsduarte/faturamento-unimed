@@ -138,6 +138,12 @@ Quando multiplos gates sao acionados pelo mesmo evento (ex: `git commit` aciona 
 eles executam na ordem definida no array de hooks do `settings.json`.
 Se qualquer gate bloqueante falhar, os subsequentes nao executam.
 
+## Integracao com OMEGA
+
+Os thresholds de qualidade sao agora enforced pelo protocolo OMEGA (`.claude/protocols/OMEGA.md`). Consulte OMEGA.md para o sistema completo de scoring por evidencia, circuit breaker e escalacao.
+
+**Nota:** Os thresholds canonicos de qualidade por tipo de task vivem no OMEGA.md (Research >=80, Planning >=85, Implementation >=90, Validation/Mind Clone >=95). A tabela de gates acima e mantida por compatibilidade — ela cobre quality gates de pipeline (hooks), enquanto OMEGA cobre quality gates de output (scoring por evidencia).
+
 ## Principios
 
 1. **Defensivo:** Todo gate lida graciosamente com ferramentas ausentes

@@ -1,0 +1,78 @@
+# Process Card: Setup MCPs
+# Comando: /DUARTEOS:setup-mcps
+# "Improve the production process" — MCPs sao a infraestrutura do sistema.
+
+process_card:
+  name: "setup-mcps"
+  version: "1.0.0"
+  aim: >
+    Configurar MCP Servers do projeto. Cada servidor adiciona ferramentas
+    externas ao Claude Code. 13 essenciais + 8 opcionais.
+  type: "operacao"
+  scale: "tarefa"
+  risk: "medio"
+  teoria: >
+    MCPs sao a cadeia de suprimentos do sistema. Setup correto uma vez
+    evita variacao em todas as operacoes subsequentes. Tier essential
+    funciona sem config; tier optional depende de servicos externos.
+
+  triggers:
+    - "Primeiro setup do projeto"
+    - "Adicionar novo MCP server"
+    - "/DUARTEOS:setup-mcps"
+
+  steps:
+    - step: 1
+      acao: "Verificar .env.local e .mcp.json existentes"
+      responsavel: "devops"
+      output: "Estado atual da configuracao"
+      checkpoint: false
+
+    - step: 2
+      acao: "Configurar MCPs essenciais (13 — sem API key)"
+      responsavel: "devops"
+      output: "MCPs essenciais funcionando"
+      checkpoint: true
+
+    - step: 3
+      acao: "Configurar MCPs opcionais (8 — com API keys)"
+      responsavel: "devops"
+      output: "MCPs opcionais configurados"
+      checkpoint: false
+
+    - step: 4
+      acao: "Executar warmup (pre-download de pacotes)"
+      responsavel: "devops"
+      output: "Pacotes em cache para startup instantaneo"
+      checkpoint: false
+
+    - step: 5
+      acao: "Validar com mcp-check.mjs"
+      responsavel: "devops"
+      output: "Relatorio de MCPs ativos"
+      checkpoint: true
+
+  checkpoints:
+    - nome: "Essenciais Funcionando"
+      step: 2
+      checklist:
+        - "13 MCPs essenciais carregam sem erro?"
+        - "Nenhum _comment_* no .mcp.json?"
+      kill_item: true
+
+    - nome: "Validacao Final"
+      step: 5
+      checklist:
+        - "mcp-check.mjs roda sem erros?"
+        - "MCPs essenciais marcados como OK?"
+      kill_item: true
+
+  metricas:
+    variacao_aceitavel: "100% essenciais OK, >= 80% opcionais OK"
+    criterio_sucesso: "Todos os MCPs necessarios funcionando"
+    review_cycle: "Apos cada update do DuarteOS"
+
+  omega:
+    task_type: "implementation"
+    threshold: 90
+    max_iterations: 3

@@ -1,0 +1,73 @@
+# Process Card: Verificar Trabalho
+# Comando: /DUARTEOS:squad:verify-work
+# "Quality comes not from inspection" — mas verificacao PROVA que funciona.
+
+process_card:
+  name: "verify-work"
+  version: "1.0.0"
+  aim: >
+    Validar que o que foi construido atinge o goal da fase. Testa fluxo
+    do usuario, nao existencia de arquivos. Diagnostica falhas e cria fix plans.
+  type: "validacao"
+  scale: "tarefa"
+  risk: "medio"
+  teoria: >
+    Verificacao e teste de goal achievement: "o usuario consegue fazer X?"
+    Nao e inspecao de arquivos. Testes apresentados um a um permitem
+    diagnostico granular. Fix plans automaticos fecham o loop.
+
+  triggers:
+    - "Apos execucao de fase (/DUARTEOS:squad:execute-phase)"
+    - "Validar feature end-to-end"
+    - "/DUARTEOS:squad:verify-work"
+
+  steps:
+    - step: 1
+      acao: "Extrair deliverables testaveis dos SUMMARY.md"
+      responsavel: "qa"
+      output: "Lista de testes a executar"
+      checkpoint: false
+
+    - step: 2
+      acao: "Apresentar testes um a um ao usuario"
+      responsavel: "qa"
+      output: "Resultados: pass/issue/skip por teste"
+      checkpoint: true
+
+    - step: 3
+      acao: "Se issues: diagnosticar root causes"
+      responsavel: "qa"
+      output: "Root causes com evidencia"
+      checkpoint: false
+
+    - step: 4
+      acao: "Criar fix plans para issues encontrados"
+      responsavel: "qa"
+      output: "Fix plans prontos para re-execucao"
+      checkpoint: true
+
+  checkpoints:
+    - nome: "Testes Executados"
+      step: 2
+      checklist:
+        - "Todos os deliverables foram testados?"
+        - "Nenhum skip sem justificativa?"
+        - "Resultados documentados em VERIFICATION.md?"
+      kill_item: true
+
+    - nome: "Issues Endereados"
+      step: 4
+      checklist:
+        - "Todo issue tem root cause identificado?"
+        - "Fix plans sao executaveis (nao vagos)?"
+      kill_item: false
+
+  metricas:
+    variacao_aceitavel: "Pass rate >= 80% na primeira verificacao"
+    criterio_sucesso: "Goal da fase atingido (100% pass apos fixes)"
+    review_cycle: "Apos cada fase"
+
+  omega:
+    task_type: "validation"
+    threshold: 95
+    max_iterations: 3

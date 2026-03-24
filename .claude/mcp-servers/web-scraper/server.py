@@ -7,7 +7,7 @@ Requer: pip install fastmcp requests beautifulsoup4 lxml
 from fastmcp import FastMCP
 import json
 
-mcp = FastMCP("web-scraper", description="Web scraping avancado com parsing estruturado")
+mcp = FastMCP("web-scraper", instructions="Web scraping avancado com parsing estruturado")
 
 
 @mcp.tool()

@@ -1,0 +1,95 @@
+# Process Card: Debug Sistematico
+# Comando: /DUARTEOS:squad:debug
+# "Experience by itself teaches nothing." — investigacao precisa de teoria.
+
+process_card:
+  name: "debug-systematic"
+  version: "1.0.0"
+  aim: >
+    Investigar bug complexo com metodo cientifico e estado persistente.
+    Hipotese > Teste > Conclusao. Anti-vieses cognitivos integrados.
+  type: "investigacao"
+  scale: "tarefa"
+  risk: "medio"
+  teoria: >
+    Debug cientifico: observacao gera hipotese, hipotese gera teste,
+    teste gera conclusao. Estado persistente evita repetir hipoteses
+    ja descartadas. Anti-vieses (confirmation, anchoring, sunk cost)
+    sao mitigacoes explicitas no processo.
+
+  triggers:
+    - "Bug complexo e nao-obvio"
+    - "Ja tentou corrigir 2x sem sucesso (regra 2x)"
+    - "Bug envolve multiplos modulos"
+    - "/DUARTEOS:squad:debug"
+
+  steps:
+    - step: 1
+      acao: "Criar sessao de debug em .planning/debug/{slug}.md"
+      responsavel: "qa"
+      output: "Sessao criada com descricao do bug"
+      checkpoint: false
+
+    - step: 2
+      acao: "Observar: coletar evidencias, logs, reproducao"
+      responsavel: "qa"
+      output: "Evidencias documentadas na sessao"
+      checkpoint: false
+
+    - step: 3
+      acao: "Hipotecar: formular hipotese testavel"
+      responsavel: "qa"
+      output: "Hipotese registrada"
+      checkpoint: false
+
+    - step: 4
+      acao: "Testar: executar teste que confirma ou refuta hipotese"
+      responsavel: "qa"
+      output: "Resultado do teste com evidencia"
+      checkpoint: true
+
+    - step: 5
+      acao: "Concluir: root cause identificado OU voltar ao Step 3 com nova hipotese"
+      responsavel: "qa"
+      output: "Root cause + fix plan"
+      checkpoint: true
+
+  checkpoints:
+    - nome: "Hipotese Testada"
+      step: 4
+      checklist:
+        - "Hipotese e falsificavel?"
+        - "Teste e reproduzivel?"
+        - "Confirmation bias mitigado (testou CONTRA a hipotese)?"
+      kill_item: false
+
+    - nome: "Root Cause Confirmado"
+      step: 5
+      checklist:
+        - "Root cause tem evidencia concreta (nao opiniao)?"
+        - "Fix plan endereca causa raiz (nao sintoma)?"
+        - "Historico de hipoteses testadas documentado?"
+      kill_item: true
+
+  bias_alerts:
+    - step: 3
+      vies: "Anchoring — fixar na primeira hipotese"
+      mitigacao: "Gerar pelo menos 2 hipoteses alternativas"
+
+    - step: 4
+      vies: "Confirmation bias — buscar so evidencias que confirmam"
+      mitigacao: "Testar explicitamente CONTRA a hipotese"
+
+    - step: 5
+      vies: "Sunk cost — insistir em hipotese porque ja investiu tempo"
+      mitigacao: "Se hipotese falhou 2x, descartar e gerar nova"
+
+  metricas:
+    variacao_aceitavel: "Root cause identificado em <= 5 hipoteses"
+    criterio_sucesso: "Root cause confirmado com evidencia"
+    review_cycle: "Apos cada debug, revisar se o tipo de bug e recorrente"
+
+  omega:
+    task_type: "research"
+    threshold: 80
+    max_iterations: 3

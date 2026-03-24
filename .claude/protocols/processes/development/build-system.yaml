@@ -1,0 +1,102 @@
+# Process Card: Build System — App Factory
+# Comando: /DUARTEOS:squad:build-system
+# "Quality comes not from inspection, but from improvement of the production process."
+
+process_card:
+  name: "build-system"
+  version: "1.0.0"
+  aim: >
+    Receber input (PRD, workflow N8N, URL, ou texto livre) e construir
+    um sistema completo automaticamente. O comando mais poderoso do DuarteOS.
+  type: "implementacao"
+  scale: "projeto"
+  risk: "alto"
+  teoria: >
+    O sistema inteiro e construido de forma pipeline: analise de input gera
+    blueprint, blueprint gera plano, plano gera codigo. Cada fase tem
+    checkpoint. Modo YOLO reduz atrito mas mantem gates de seguranca.
+
+  triggers:
+    - "Construir sistema do zero a partir de PRD"
+    - "Transformar workflow N8N em aplicacao"
+    - "Clonar funcionalidade de URL de referencia"
+    - "/DUARTEOS:squad:build-system"
+
+  steps:
+    - step: 0
+      acao: "Input Analysis — detectar tipo e gerar blueprint"
+      responsavel: "pm → architect"
+      output: "Blueprint completo com componentes, rotas, modelos"
+      checkpoint: true
+
+    - step: 1
+      acao: "Planejamento — gerar roadmap e fases a partir do blueprint"
+      responsavel: "pm"
+      output: "ROADMAP.md com fases priorizadas"
+      checkpoint: false
+
+    - step: 2
+      acao: "Implementacao por fases — executar cada fase com wave-based parallelism"
+      responsavel: "backend + frontend"
+      output: "Codigo implementado com commits atomicos"
+      checkpoint: true
+
+    - step: 3
+      acao: "Verificacao — validar que o sistema funciona end-to-end"
+      responsavel: "qa"
+      output: "VERIFICATION.md com testes passados"
+      checkpoint: true
+
+  checkpoints:
+    - nome: "Blueprint Coerente"
+      step: 0
+      checklist:
+        - "Todos os componentes do input estao representados?"
+        - "Nenhuma feature critica foi descartada sem justificativa?"
+        - "Stack definida e consistente?"
+      kill_item: true
+
+    - nome: "Sistema Funcional"
+      step: 2
+      checklist:
+        - "DB configurado e acessivel?"
+        - "Auth funciona (login, registro)?"
+        - "API routes respondem corretamente?"
+        - "UI renderiza sem erros?"
+      kill_item: true
+
+    - nome: "E2E Validado"
+      step: 3
+      checklist:
+        - "Usuario consegue realizar fluxo principal?"
+        - "Error handling funciona?"
+        - "Responsivo em mobile?"
+      kill_item: true
+
+  bias_alerts:
+    - step: 0
+      vies: "Anchoring em stack favorita ignorando requisitos do PRD"
+      mitigacao: "Architect analisa PRD sem defaults pre-definidos"
+
+    - step: 2
+      vies: "Scope creep — adicionar features nao solicitadas"
+      mitigacao: "Cada task traceia para REQ-ID do blueprint"
+
+  knowledge_map:
+    - step: 0
+      precisa_de: "Input do usuario (PRD, JSON, URL, ou texto)"
+      onde_encontrar: "Argumento do comando"
+
+    - step: 0
+      precisa_de: "Ferramentas de analise de input"
+      onde_encontrar: "MCP input-analyzer (detect_input_type, analyze_prd, analyze_website, analyze_n8n_workflow)"
+
+  metricas:
+    variacao_aceitavel: "Sistema funcional em <= 5 fases"
+    criterio_sucesso: "Sistema construido end-to-end sem intervencao humana (exceto gates YOLO)"
+    review_cycle: "Apos cada build completo"
+
+  omega:
+    task_type: "implementation"
+    threshold: 90
+    max_iterations: 3

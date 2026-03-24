@@ -1,0 +1,80 @@
+# Process Card: OMEGA Quality Gate
+# Protocolo: .claude/protocols/OMEGA.md
+# "Where there is fear, there will be wrong figures."
+
+process_card:
+  name: "omega-quality-gate"
+  version: "1.0.0"
+  aim: >
+    Motor de qualidade continua que roda em TODA task de QUALQUER agente.
+    Loop de 3 iteracoes max com escalacao e circuit breaker.
+  type: "validacao"
+  scale: "micro-tarefa"  # Embutido em toda task
+  risk: "baixo"  # E protetor, nao gerador de risco
+  teoria: >
+    Qualidade e resultado do processo, nao de inspecao pos-facto. OMEGA
+    roda DURANTE a execucao, nao depois. Loop de refinamento com escalacao
+    (agente > vertical > horizontal > humano) garante que problemas nao
+    propagam. Circuit breaker evita loops infinitos.
+
+  triggers:
+    - "Automatico — toda task de todo agente"
+
+  steps:
+    - step: 1
+      acao: "Agente executa task e auto-avalia score por evidencia"
+      responsavel: "agente executor"
+      output: "OMEGA_STATUS com score"
+      checkpoint: false
+
+    - step: 2
+      acao: "Se score < threshold: refinar (max 3 iteracoes)"
+      responsavel: "agente executor"
+      output: "Score atualizado"
+      checkpoint: false
+
+    - step: 3
+      acao: "Se 3 iteracoes sem progresso: escalar"
+      responsavel: "agente executor → pm"
+      output: "Escalacao com contexto"
+      checkpoint: true
+
+    - step: 4
+      acao: "Dual-Gate Exit: score >= threshold + 2 completion signals + exit_signal=true"
+      responsavel: "agente executor"
+      output: "Task concluida com qualidade"
+      checkpoint: true
+
+  checkpoints:
+    - nome: "Escalacao"
+      step: 3
+      checklist:
+        - "3 iteracoes realmente tentadas?"
+        - "Progresso medido (nao percebido)?"
+        - "Circuit breaker verificado?"
+      kill_item: false
+
+    - nome: "Exit Gate"
+      step: 4
+      checklist:
+        - "Score >= threshold para o tipo de task?"
+        - "2 completion signals emitidos?"
+        - "exit_signal=true?"
+      kill_item: true
+
+  metricas:
+    variacao_aceitavel: "Score atinge threshold em <= 2 iteracoes"
+    criterio_sucesso: "Dual-Gate Exit satisfeito"
+    review_cycle: "Continuo (embedded)"
+
+  omega:
+    task_type: "validation"
+    threshold: 95
+    max_iterations: 3
+
+  thresholds_reference:
+    research: 80
+    planning: 85
+    implementation: 90
+    validation: 95
+    mind_clone: 95

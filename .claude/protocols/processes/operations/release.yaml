@@ -1,0 +1,297 @@
+# Process Card: Release do DuarteOS
+# Protocolo de Release — Sequencia Obrigatoria com Garantia de Distribuicao Global
+# "Constancy of purpose." — release e ritual, nao improvisacao.
+# "The problem is at the top!" — se o update nao propaga, o sistema inteiro falha.
+
+process_card:
+  name: "release"
+  version: "2.0.0"
+  aim: >
+    Executar release do DuarteOS com sequencia obrigatoria de 10 passos.
+    TODA alteracao feita aqui no duarteos-core-ai DEVE ser commitada,
+    pushada e funcionar globalmente em TODOS os outros projetos via
+    `npx --yes --package=github:robsonsduarte/duarteos-core-ai duarteos update`.
+    Nenhum passo pode ser pulado ou reordenado.
+  type: "operacao"
+  scale: "tarefa"
+  risk: "critico"
+  teoria: >
+    Release e o ponto de maior variacao potencial. O DuarteOS e distribuido
+    via GitHub direto — um arquivo faltando nos templates ou no update.mjs
+    significa que NENHUM outro projeto recebe a melhoria. A cadeia de
+    distribuicao tem 3 elos criticos: (1) templates/ espelha os ativos,
+    (2) init.mjs copia tudo para novos projetos, (3) update.mjs propaga
+    tudo para projetos existentes. Se qualquer elo quebra, a release falha
+    silenciosamente — o pior tipo de defeito (Deming: variacao oculta).
+
+  triggers:
+    - "Qualquer alteracao feita no duarteos-core-ai"
+    - "Nova versao pronta para release"
+    - "Apos milestone completo"
+    - "Apos criar/editar agente, protocolo, mind clone, process card, ou comando"
+
+  steps:
+    # === FASE 1: SINCRONIZACAO DE TEMPLATES ===
+
+    - step: 1
+      acao: >
+        Verificar sincronizacao templates/ ↔ ativos.
+        Para CADA arquivo alterado na sessao, confirmar que a versao
+        correspondente em templates/ existe e esta atualizada.
+        Categorias a verificar:
+        - commands/DUARTEOS/**/*.md ↔ templates/commands/DUARTEOS/**/*.md
+        - protocols/*.md ↔ templates/protocols/*.md
+        - protocols/processes/**/*.yaml ↔ templates/protocols/processes/**/*.yaml
+        - agents-custom/*.md ↔ templates/agents-custom/*.md (custom agents)
+        - synapse/minds/*.yaml ↔ templates/synapse/minds/*.yaml
+        - omega/**/* ↔ templates/omega/**/*
+        - config/*.yaml ↔ templates/config/*.yaml
+        - hooks/*.sh ↔ templates/hooks/*.sh
+        - scripts/*.sh ↔ templates/scripts/*.sh
+        - mcp-servers/**/*.py ↔ templates/mcp-servers/**/*.py
+      responsavel: "processamento"
+      output: "Lista de arquivos verificados — 0 divergencias"
+      checkpoint: true
+
+    - step: 2
+      acao: >
+        Verificar que update.mjs propaga TODOS os arquivos alterados.
+        Para CADA arquivo novo ou modificado, confirmar presenca em
+        UMA destas listas do update.mjs:
+        - safeToUpdate[] (arquivos que sobrescrevem)
+        - newOnlyFiles[] (arquivos criados se ausentes)
+        - walkSync DUARTEOS tree (copia recursiva de .md)
+        - walkProcesses (copia recursiva de .yaml em processes/)
+        - Synapse minds sync (copia recursiva de .yaml em synapse/minds/)
+        - OMEGA checklists sync (copia recursiva de .md em omega/checklists/)
+        Se um arquivo NAO esta em nenhuma lista → ADICIONAR antes de continuar.
+      responsavel: "processamento"
+      output: "Todos arquivos cobertos pelo update.mjs"
+      checkpoint: true
+
+    - step: 3
+      acao: >
+        Verificar que init.mjs copia TODOS os arquivos para novos projetos.
+        Para CADA arquivo novo ou modificado, confirmar presenca em
+        UMA destas listas do init.mjs:
+        - files[] (arquivos individuais)
+        - dirs[] (diretorios criados)
+        - walkDir DUARTEOS tree
+        - walkProcesses
+        - Synapse minds copy
+        - OMEGA checklists copy
+        Se um arquivo NAO esta coberto → ADICIONAR antes de continuar.
+      responsavel: "processamento"
+      output: "Todos arquivos cobertos pelo init.mjs"
+      checkpoint: true
+
+    - step: 4
+      acao: >
+        Verificar contadores nos banners de init.mjs e update.mjs.
+        Contar e confirmar:
+        - MCPs: total em .mcp.json template
+        - Agentes: total em templates/commands/DUARTEOS/agents/ + templates/agents-custom/
+        - Mind Clones: total em templates/commands/DUARTEOS/{categorias}/*.md (excluir agents/, squad/, conselho/, mmos/, setup-mcps.md)
+        - Conselhos: total em templates/commands/DUARTEOS/conselho/*.md
+        - Process Cards: total em templates/protocols/processes/**/*.yaml
+        - Protocolos: total em templates/protocols/*.md
+        Se qualquer contador divergir → CORRIGIR nos banners.
+      responsavel: "processamento"
+      output: "Banners corretos em init.mjs e update.mjs"
+      checkpoint: false
+
+    # === FASE 2: VERSIONAMENTO ===
+
+    - step: 5
+      acao: "Bump versao em package.json (semver: patch para fix, minor para feat, major para breaking)"
+      responsavel: "processamento"
+      output: "package.json com nova versao"
+      checkpoint: false
+
+    - step: 6
+      acao: "Novo changelog entry em src/update.mjs (titulo + highlights array)"
+      responsavel: "processamento"
+      output: "CHANGELOG atualizado com nova versao"
+      checkpoint: false
+
+    - step: 7
+      acao: "Atualizar MEMORY.md (versao + decisoes novas)"
+      responsavel: "processamento"
+      output: "MEMORY.md atualizado"
+      checkpoint: false
+
+    # === FASE 3: PUBLICACAO ===
+
+    - step: 8
+      acao: >
+        Commit com conventional commits.
+        Formato: {tipo}: v{X.Y.Z} — {titulo do changelog}
+        Tipos: feat (novo), fix (correcao), docs (documentacao), chore (manutencao)
+        Incluir TODOS os arquivos alterados (templates, src, .claude, package.json).
+      responsavel: "processamento"
+      output: "Commit criado"
+      checkpoint: true
+
+    - step: 9
+      acao: >
+        Push para remote (origin main).
+        Este e o passo que torna a release disponivel globalmente.
+        Apos o push, qualquer projeto pode rodar:
+        npx --yes --package=github:robsonsduarte/duarteos-core-ai duarteos update
+      responsavel: "processamento"
+      output: "Push executado com sucesso"
+      checkpoint: true
+
+    # === FASE 4: VALIDACAO POS-PUSH ===
+
+    - step: 10
+      acao: >
+        Verificacao mental pos-push: o comando abaixo funcionaria?
+        npx --yes --package=github:robsonsduarte/duarteos-core-ai duarteos update
+        Verificar que: (a) package.json tem a versao correta,
+        (b) CHANGELOG no update.mjs tem entry para esta versao,
+        (c) todos os arquivos novos estao nos templates/ e nas listas do update.mjs.
+        Se qualquer duvida → testar num projeto real antes de considerar concluido.
+      responsavel: "processamento"
+      output: "Validacao OK — release funciona globalmente"
+      checkpoint: true
+
+  checkpoints:
+    - nome: "Templates Sincronizados"
+      step: 1
+      checklist:
+        - "TODOS os arquivos .md alterados tem copia em templates/?"
+        - "TODOS os arquivos .yaml alterados tem copia em templates/?"
+        - "TODOS os arquivos .py alterados tem copia em templates/?"
+        - "TODOS os arquivos .sh alterados tem copia em templates/?"
+        - "Nenhum arquivo ativo diverge do template (exceto placeholders {{PROJECT_NAME}})?"
+      kill_item: true
+
+    - nome: "Update.mjs Completo"
+      step: 2
+      checklist:
+        - "Cada arquivo novo esta em safeToUpdate[] OU coberto por walk recursivo?"
+        - "Nenhum arquivo ficou fora das listas?"
+        - "Diretorios recursivos (DUARTEOS, processes, synapse/minds, omega/checklists) usam walk?"
+        - "Arquivos do usuario (CLAUDE.md, .mcp.json, agent-memory) estao em neverOverwrite[]?"
+      kill_item: true
+
+    - nome: "Init.mjs Completo"
+      step: 3
+      checklist:
+        - "Cada arquivo novo esta em files[] OU coberto por walk recursivo?"
+        - "Diretorios novos estao em dirs[]?"
+        - "Banner mostra contadores corretos?"
+      kill_item: true
+
+    - nome: "Commit Correto"
+      step: 8
+      checklist:
+        - "Formato: {tipo}: v{X.Y.Z} — {titulo}?"
+        - "Conventional commits seguido?"
+        - "TODOS os arquivos alterados incluidos (incluindo templates/)?"
+        - "Nenhum arquivo sensivel (.env, .mcp.json com keys) incluido?"
+      kill_item: true
+
+    - nome: "Push Seguro"
+      step: 9
+      checklist:
+        - "Branch: main?"
+        - "Nenhum --force?"
+        - "Push bem-sucedido (sem erro de rede ou conflito)?"
+      kill_item: true
+
+    - nome: "Distribuicao Global Validada"
+      step: 10
+      checklist:
+        - "package.json tem versao correta?"
+        - "CHANGELOG em update.mjs tem entry para esta versao?"
+        - "Todos arquivos novos estao em templates/ E nas listas do update.mjs?"
+        - "Comando npx duarteos update funcionaria num projeto externo?"
+      kill_item: true
+
+  bias_alerts:
+    - step: 1
+      vies: "Assumir que template ja esta sincronizado — confirmation bias"
+      mitigacao: "VERIFICAR explicitamente cada arquivo alterado. Nao confiar na memoria."
+
+    - step: 2
+      vies: "Esquecer de adicionar arquivo novo ao update.mjs — omission bias"
+      mitigacao: "Para CADA arquivo novo criado na sessao, checar se esta em safeToUpdate ou walk recursivo."
+
+    - step: 4
+      vies: "Contadores desatualizados — anchoring ao numero antigo"
+      mitigacao: "Contar de verdade (ls | wc -l), nao confiar no banner anterior."
+
+    - step: 9
+      vies: "Pressa para pushar sem validar — action bias"
+      mitigacao: "Sequencia e OBRIGATORIA. Push so acontece apos steps 1-8 concluidos."
+
+  knowledge_map:
+    - step: 1
+      precisa_de: "Mapa de templates do DuarteOS"
+      onde_encontrar: "templates/ (raiz do repo)"
+
+    - step: 2
+      precisa_de: "Estrutura do update.mjs"
+      onde_encontrar: "src/update.mjs — listas safeToUpdate[], newOnlyFiles[], walks recursivos"
+
+    - step: 3
+      precisa_de: "Estrutura do init.mjs"
+      onde_encontrar: "src/init.mjs — listas files[], dirs[], walks recursivos"
+
+    - step: 5
+      precisa_de: "Versao atual"
+      onde_encontrar: "package.json campo version"
+
+    - step: 6
+      precisa_de: "Formato do changelog"
+      onde_encontrar: "src/update.mjs — objeto CHANGELOG no topo do arquivo"
+
+  cadeia_distribuicao:
+    descricao: >
+      O DuarteOS e distribuido via GitHub direto. A cadeia de distribuicao tem 3 elos:
+      (1) templates/ — espelho dos arquivos ativos, fonte de verdade para distribuicao
+      (2) init.mjs — copia templates/ para novos projetos (primeiro install)
+      (3) update.mjs — propaga templates/ para projetos existentes (atualizacoes)
+      Se qualquer elo quebra, outros projetos NAO recebem a melhoria.
+    comando_install: "npx --yes --package=github:robsonsduarte/duarteos-core-ai duarteos init"
+    comando_update: "npx --yes --package=github:robsonsduarte/duarteos-core-ai duarteos update"
+    fluxo: "Editar ativo → Copiar para templates/ → Adicionar ao init.mjs + update.mjs → Commit → Push → Outros projetos rodam update"
+
+  walks_recursivos:
+    descricao: "Blocos que copiam diretorios inteiros recursivamente (nao precisam de entrada individual)"
+    blocos:
+      - nome: "DUARTEOS commands"
+        funcao: "walkDir (init) / walkSync (update)"
+        path: "templates/commands/DUARTEOS/"
+        filtro: "*.md"
+        destino: ".claude/commands/DUARTEOS/"
+
+      - nome: "Process Cards"
+        funcao: "walkProcesses"
+        path: "templates/protocols/processes/"
+        filtro: "*.yaml + README.md"
+        destino: ".claude/protocols/processes/"
+
+      - nome: "Synapse minds"
+        funcao: "inline loop"
+        path: "templates/synapse/minds/"
+        filtro: "*.yaml"
+        destino: ".claude/synapse/minds/"
+
+      - nome: "OMEGA checklists"
+        funcao: "inline loop"
+        path: "templates/omega/checklists/"
+        filtro: "*.md"
+        destino: ".claude/omega/checklists/"
+
+  metricas:
+    variacao_aceitavel: "10 passos executados na ordem exata, 0 arquivos orfaos"
+    criterio_sucesso: "Push bem-sucedido + todos arquivos novos propagam via update"
+    review_cycle: "A cada release — OBRIGATORIO"
+
+  omega:
+    task_type: "implementation"
+    threshold: 95
+    max_iterations: 3

@@ -11,7 +11,7 @@ import subprocess
 import hashlib
 from datetime import datetime
 
-mcp = FastMCP("automation", description="Automacao de sistema, file processing e tarefas agendadas")
+mcp = FastMCP("automation", instructions="Automacao de sistema, file processing e tarefas agendadas")
 
 
 @mcp.tool()

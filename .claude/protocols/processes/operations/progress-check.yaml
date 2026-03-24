@@ -1,0 +1,54 @@
+# Process Card: Verificar Progresso
+# Comando: /DUARTEOS:squad:progress
+# "In God we trust. All others must bring data."
+
+process_card:
+  name: "progress-check"
+  version: "1.0.0"
+  aim: >
+    Apresentar visao consolidada do estado do projeto: fases completas,
+    fase atual, proximos passos, blockers e decisoes pendentes.
+  type: "operacao"
+  scale: "micro-tarefa"
+  risk: "baixo"
+  teoria: >
+    Visibilidade constante do progresso permite correcao de curso antes
+    que a variacao se acumule. Dados > impressao.
+
+  triggers:
+    - "Inicio de nova sessao de trabalho"
+    - "Usuario pergunta 'o que esta pendente?'"
+    - "Apos completar fase"
+    - "/DUARTEOS:squad:progress"
+
+  steps:
+    - step: 1
+      acao: "Ler STATE.md, ROADMAP.md e status das fases"
+      responsavel: "pm"
+      output: "Estado consolidado"
+      checkpoint: false
+
+    - step: 2
+      acao: "Apresentar resumo visual com progresso e proximo passo"
+      responsavel: "pm"
+      output: "Dashboard de progresso"
+      checkpoint: true
+
+  checkpoints:
+    - nome: "Progresso Claro"
+      step: 2
+      checklist:
+        - "Fases completas identificadas?"
+        - "Fase atual com progresso?"
+        - "Proximo passo recomendado?"
+      kill_item: false
+
+  metricas:
+    variacao_aceitavel: "Progresso em < 30 segundos"
+    criterio_sucesso: "Informacao precisa e acionavel"
+    review_cycle: "Nao aplica (sob demanda)"
+
+  omega:
+    task_type: "research"
+    threshold: 80
+    max_iterations: 3

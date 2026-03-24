@@ -1,0 +1,66 @@
+# Process Card: Ingestao de Conteudo
+# Comando: /DUARTEOS:squad:ingest
+# IA so processa conteudo LOCAL — nunca internet durante ingestao.
+
+process_card:
+  name: "ingest-content"
+  version: "1.0.0"
+  aim: >
+    Ingerir material na caixa do projeto (inbox/) e processar usando
+    pipeline de mind cloning. 4 modos: SCAN, INGEST, PROCESS, ORGANIZE.
+  type: "knowledge"
+  scale: "micro-tarefa a tarefa"
+  risk: "baixo"
+  teoria: >
+    Ingestao local garante controle sobre fontes. Pipeline inspirado em
+    Mega Brain (Thiago Finch): coleta > organizacao > processamento.
+    Estrutura canonica: inbox/{autor-slug}/{tipo}/{arquivo}.txt
+
+  triggers:
+    - "Novo material disponivel para processamento"
+    - "Listar pendentes no inbox"
+    - "/DUARTEOS:squad:ingest"
+
+  steps:
+    - step: 1
+      acao: "SCAN — escanear inbox/ por arquivos pendentes"
+      responsavel: "processamento"
+      output: "Lista de pendentes com autor, tipo, tamanho"
+      checkpoint: false
+
+    - step: 2
+      acao: "INGEST — copiar arquivo para estrutura canonica"
+      responsavel: "processamento"
+      output: "Arquivo em inbox/{slug}/{tipo}/"
+      checkpoint: false
+
+    - step: 3
+      acao: "PROCESS — extrair MIUs do arquivo"
+      responsavel: "processamento (sonnet)"
+      output: "MIUs extraidas + arquivo movido para processed/"
+      checkpoint: true
+
+    - step: 4
+      acao: "ORGANIZE — auto-organizar inbox (dry-run primeiro)"
+      responsavel: "processamento"
+      output: "Inbox reorganizado"
+      checkpoint: false
+
+  checkpoints:
+    - nome: "Processamento Valido"
+      step: 3
+      checklist:
+        - "MIUs extraidas com source_path?"
+        - "Arquivo original movido para processed/?"
+        - "Nenhum dado perdido no processamento?"
+      kill_item: true
+
+  metricas:
+    variacao_aceitavel: "100% dos arquivos processados com MIUs"
+    criterio_sucesso: "Inbox vazio (tudo em processed/)"
+    review_cycle: "Semanal"
+
+  omega:
+    task_type: "research"
+    threshold: 80
+    max_iterations: 3

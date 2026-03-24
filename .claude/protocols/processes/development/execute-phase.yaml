@@ -1,0 +1,88 @@
+# Process Card: Executar Fase
+# Comando: /DUARTEOS:squad:execute-phase
+# "The worker is not the problem."
+
+process_card:
+  name: "execute-phase"
+  version: "1.0.0"
+  aim: >
+    Executar todos os PLAN.md de uma fase com wave-based parallelism
+    e commits atomicos. Verificacao pos-execucao pelo QA.
+  type: "implementacao"
+  scale: "tarefa"
+  risk: "medio"
+  teoria: >
+    Waves paralelas reduzem tempo total. Commits atomicos permitem rollback
+    granular. Contexto fresco (200k tokens) por executor elimina confusao
+    por contexto stale. QA verifica goal achievement, nao existencia de arquivos.
+
+  triggers:
+    - "Planos aprovados e prontos para execucao"
+    - "Fase planejada com PLAN.md validados"
+    - "/DUARTEOS:squad:execute-phase"
+
+  steps:
+    - step: 1
+      acao: "Agrupar PLAN.md em waves por dependencia"
+      responsavel: "pm"
+      output: "Waves ordenadas com dependencias resolvidas"
+      checkpoint: false
+
+    - step: 2
+      acao: "Executar Wave 1 — spawnar executores em paralelo com contexto fresco"
+      responsavel: "backend + frontend"
+      output: "Tasks da Wave 1 implementadas e commitadas"
+      checkpoint: false
+
+    - step: 3
+      acao: "Executar Wave N — repetir ate completar todas as waves"
+      responsavel: "backend + frontend"
+      output: "Todas as waves implementadas"
+      checkpoint: true
+
+    - step: 4
+      acao: "Verificar goal achievement da fase"
+      responsavel: "qa"
+      output: "VERIFICATION.md com resultado"
+      checkpoint: true
+
+  checkpoints:
+    - nome: "Waves Completas"
+      step: 3
+      checklist:
+        - "Todas as tasks de todos os PLAN.md executadas?"
+        - "Commits atomicos (1 por task)?"
+        - "Nenhum conflito de merge entre waves?"
+      kill_item: true
+
+    - nome: "Goal Atingido"
+      step: 4
+      checklist:
+        - "VERIFICATION.md criado?"
+        - "Goal da fase verificado (nao so 'arquivos existem')?"
+        - "Fix plans criados para issues encontrados?"
+      kill_item: true
+
+  bias_alerts:
+    - step: 2
+      vies: "Pressa para completar wave rapido sacrificando qualidade"
+      mitigacao: "Cada executor tem OMEGA threshold >= 90"
+
+  knowledge_map:
+    - step: 1
+      precisa_de: "PLAN.md da fase atual"
+      onde_encontrar: ".planning/{fase}/PLAN.md"
+
+    - step: 4
+      precisa_de: "Goals e success criteria da fase"
+      onde_encontrar: ".planning/ROADMAP.md"
+
+  metricas:
+    variacao_aceitavel: "Zero tasks nao executadas ao final das waves"
+    criterio_sucesso: "Goal da fase atingido conforme VERIFICATION.md"
+    review_cycle: "Apos cada fase executada"
+
+  omega:
+    task_type: "implementation"
+    threshold: 90
+    max_iterations: 3

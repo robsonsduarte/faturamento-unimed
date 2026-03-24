@@ -120,6 +120,22 @@ else
     echo "  ✓ FastMCP instalado"
 fi
 
+# Pre-warm uv cache for Python MCPs (one-time download, instant startup after)
+echo ""
+echo "Pre-aquecendo cache uv para Python MCP servers..."
+if command -v uv &> /dev/null; then
+    if uv run --with "fastmcp,pandas,numpy,matplotlib,seaborn,requests,beautifulsoup4,lxml,watchdog,pyyaml,redis" \
+        python -c "import fastmcp; print('  OK: cache pronto (fastmcp', fastmcp.__version__, ')')" 2>/dev/null; then
+        echo "  Proximos starts dos Python MCPs serao instantaneos."
+    else
+        echo "  Warmup parcial — alguns pacotes podem ser baixados no startup"
+        WARNINGS=$((WARNINGS + 1))
+    fi
+else
+    echo "  uv nao encontrado — Python MCPs usarao pip install"
+    WARNINGS=$((WARNINGS + 1))
+fi
+
 # Summary
 echo ""
 echo "========================"

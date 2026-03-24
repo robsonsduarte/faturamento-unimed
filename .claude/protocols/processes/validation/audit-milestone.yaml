@@ -1,0 +1,67 @@
+# Process Card: Auditar Milestone
+# Comando: /DUARTEOS:squad:audit
+# "In God we trust. All others must bring data."
+
+process_card:
+  name: "audit-milestone"
+  version: "1.0.0"
+  aim: >
+    Auditoria completa antes de marcar milestone como concluido.
+    3 agentes de validacao simultaneos: QA, Context Engineer, Devil's Advocate.
+  type: "validacao"
+  scale: "tarefa"
+  risk: "alto"
+  teoria: >
+    Gate final com 3 perspectivas simultaneas (prova, coerencia, contestacao)
+    captura problemas que uma unica perspectiva perderia. Milestone so
+    fecha quando as 3 perspectivas convergem.
+
+  triggers:
+    - "Antes de completar milestone"
+    - "Validar se projeto esta pronto para producao"
+    - "/DUARTEOS:squad:audit"
+
+  steps:
+    - step: 1
+      acao: "QA (Prova) — lint, testes, seguranca, cobertura"
+      responsavel: "qa"
+      output: "Relatorio de qualidade com evidencia"
+      checkpoint: false
+
+    - step: 2
+      acao: "Context Engineer (Coerencia) — drift, consistencia, completude"
+      responsavel: "context-engineer"
+      output: "Relatorio de coerencia"
+      checkpoint: false
+
+    - step: 3
+      acao: "Devil's Advocate (Contestacao) — cenarios de falha, edge cases"
+      responsavel: "devils-advocate"
+      output: "Relatorio de contestacao"
+      checkpoint: false
+
+    - step: 4
+      acao: "Consolidar: milestone shipavel ou nao?"
+      responsavel: "pm"
+      output: "Decisao: SHIP / FIX_NEEDED / BLOCKED"
+      checkpoint: true
+
+  checkpoints:
+    - nome: "Auditoria Completa"
+      step: 4
+      checklist:
+        - "3 relatorios recebidos (QA, Context, Devil)?"
+        - "Todos os findings classificados por severidade?"
+        - "Blockers resolvidos ou com plano de acao?"
+        - "Definition of Done do milestone atendida?"
+      kill_item: true
+
+  metricas:
+    variacao_aceitavel: "Zero blockers nao resolvidos"
+    criterio_sucesso: "Milestone fechado com evidencia de qualidade"
+    review_cycle: "A cada milestone"
+
+  omega:
+    task_type: "validation"
+    threshold: 95
+    max_iterations: 3

@@ -1,0 +1,79 @@
+# Process Card: Mapear Codebase
+# Comando: /DUARTEOS:squad:map-codebase
+# "A system cannot understand itself." — mas pode ser mapeado sistematicamente.
+
+process_card:
+  name: "map-codebase"
+  version: "1.0.0"
+  aim: >
+    Produzir 7 documentos estruturados sobre o codebase existente
+    usando 4 agentes paralelos. Discovery antes de acao.
+  type: "pesquisa"
+  scale: "tarefa"
+  risk: "baixo"
+  teoria: >
+    Mapeamento paralelo com 4 perspectivas (Tech, Architecture, Quality, Concerns)
+    reduz blind spots. 7 documentos cobrem stack, integracoes, arquitetura,
+    estrutura, convencoes, testes e riscos.
+
+  triggers:
+    - "Antes de refatoracao grande"
+    - "Novo membro precisa entender projeto"
+    - "Documentacao de arquitetura desatualizada"
+    - "/DUARTEOS:squad:map-codebase"
+
+  steps:
+    - step: 1
+      acao: "Spawnar 4 agentes paralelos (Tech, Architecture, Quality, Concerns)"
+      responsavel: "architect"
+      output: "4 analises paralelas"
+      checkpoint: false
+
+    - step: 2
+      acao: "Tech Agent produz STACK.md + INTEGRATIONS.md"
+      responsavel: "backend"
+      output: ".planning/codebase/STACK.md, INTEGRATIONS.md"
+      checkpoint: false
+
+    - step: 3
+      acao: "Architecture Agent produz ARCHITECTURE.md + STRUCTURE.md"
+      responsavel: "architect"
+      output: ".planning/codebase/ARCHITECTURE.md, STRUCTURE.md"
+      checkpoint: false
+
+    - step: 4
+      acao: "Quality Agent produz CONVENTIONS.md + TESTING.md"
+      responsavel: "qa"
+      output: ".planning/codebase/CONVENTIONS.md, TESTING.md"
+      checkpoint: false
+
+    - step: 5
+      acao: "Concerns Agent produz CONCERNS.md"
+      responsavel: "qa"
+      output: ".planning/codebase/CONCERNS.md"
+      checkpoint: false
+
+    - step: 6
+      acao: "Architect revisa todos os 7 documentos com perspectiva do projeto"
+      responsavel: "architect"
+      output: "7 documentos revisados e consolidados"
+      checkpoint: true
+
+  checkpoints:
+    - nome: "7 Documentos Completos"
+      step: 6
+      checklist:
+        - "Todos os 7 .md existem em .planning/codebase/?"
+        - "Nenhum documento vazio ou placeholder?"
+        - "Riscos e divida tecnica documentados?"
+      kill_item: true
+
+  metricas:
+    variacao_aceitavel: "7 documentos gerados sem gaps"
+    criterio_sucesso: "Codebase mapeado de forma navegavel"
+    review_cycle: "Apos cada milestone significativo"
+
+  omega:
+    task_type: "research"
+    threshold: 80
+    max_iterations: 3

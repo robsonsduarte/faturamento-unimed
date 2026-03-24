@@ -1,0 +1,74 @@
+# Process Card: Revisao de Processo via PDSA
+# "Without theory, experience teaches nothing." — W. Edwards Deming
+
+process_card:
+  name: "process-review-pdsa"
+  version: "1.0.0"
+  aim: >
+    Revisar um processo existente usando o ciclo PDSA (Plan-Do-Study-Act).
+    Processos nao sao dogma — sao hipoteses revisaveis por evidencia.
+  type: "meta"
+  scale: "tarefa"
+  risk: "medio"
+  teoria: >
+    PDSA e deliberado: Study implica aprendizado, nao mera verificacao.
+    Processos fora de controle por 3 ciclos entram em quarentena.
+    A variacao e medida, nao julgada por impressao.
+
+  steps:
+    - step: 1
+      acao: "Coletar dados de execucao do processo (ultimas N execucoes)"
+      responsavel: "process-chief"
+      output: "Tabela: execucao, predicao, resultado, delta"
+      checkpoint: false
+
+    - step: 2
+      acao: "Classificar variacao: causa comum ou especial?"
+      responsavel: "process-chief"
+      output: "Diagnostico de variacao com evidencia"
+      checkpoint: true
+
+    - step: 3
+      acao: "Formular teoria: por que o processo esta performando assim?"
+      responsavel: "process-chief"
+      output: "Hipotese explicita e testavel"
+      checkpoint: false
+
+    - step: 4
+      acao: "Propor ajuste ao processo (se necessario)"
+      responsavel: "process-chief"
+      output: "Process Card atualizada (draft)"
+      checkpoint: false
+
+    - step: 5
+      acao: "Decidir acao: padronizar | revisar | escalar | quarentena"
+      responsavel: "process-chief"
+      output: "Decisao documentada com justificativa"
+      checkpoint: true
+
+  checkpoints:
+    - nome: "Variacao Classificada"
+      step: 2
+      checklist:
+        - "Dados coletados de pelo menos 3 execucoes?"
+        - "Causa comum vs especial distinguida corretamente?"
+        - "Tampering evitado (nao reagir a causa comum como se fosse especial)?"
+      kill_item: true
+
+    - nome: "Decisao Fundamentada"
+      step: 5
+      checklist:
+        - "Acao baseada em dados, nao opiniao?"
+        - "Se quarentena: 3 ciclos fora de controle documentados?"
+        - "Se padronizar: processo estavel por 3+ ciclos?"
+      kill_item: true
+
+  metricas:
+    variacao_aceitavel: "Delta predicao-resultado <= 15%"
+    criterio_sucesso: "Processo volta ao controle estatistico apos ajuste"
+    review_cycle: "Apos cada execucao do processo revisado"
+
+  omega:
+    task_type: "planning"
+    threshold: 85
+    max_iterations: 3

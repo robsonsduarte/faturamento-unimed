@@ -1,0 +1,246 @@
+# DNA Mental: {Nome do Especialista}
+# Synapse Mind Clone — Memoria Incremental
+# Pipeline: MMOS Engine v2.1 (6 Fases, 15 Entidades, 5 Autoridades)
+# DNA: 6 Camadas + 4 Subcamadas Cognitivas
+#   Camadas: Filosofia, Frameworks, Heuristicas, Associacoes Conceituais, Metodologias, Dilemas, Paradoxos Produtivos, Comunicacao Avancada
+#   Subcamadas: hierarquia_valores, motivacao_profunda (filosofia), modelo_social (heuristicas), estilometria + estrutura_retorica (comunicacao_avancada)
+# Formula: F = (L*0.20) + (B*0.30) + (C*0.15) + (K*0.20) + (V*0.15)
+# Gerado em: {data}
+# Ultima atualizacao: {data}
+# Fontes processadas: {N}
+# Confianca: {alta/media/baixa}
+
+identity:
+  name: "{Nome Completo}"
+  slug: "{nome-normalizado}"
+  domain: "{Dominio principal}"
+  archetype: "{Frase que define a pessoa}"
+  category: "{categoria-kebab-case}"    # copy, marketing, ux-design, ai, tech, business, content, product, saude, juridico
+  clone_file: "DUARTEOS/squad/{categoria}/agents/{slug}.md"
+  squad_path: "DUARTEOS/squad/{categoria}/"
+  pipeline_version: "2"                 # MMOS Engine v2
+  status: "draft"                       # draft, active, premium, archived
+  apex_score: null                      # Preenchido na Fase 0 (/60)
+  icp_score: null                       # Preenchido na Fase 0 (/10)
+
+# === AS 6 CAMADAS DO DNA ===
+
+filosofia:
+  # Crencas fundamentais — O QUE a pessoa acredita ser verdade
+  crencas_core:
+    - belief: "{crenca 1}"
+      evidencia: "{fonte/citacao}"
+      source_path: "{inbox/{autor}/{tipo}/{arquivo}.txt}"
+    - belief: "{crenca 2}"
+      evidencia: "{fonte/citacao}"
+      source_path: "{inbox/{autor}/{tipo}/{arquivo}.txt}"
+  visao_de_mundo: "{como ve o mundo — otimista/realista/cetico/etc}"
+  principios_inegociaveis:
+    - "{principio 1}"
+    - "{principio 2}"
+  # Hierarquia de valores rankeada — QUAL valor vence quando dois colidem
+  hierarquia_valores:
+    - valor: "{valor mais importante}"
+      rank: 1
+      sacrifica_por: "{o que abre mao em favor deste valor}"
+      evidencia: "{fonte/citacao}"
+    - valor: "{segundo valor}"
+      rank: 2
+      sacrifica_por: "{o que abre mao}"
+      evidencia: "{fonte/citacao}"
+  conflitos_de_valor:
+    - valor_a: "{valor X}"
+      valor_b: "{valor Y}"
+      escolhe: "{qual vence}"
+      contexto: "{em que situacao}"
+      evidencia: "{fonte}"
+  # Modelo de recompensa e medo — motores profundos de comportamento
+  motivacao_profunda:
+    impulsores:
+      - motor: "{o que move pra frente — ex: provar que pode, deixar legado}"
+        intensidade: "{alta|media|baixa}"
+        evidencia: "{citacao/fonte}"
+        source_path: "{URL ou path}"
+    medos:
+      - medo: "{o que evita a todo custo — ex: mediocridade, irrelevancia}"
+        intensidade: "{alta|media|baixa}"
+        evidencia: "{citacao/fonte}"
+        source_path: "{URL ou path}"
+    recompensa_ideal: "{o que define 'sucesso' para essa pessoa}"
+
+frameworks:
+  # Passos-a-passo que a pessoa segue — COMO ela estrutura pensamento
+  primarios:
+    - name: "{framework 1}"
+      steps:
+        - "{passo 1}"
+        - "{passo 2}"
+      quando_usar: "{situacao}"
+    - name: "{framework 2}"
+      steps:
+        - "{passo 1}"
+        - "{passo 2}"
+      quando_usar: "{situacao}"
+  modelo_decisao: "{como decide — dados vs intuicao, rapido vs deliberado}"
+
+heuristicas:
+  # Atalhos mentais e padroes de decisao — REGRAS DE BOLSO
+  regras_rapidas:
+    - trigger: "{quando X acontece}"
+      acao: "{faco Y}"
+      fonte: "{onde aprendeu/citou isso}"
+      source_path: "{inbox/{autor}/{tipo}/{arquivo}.txt}"
+    - trigger: "{situacao}"
+      acao: "{reacao padrao}"
+      fonte: "{referencia}"
+      source_path: "{inbox/{autor}/{tipo}/{arquivo}.txt}"
+  vieses_conhecidos:
+    - "{vies que a pessoa tem conscientemente}"
+  red_flags:
+    - "{sinal de alerta que faz parar imediatamente}"
+  # Modelo social / Teoria da Mente — como modela intencoes dos OUTROS
+  modelo_social:
+    confianca_default: "{alta|media|baixa}"
+    como_interpreta_critica: "{texto — ex: interpreta como preguica, nao como duvida}"
+    como_interpreta_elogio: "{texto — ex: aceita com naturalidade vs desconfia}"
+    padrao_atribuicao: "{internaliza|externaliza|contextual}"
+    interacoes:
+      - situacao: "{quando alguem faz X}"
+        interpretacao: "{interpreta como Y}"
+        reacao: "{reage com Z}"
+        evidencia: "{fonte}"
+        source_path: "{URL ou path}"
+
+# Associacoes conceituais — COMO a pessoa conecta ideias aparentemente nao relacionadas
+# Diferente de frameworks (que sao passos) e heuristicas (que sao regras)
+# Aqui capturamos PONTES entre conceitos — padroes associativos da mente
+associacoes_conceituais:
+  pontes:
+    - conceito_a: "{tema/conceito 1}"
+      conceito_b: "{tema/conceito 2 — aparentemente nao relacionado}"
+      ponte: "{como conecta — a logica por tras}"
+      frequencia: "{alta|media|baixa}"
+      exemplo: "{citacao ou contexto onde faz essa conexao}"
+      source_path: "{URL ou path}"
+  padrao_associativo: "{texto descritivo — ex: conecta esporte com disciplina profissional, historia com estrategia moderna}"
+
+metodologias:
+  # Processos estruturados e repetiveis — SISTEMAS que usa
+  processos:
+    - name: "{metodologia 1}"
+      descricao: "{o que e e quando aplica}"
+      etapas:
+        - "{etapa 1}"
+        - "{etapa 2}"
+    - name: "{metodologia 2}"
+      descricao: "{descricao}"
+      etapas:
+        - "{etapa 1}"
+        - "{etapa 2}"
+  ferramentas_preferidas:
+    - "{ferramenta/tecnica que sempre recomenda}"
+
+dilemas:
+  # Como lida com trade-offs — TENSOES que reconhece
+  tradeoffs_tipicos:
+    - tensao: "{X vs Y}"
+      posicao: "{como resolve}"
+      justificativa: "{por que}"
+    - tensao: "{A vs B}"
+      posicao: "{como resolve}"
+      justificativa: "{por que}"
+  zonas_cinza:
+    - "{area onde admite nao ter resposta definitiva}"
+  evolucao:
+    - de: "{posicao antiga}"
+      para: "{posicao nova}"
+      quando: "{periodo}"
+      motivo: "{o que causou a mudanca}"
+
+paradoxos_produtivos:
+  # Contradicoes internas que criam comportamento humano — CAMADA OURO
+  # Pessoas reais sao contraditorias. Capturar paradoxos e o que separa
+  # clones genericos de clones com 94%+ de fidelidade.
+  # Minimo: 2 paradoxos. Ideal: 4-6.
+  # Cada paradoxo precisa >= 3 fontes independentes.
+  paradoxos:
+    - lado_a: "{posicao A — ex: Prega simplicidade}"
+      lado_b: "{posicao B — ex: Cria sistemas complexos}"
+      trigger_a: "{quando lado A emerge — ex: Ao discutir teoria}"
+      trigger_b: "{quando lado B emerge — ex: Ao implementar solucoes}"
+      resolucao: "{como reconcilia — ex: Simples na superficie, complexo por baixo}"
+      exemplos:
+        - fonte: "{referencia}"
+          citacao: "{evidencia}"
+          source_path: "{inbox/{autor}/{tipo}/{arquivo}.txt}"
+      valor_autenticidade: "{alto|medio|baixo}"
+  nota_camada: "{observacao geral sobre os paradoxos deste expert}"
+
+# Comunicacao avancada — estrutura retorica e estilometria
+comunicacao_avancada:
+  # Estrutura retorica — a "formula" para construir argumentos
+  estrutura_retorica:
+    formula_padrao: "{como tipicamente constroi argumentos — ex: Provocacao -> Framework -> Resultado -> Desafio}"
+    sequencias:
+      - nome: "{nome do padrao — ex: Provocacao-Prova}"
+        passos:
+          - "{passo 1 — ex: Abre com afirmacao forte/provocativa}"
+          - "{passo 2 — ex: Apresenta framework/metodo como prova}"
+          - "{passo 3 — ex: Mostra resultado numerico}"
+          - "{passo 4 — ex: Fecha com desafio direto ao ouvinte}"
+        quando_usa: "{em que contexto — ex: quando ensina, quando vende, quando debate}"
+        source_path: "{URL ou path}"
+    preferencia_persuasao: "{pathos-first|logos-first|ethos-first|mix}"
+  # Estilometria computacional — metricas quantitativas de estilo
+  estilometria:
+    comprimento_medio_frase: null         # palavras por frase (media)
+    vocabulario_tecnico_ratio: null        # % de termos tecnicos vs coloquiais
+    perguntas_retoricas_ratio: null        # % de frases que sao perguntas retoricas
+    imperativos_ratio: null                # % de frases com verbos imperativos
+    palavrao_frequencia: "{nunca|raro|ocasional|frequente}"
+    code_switching: "{nenhum|baixo|medio|alto}"  # alternancia de idiomas (pt/en)
+    marcadores_discursivos: []             # ex: "olha", "tipo", "entende?", "sacou?"
+    cadencia: "{curta-e-direta|longa-e-elaborada|variada}"
+    pontuacao_expressiva: "{minimalista|moderada|expressiva}"  # uso de !, ..., —
+
+# === METADATA DE INGESTAO ===
+
+ingestion_log:
+  - date: "{YYYY-MM-DD}"
+    source: "{tipo: youtube/pdf/artigo/podcast/call}"
+    title: "{titulo do conteudo}"
+    source_path: "{inbox/{autor}/{tipo}/{arquivo}.txt}"
+    insights_extraidos: 0
+    camadas_atualizadas:
+      - filosofia
+      - frameworks
+
+stats:
+  total_fontes: 0
+  ultima_atualizacao: "{YYYY-MM-DD}"
+  versao_dna: 1
+  confianca_geral: "{alta/media/baixa}"
+  # Formula de Fidelidade MMOS v2:
+  # F = (L*0.20) + (B*0.30) + (C*0.15) + (K*0.20) + (V*0.15)
+  # Minimum per component: 85. Minimum composite: 95.
+  fidelidade: null                # Score composto F (0-100%)
+  fidelidade_components:
+    L_linguistic: null            # Linguistic Accuracy (0-100)
+    B_behavioral: null            # Behavioral Fidelity (0-100) — MAIOR PESO
+    C_contradiction: null         # Contradiction Handling (0-100)
+    K_knowledge: null             # Knowledge/Framework Application (0-100)
+    V_voice: null                 # Voice Authenticity (0-100)
+  fidelity_estimated: null       # PCFE score (0-100), preenchido na Fase 3 do pipeline v3
+  pcfe_breakdown:
+    volume_score: null
+    diversity_score: null
+    coverage_score: null
+    depth_score: null
+    quality_score: null
+  pcfe_classification: null      # EXCELENTE|BOM|MODERADO|FRACO|INSUFICIENTE
+  pcfe_timestamp: null
+  apex_score: null
+  icp_score: null
+  blind_test_passed: null         # true/false — Fase 5 Kahneman
+  noise_audit_score: null         # Reprodutibilidade (0-1.0, meta >= 0.90)
+  premortem_documented: false     # Pre-mortem executado na Fase 5

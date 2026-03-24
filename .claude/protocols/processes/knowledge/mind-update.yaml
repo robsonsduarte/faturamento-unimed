@@ -1,0 +1,100 @@
+# Process Card: Mind Update — Atualizacao Incremental de Clone
+# Comando: /DUARTEOS:mmos:mind-update
+# "Experience by itself teaches nothing." — mas experiencia + teoria + dados = aprendizado.
+
+process_card:
+  name: "mind-update"
+  version: "1.0.0"
+  aim: >
+    Atualizar mind clone existente com novo material. Merge aditivo
+    (nunca destrutivo). Rollback automatico se fidelidade degradar.
+  type: "knowledge"
+  scale: "tarefa"
+  risk: "medio"
+  teoria: >
+    Clones sao organismos vivos que se enriquecem incrementalmente.
+    Merge aditivo protege DNA existente. Backup pre-update permite
+    rollback se fidelidade cair. Fontes traceiaveis (source_path).
+
+  triggers:
+    - "Novo material disponivel para clone existente"
+    - "Fontes adicionais no inbox/{slug}/"
+    - "/DUARTEOS:mmos:mind-update {nome} {fonte}"
+
+  steps:
+    - step: 1
+      acao: "Verificar que clone existe e carregar estado atual"
+      responsavel: "processamento"
+      output: "DNA atual + fidelidade baseline"
+      checkpoint: true
+
+    - step: 2
+      acao: "Criar backup pre-update"
+      responsavel: "processamento"
+      output: "Backup com timestamp"
+      checkpoint: false
+
+    - step: 3
+      acao: "Processar nova fonte (extrair MIUs)"
+      responsavel: "processamento (sonnet)"
+      output: "MIUs novas"
+      checkpoint: false
+
+    - step: 4
+      acao: "Merge aditivo no DNA existente"
+      responsavel: "criacao (opus)"
+      output: "DNA atualizado"
+      checkpoint: true
+
+    - step: 5
+      acao: "Recalcular fidelidade e comparar com baseline"
+      responsavel: "criacao (opus)"
+      output: "F nova vs F baseline"
+      checkpoint: true
+
+    - step: 6
+      acao: "Se F nova < F baseline: rollback automatico"
+      responsavel: "criacao (opus)"
+      output: "Clone atualizado ou rollback"
+      checkpoint: true
+
+  checkpoints:
+    - nome: "Clone Existe"
+      step: 1
+      checklist:
+        - "config.yaml existe em DUARTEOS/minds/{slug}/?"
+        - "agent.md existe?"
+        - "Fidelidade baseline registrada?"
+      kill_item: true
+
+    - nome: "Merge Seguro"
+      step: 4
+      checklist:
+        - "Merge foi aditivo (nao destrutivo)?"
+        - "source_path das novas MIUs registrado?"
+        - "DNA existente preservado?"
+      kill_item: true
+
+    - nome: "Fidelidade Mantida"
+      step: 5
+      checklist:
+        - "F nova >= F baseline?"
+        - "Nenhuma camada DNA degradou?"
+      kill_item: true
+
+    - nome: "Rollback se Necessario"
+      step: 6
+      checklist:
+        - "Se F caiu: backup restaurado?"
+        - "Usuario notificado do resultado?"
+      kill_item: true
+
+  metricas:
+    variacao_aceitavel: "F nova >= F baseline"
+    criterio_sucesso: "Clone enriquecido sem degradacao"
+    review_cycle: "Apos cada update"
+
+  omega:
+    task_type: "validation"
+    threshold: 95
+    max_iterations: 3

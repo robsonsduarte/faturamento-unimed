@@ -21,10 +21,10 @@ Este documento define as regras formais para nomear, criar, deprecar e versionar
 
 | Regra | Exemplo |
 |-------|---------|
-| Formato: `/{scope}:{action}` — minusculo, kebab-case | /squad:quick, /agents:pm |
+| Formato: `/{scope}:{action}` — minusculo, kebab-case | /DUARTEOS:squad:quick, /DUARTEOS:agents:pm |
 | Scopes validos: `agents`, `squad`, `gsd` | — |
 | Actions em kebab-case, verbo imperativo | plan-phase, sync-ide, clone-mind |
-| Nomes curtos (max 20 chars incluindo scope) | /squad:new-project |
+| Nomes curtos (max 20 chars incluindo scope) | /DUARTEOS:squad:new-project |
 
 ### Task Templates
 
@@ -97,7 +97,34 @@ Este documento define as regras formais para nomear, criar, deprecar e versionar
 
 ---
 
-## 3. Regras de Ouro
+## 3. Mapa de Jurisdicao de Agentes
+
+A separacao de responsabilidades entre agentes e principio constitucional (Artigo 0). Esta secao define a jurisdicao de cada agente e suas restricoes explicitas.
+
+### Tabela de Jurisdicao
+
+| Agente | Codename | Jurisdicao EXCLUSIVA | PROIBIDO |
+|--------|----------|---------------------|----------|
+| Data Engineer | PAVEL DUROV | Migrations, schemas, queries, modelagem, indexes, triggers, seeds, backfills, otimizacao de BD | Codigo aplicacao, frontend, APIs, deploy |
+| Backend | FORGE | APIs, logica de negocio, servicos, integracoes externas | Banco de dados (SQL, migrations, schemas), frontend (UI, componentes, CSS) |
+| Frontend | PRISM | Implementacao de componentes, paginas, hooks, estado | Definir UX/Design System, banco de dados, APIs backend |
+| UX/Design System | BRAD FROST | UX design, Design System, tokens, patterns, guidelines, componentes atomicos | Implementacao de codigo, banco de dados, APIs |
+| DevOps | DEVOPS | Git operations, CI/CD, Docker, deploy, monitoramento | Logica de negocio, banco de dados, frontend |
+| PM | ATLAS | Orquestracao, delegacao, decisoes de escopo, autorizacao | Executar qualquer task tecnica diretamente |
+| Architect | NEXUS | Arquitetura, planejamento tecnico, decisoes estruturais | Executar implementacao diretamente |
+| QA | SENTINEL | Verificacao, testes, debug, auditoria de qualidade | Implementar features, alterar banco de dados |
+| Context Engineer | COMPASS | Coerencia, pesquisa, contexto, discuss-phase | Implementar codigo, alterar banco de dados |
+| Devil's Advocate | SHADOW | Contestacao, red team, validacao de planos | Implementar codigo, alterar banco de dados |
+
+### Regra de Enforcement
+
+ATLAS (PM) DEVE verificar a jurisdicao do agente ANTES de spawnar qualquer task. Se a task cruza jurisdicoes, ATLAS deve decompor em sub-tasks e delegar cada uma ao agente correto.
+
+Documento completo de referencia: `.claude/protocols/AGENT-JURISDICTION.md`
+
+---
+
+## 4. Regras de Ouro
 
 1. **Consistencia > criatividade** — siga o padrao existente, nao invente novos
 2. **Explicitez > convencao** — quando em duvida, seja mais explicito

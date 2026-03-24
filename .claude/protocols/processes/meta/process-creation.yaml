@@ -1,0 +1,99 @@
+# Process Card: Criacao de Novo Processo
+# "By what method?" — W. Edwards Deming
+
+process_card:
+  name: "process-creation"
+  version: "1.0.0"
+  aim: >
+    Criar um novo Process Card quando nenhum processo existente cobre
+    uma demanda recorrente. O processo nasce como hipotese e amadurece via PDSA.
+  type: "meta"
+  scale: "tarefa"
+  risk: "medio"
+  teoria: >
+    Processo novo so se justifica quando: (a) demanda e recorrente, (b) nenhum
+    processo existente cobre, (c) ha teoria explicita de por que o design funciona.
+    Reutilizar > Criar. Constancia de proposito.
+
+  steps:
+    - step: 1
+      acao: "Verificar se ja existe processo reutilizavel em .claude/protocols/processes/"
+      responsavel: "process-chief"
+      output: "Resultado: processo existente ou gap confirmado"
+      checkpoint: true
+
+    - step: 2
+      acao: "Classificar a demanda (tipo, escala, risco)"
+      responsavel: "process-chief"
+      output: "Classificacao formal"
+      checkpoint: false
+
+    - step: 3
+      acao: "Aplicar Lente 1 — DEMING: teoria, variacao, sistema"
+      responsavel: "process-chief"
+      output: "Campo teoria preenchido"
+      checkpoint: false
+
+    - step: 4
+      acao: "Aplicar Lente 2 — ALLEN: next actions, inputs, outputs claros"
+      responsavel: "process-chief"
+      output: "Steps com acoes concretas"
+      checkpoint: false
+
+    - step: 5
+      acao: "Aplicar Lente 3 — FORTE: knowledge map, intermediate packets"
+      responsavel: "process-chief"
+      output: "Knowledge map preenchido"
+      checkpoint: false
+
+    - step: 6
+      acao: "Aplicar Lente 4 — GAWANDE: checkpoints, kill items, checklists"
+      responsavel: "process-chief"
+      output: "Checkpoints definidos com checklists <= 19 itens"
+      checkpoint: false
+
+    - step: 7
+      acao: "Aplicar Lente 5 — KAHNEMAN: bias alerts, premortem"
+      responsavel: "process-chief"
+      output: "Bias alerts em pontos de decisao"
+      checkpoint: false
+
+    - step: 8
+      acao: "Definir metricas e parametros OMEGA"
+      responsavel: "process-chief"
+      output: "Metricas + omega block preenchidos"
+      checkpoint: false
+
+    - step: 9
+      acao: "Salvar Process Card em .claude/protocols/processes/{categoria}/{nome}.yaml"
+      responsavel: "process-chief"
+      output: "Arquivo criado e indexado no README.yaml"
+      checkpoint: true
+
+  checkpoints:
+    - nome: "Gap Confirmado"
+      step: 1
+      checklist:
+        - "Busca em processes/ retornou zero resultados?"
+        - "Nenhum processo existente pode ser adaptado?"
+        - "Demanda e recorrente (nao one-off)?"
+      kill_item: true
+
+    - nome: "Process Card Completa"
+      step: 9
+      checklist:
+        - "Todos os campos obrigatorios preenchidos?"
+        - "5 lentes aplicadas?"
+        - "OMEGA parametrizado?"
+        - "Teoria explicita (nao apenas procedimento)?"
+      kill_item: true
+
+  metricas:
+    variacao_aceitavel: "Process Card passa em todas as 5 lentes"
+    criterio_sucesso: "Processo reutilizado 3+ vezes com sucesso antes de padronizar"
+    review_cycle: "Apos primeiras 3 execucoes"
+
+  omega:
+    task_type: "planning"
+    threshold: 85
+    max_iterations: 3

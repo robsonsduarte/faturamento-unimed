@@ -1,6 +1,6 @@
 # Protocolo de Integracao Agente ↔ GSD
 
-**Versao:** 1.1.0
+**Versao:** 1.2.0
 **Status:** Ativo
 **Autor:** ATLAS (PM)
 
@@ -44,6 +44,27 @@ Usuario → Agente (decide) → GSD (executa) → Artefato (.planning/)
 > Se existe um comando GSD que faz o que o agente precisa → **usar o GSD**.
 > Nunca recriar manualmente o que o motor ja oferece com rastreabilidade.
 
+### Integracao OMEGA
+
+Todo subcomando GSD que produz output executavel roda sob o protocolo OMEGA (`.claude/protocols/OMEGA.md`).
+
+**Subcomandos com OMEGA ativo:**
+| Subcomando | task_type OMEGA | Threshold |
+|------------|----------------|-----------|
+| `execute-phase` | implementation | >= 90 |
+| `quick` | implementation | >= 90 |
+| `verify-work` | validation | >= 95 |
+| `plan-phase` | planning | >= 85 |
+| `research-phase` | research | >= 80 |
+| `map-codebase` | research | >= 80 |
+| `audit-milestone` | validation | >= 95 |
+| `debug` | implementation | >= 90 |
+
+**Subcomandos SEM OMEGA (informativos):**
+- `progress`, `pause-work`, `resume-work`, `check-todos`, `add-todo`
+
+**Regra:** Agentes spawnados por subcomandos GSD DEVEM emitir OMEGA_STATUS block e seguir o loop de refinamento. O subcomando so e considerado concluido quando o dual-gate exit e satisfeito.
+
 ---
 
 ## Manifests por Agente
@@ -64,7 +85,7 @@ Usuario → Agente (decide) → GSD (executa) → Artefato (.planning/)
 | `/gsd:add-phase` | Roadmap existente | Nenhum | Fase adicionada ao final |
 | `/gsd:insert-phase` | Roadmap existente, urgencia justificada | Nenhum | Fase inserida como decimal |
 | `/gsd:remove-phase` | Fase futura (nao iniciada) | Nenhum | Fase removida, renumerada |
-| `/squad:build-system` | PRD, workflow N8N, URL ou briefing recebido | Nenhum | Sistema completo |
+| `/DUARTEOS:squad:build-system` | PRD, workflow N8N, URL ou briefing recebido | Nenhum | Sistema completo |
 
 **Autoridade especial:** PM pode invocar qualquer comando GSD se justificado. PM autoriza transicoes entre fases.
 
@@ -95,6 +116,11 @@ Usuario → Agente (decide) → GSD (executa) → Artefato (.planning/)
 
 **Guard critico:** Sempre verificar apos execute-phase. Nunca declarar fase concluida sem verify-work.
 
+**OMEGA Gate (verify-work):** Verificacao roda com threshold de validation (>= 95). O agente verificador deve:
+1. Emitir OMEGA_STATUS com evidencias de teste
+2. Atingir score >= 95 com completion signals de testes/cobertura
+3. Se nao atingir: documentar gaps e escalar
+
 ---
 
 ### Backend (FORGE) — Execucao Server-Side
@@ -106,6 +132,14 @@ Usuario → Agente (decide) → GSD (executa) → Artefato (.planning/)
 | `/gsd:quick --full "desc"` | Task pequena que precisa verificacao | Nenhum | quick/{NNN}/ + verificado |
 
 **Guard critico:** Nunca executar sem PLAN.md. Cada task = 1 commit atomico.
+
+**OMEGA Gate (execute-phase):** Cada wave de execucao dentro de uma fase roda sob OMEGA. O agente executor deve:
+1. Emitir OMEGA_STATUS ao final de cada wave
+2. Atingir score >= 90 (implementation) com >= 2 completion signals
+3. Se nao atingir: loop de refinamento (max 3x) antes de avancar
+4. Se circuit breaker abrir: escalar ao PM
+
+**OMEGA Gate (quick):** Mesmo tasks rapidas rodam sob OMEGA com threshold de implementation (>= 90). A unica diferenca e que o loop e limitado a 2 iteracoes (em vez de 3) para manter a velocidade.
 
 ---
 
@@ -138,7 +172,7 @@ Usuario → Agente (decide) → GSD (executa) → Artefato (.planning/)
 | Comando GSD | Pre-condicao | Guard | Output |
 |-------------|-------------|-------|--------|
 | `/gsd:list-phase-assumptions N` | SEMPRE antes de aprovar planos | Nenhum | Lista de premissas |
-| `/squad:validate-plan` | PLAN.md existe para contestar | Nenhum | Verdict: APPROVED/CAVEATS/BLOCKED |
+| `/DUARTEOS:squad:validate-plan` | PLAN.md existe para contestar | Nenhum | Verdict: APPROVED/CAVEATS/BLOCKED |
 
 **Guard critico:** Nunca aprovar sem expor assumptions primeiro. Critica sem alternativa e INVALIDA.
 
@@ -148,21 +182,21 @@ Usuario → Agente (decide) → GSD (executa) → Artefato (.planning/)
 
 | Comando GSD | Pre-condicao | Guard | Output |
 |-------------|-------------|-------|--------|
-| `/squad:new-project` | Demanda grande recebida | Nenhum | Roadmap completo |
-| `/squad:plan-phase N` | Fase do roadmap a planejar | Nenhum | PLAN.md via Architect+Context+Devil |
-| `/squad:execute-phase N` | PLAN.md aprovados existem | Nenhum | Execucao via Backend+Frontend+QA |
-| `/squad:verify-work N` | Fase executada | Nenhum | UAT via QA |
-| `/squad:discuss-phase N` | Antes de planejar | Nenhum | CONTEXT.md via Context Engineer |
-| `/squad:validate-plan` | PLAN.md existe | Nenhum | Verdict via Devil's Advocate |
-| `/squad:audit` | Milestone completo | Nenhum | Audit via QA+Context+Devil |
-| `/squad:quick "desc"` | Task ad-hoc | Nenhum | Execucao rapida |
-| `/squad:debug "desc"` | Bug persistente | Nenhum | Debug cientifico |
-| `/squad:progress` | Qualquer momento | Nenhum | Status consolidado |
-| `/squad:pause` | Sessao encerrando | Nenhum | Handoff salvo |
-| `/squad:resume` | Nova sessao | Nenhum | Contexto restaurado |
-| `/squad:build-system` | PRD/N8N/URL recebido | Nenhum | Sistema completo |
-| `/squad:map-codebase` | Codebase a analisar | Nenhum | 7 docs via Architect |
-| `/squad:synapse` | Verificar estado dos agentes | Nenhum | Dashboard |
+| `/DUARTEOS:squad:new-project` | Demanda grande recebida | Nenhum | Roadmap completo |
+| `/DUARTEOS:squad:plan-phase N` | Fase do roadmap a planejar | Nenhum | PLAN.md via Architect+Context+Devil |
+| `/DUARTEOS:squad:execute-phase N` | PLAN.md aprovados existem | Nenhum | Execucao via Backend+Frontend+QA |
+| `/DUARTEOS:squad:verify-work N` | Fase executada | Nenhum | UAT via QA |
+| `/DUARTEOS:squad:discuss-phase N` | Antes de planejar | Nenhum | CONTEXT.md via Context Engineer |
+| `/DUARTEOS:squad:validate-plan` | PLAN.md existe | Nenhum | Verdict via Devil's Advocate |
+| `/DUARTEOS:squad:audit` | Milestone completo | Nenhum | Audit via QA+Context+Devil |
+| `/DUARTEOS:squad:quick "desc"` | Task ad-hoc | Nenhum | Execucao rapida |
+| `/DUARTEOS:squad:debug "desc"` | Bug persistente | Nenhum | Debug cientifico |
+| `/DUARTEOS:squad:progress` | Qualquer momento | Nenhum | Status consolidado |
+| `/DUARTEOS:squad:pause` | Sessao encerrando | Nenhum | Handoff salvo |
+| `/DUARTEOS:squad:resume` | Nova sessao | Nenhum | Contexto restaurado |
+| `/DUARTEOS:squad:build-system` | PRD/N8N/URL recebido | Nenhum | Sistema completo |
+| `/DUARTEOS:squad:map-codebase` | Codebase a analisar | Nenhum | 7 docs via Architect |
+| `/DUARTEOS:squad:synapse` | Verificar estado dos agentes | Nenhum | Dashboard |
 
 ---
 
@@ -180,7 +214,7 @@ WORKFLOW FORMAL:
   → PM aprova plano → Backend/Frontend execute → QA verify
   → PM valida conclusao
 
-ESCALACAO:
+ESCALACAO (via Escalation Router — OMEGA secao 4: Retry → Vertical → Horizontal → Human):
   Agente bloqueado → reporta ao PM
   PM bloqueado → reporta ao usuario
   Conflito entre agentes → PM decide (decisao final)
@@ -209,12 +243,12 @@ ESCALACAO:
 TRIGGER: Usuario descreve feature
 FLUXO:
   1. PM avalia escopo
-     → Se grande: /squad:new-project ou /gsd:add-phase
-     → Se medio: /squad:discuss-phase N
+     → Se grande: /DUARTEOS:squad:new-project ou /gsd:add-phase
+     → Se medio: /DUARTEOS:squad:discuss-phase N
   2. Context Engineer: /gsd:discuss-phase N → CONTEXT.md
   3. Architect: /gsd:research-phase N → RESEARCH.md (se tech nova)
   4. Architect: /gsd:plan-phase N → PLAN.md files
-  5. Devil's Advocate: /squad:validate-plan → Verdict
+  5. Devil's Advocate: /DUARTEOS:squad:validate-plan → Verdict
      → Se BLOCKED: volta para step 4
      → Se CAVEATS: PM decide
   6. Backend/Frontend: /gsd:execute-phase N → commits atomicos
@@ -255,15 +289,15 @@ FLUXO:
 ```
 TRIGGER: PRD, briefing ou URL recebido
 FLUXO:
-  1. PM: /squad:new-project → roadmap completo
+  1. PM: /DUARTEOS:squad:new-project → roadmap completo
      OU
-     PM: /squad:build-system → sistema completo (modo YOLO)
+     PM: /DUARTEOS:squad:build-system → sistema completo (modo YOLO)
   2. Para cada fase do roadmap:
-     a. /squad:discuss-phase N
-     b. /squad:plan-phase N
-     c. /squad:execute-phase N
-     d. /squad:verify-work N
-  3. /squad:audit → auditoria final
+     a. /DUARTEOS:squad:discuss-phase N
+     b. /DUARTEOS:squad:plan-phase N
+     c. /DUARTEOS:squad:execute-phase N
+     d. /DUARTEOS:squad:verify-work N
+  3. /DUARTEOS:squad:audit → auditoria final
   4. /gsd:complete-milestone → milestone arquivado
 ```
 
@@ -392,3 +426,4 @@ Cada agente atualiza seu estado Synapse (`.claude/synapse/{agent}.yaml`) ao invo
 |--------|------|---------|
 | 1.0.0 | 2026-02-24 | Protocolo inicial — manifests, cadeia de autorizacao, recipes |
 | 1.1.0 | 2026-02-24 | Adicionado save-context — checkpoint continuo apos operacoes GSD |
+| 1.2.0 | 2026-03-02 | Integracao OMEGA — quality gates com dual-gate exit em subcomandos GSD |

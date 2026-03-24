@@ -16,7 +16,7 @@ Isso garante que as regras do projeto sejam aplicadas independente da ferramenta
 
 ## Como Funciona
 
-1. O comando `/squad:sync-ide` le:
+1. O comando `/DUARTEOS:squad:sync-ide` le:
    - `.claude/protocols/CONSTITUTION.md` — principios inviolaveis
    - `.claude/protocols/GOVERNANCE.md` — convencoes de nomenclatura
    - `.claude/config/project.yaml` — configuracoes do projeto

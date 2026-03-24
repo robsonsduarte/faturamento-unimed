@@ -5,18 +5,18 @@ Sistema de templates de tarefas para padronizar e acelerar a execucao de ativida
 ## Como Usar
 
 ```
-/squad:task [template-name] [contexto adicional opcional]
+/DUARTEOS:squad:task [template-name] [contexto adicional opcional]
 ```
 
 O comando identifica o template pelo nome (exato ou busca parcial), adapta ao contexto fornecido e executa os passos sequencialmente.
 
 ### Exemplos
 
-- `/squad:task spec-feature` — Especificar uma nova feature
-- `/squad:task dev-api-endpoint criar endpoint de upload` — Implementar endpoint com contexto
-- `/squad:task qa-code-review src/lib/services/` — Revisar codigo de um diretorio especifico
-- `/squad:task db-migration adicionar tabela de notificacoes` — Criar migracao de banco
-- `/squad:task sec-owasp-audit` — Executar auditoria de seguranca completa
+- `/DUARTEOS:squad:task spec-feature` — Especificar uma nova feature
+- `/DUARTEOS:squad:task dev-api-endpoint criar endpoint de upload` — Implementar endpoint com contexto
+- `/DUARTEOS:squad:task qa-code-review src/lib/services/` — Revisar codigo de um diretorio especifico
+- `/DUARTEOS:squad:task db-migration adicionar tabela de notificacoes` — Criar migracao de banco
+- `/DUARTEOS:squad:task sec-owasp-audit` — Executar auditoria de seguranca completa
 
 ## Templates Disponiveis
 

@@ -1,0 +1,161 @@
+# Process Card: Mind Clone via MMOS v3
+# Comando: /DUARTEOS:mmos:mind-clone
+# "The problem is at the top! Management!" — clonagem mental e gestao de conhecimento.
+
+process_card:
+  name: "mind-clone-mmos"
+  version: "1.0.0"
+  aim: >
+    Criar agente baseado na mente de um especialista real usando pipeline
+    MMOS v3 de 11 fases (0-10). Fidelidade-alvo >= 95%.
+  type: "knowledge"
+  scale: "projeto"
+  risk: "alto"
+  teoria: >
+    Pipeline de 11 fases com estimativa pre-clone (PCFE) evita gastar
+    tokens em clones inviaveis. Gate humano permite enriquecimento.
+    6 camadas DNA + 4 subcamadas + 5 autoridades + Gates Gawande DO-CONFIRM.
+    Formula composta: F = L*0.20 + B*0.30 + C*0.15 + K*0.20 + V*0.15.
+
+  triggers:
+    - "Criar novo mind clone de especialista"
+    - "/DUARTEOS:mmos:mind-clone {nome}"
+
+  steps:
+    - step: 0
+      acao: "Intake — canonicalizar nome, verificar se clone ja existe"
+      responsavel: "process-chief"
+      output: "Slug canonico + decisao new/update"
+      checkpoint: false
+
+    - step: 1
+      acao: "Pesquisa — coleta de fontes (EXA, Apify, WebSearch)"
+      responsavel: "coleta (haiku — model routing)"
+      output: "Corpus de fontes primarias e secundarias"
+      checkpoint: false
+
+    - step: 2
+      acao: "Analise Rapida — avaliar volume e diversidade das fontes"
+      responsavel: "processamento (sonnet)"
+      output: "Metricas de cobertura"
+      checkpoint: false
+
+    - step: 3
+      acao: "Estimativa PCFE — Pre-Clone Fidelity Estimation"
+      responsavel: "processamento (sonnet)"
+      output: "FE score + breakdown (VS, DS, CS, PS, QS)"
+      checkpoint: true
+
+    - step: 4
+      acao: "Gate Humano — usuario decide GO/ENRIQUECER/ABORTAR"
+      responsavel: "usuario"
+      output: "Decisao formal"
+      checkpoint: true
+
+    - step: 5
+      acao: "Scaffold — criar dirs, tasks, checklists, config"
+      responsavel: "criacao (opus)"
+      output: "Estrutura de diretorio completa"
+      checkpoint: false
+
+    - step: 6
+      acao: "Extracao — extrair MIUs (Minimum Information Units) das fontes"
+      responsavel: "processamento (sonnet)"
+      output: "MIUs estruturadas"
+      checkpoint: false
+
+    - step: 7
+      acao: "Inferencia — mapear MIUs para as 6 camadas DNA"
+      responsavel: "criacao (opus)"
+      output: "DNA parcial por camada"
+      checkpoint: true
+
+    - step: 8
+      acao: "Mapeamento — consolidar DNA completo"
+      responsavel: "criacao (opus)"
+      output: "DNA consolidado + Synapse sync"
+      checkpoint: false
+
+    - step: 9
+      acao: "Perfil — gerar agent.md final com voz e comportamento"
+      responsavel: "criacao (opus)"
+      output: "Arquivo agent.md + voice.yaml + phrases.yaml"
+      checkpoint: true
+
+    - step: 10
+      acao: "Recomendacao — calibrar PCFE (FE vs F real) + next steps"
+      responsavel: "criacao (opus)"
+      output: "Calibracao + recomendacoes de enriquecimento"
+      checkpoint: true
+
+  checkpoints:
+    - nome: "PCFE Estimativa"
+      step: 3
+      checklist:
+        - "5 componentes calculados (VS, DS, CS, PS, QS)?"
+        - "Classificacao atribuida (EXCELENTE/BOM/MODERADO/FRACO/INSUFICIENTE)?"
+        - "Gaps identificados?"
+      kill_item: true
+
+    - nome: "Gate Humano"
+      step: 4
+      checklist:
+        - "Painel apresentado ao usuario?"
+        - "Opcoes claras: APROVAR/ENRIQUECER/ABORTAR?"
+        - "Se ENRIQUECER: max 3 iteracoes (Fase 4 > Fase 1)?"
+      kill_item: true
+
+    - nome: "DNA Completo"
+      step: 7
+      checklist:
+        - "6 camadas base preenchidas?"
+        - "4 subcamadas verificadas?"
+        - "Paradoxos Produtivos identificados?"
+      kill_item: true
+
+    - nome: "Perfil Final"
+      step: 9
+      checklist:
+        - "Fidelidade F >= 95%?"
+        - "agent.md gera respostas in-character?"
+        - "Voice e phrases calibrados?"
+      kill_item: true
+
+    - nome: "Calibracao PCFE"
+      step: 10
+      checklist:
+        - "FE vs F real comparados?"
+        - "Delta registrado em pcfe-calibration.yaml?"
+      kill_item: false
+
+  bias_alerts:
+    - step: 1
+      vies: "Availability bias — usar so fontes facilmente encontraveis"
+      mitigacao: "Diversificar tipos de fonte (livros, entrevistas, videos, artigos)"
+
+    - step: 7
+      vies: "Halo effect — atribuir qualidades nao evidenciadas"
+      mitigacao: "Cada MIU deve ser traceavel a fonte especifica (source_path)"
+
+  knowledge_map:
+    - step: 0
+      precisa_de: "Pipeline MMOS v3 completo"
+      onde_encontrar: ".claude/protocols/MMOS-PIPELINE.md"
+
+    - step: 3
+      precisa_de: "Template PCFE"
+      onde_encontrar: ".claude/omega/pcfe-template.yaml"
+
+    - step: 5
+      precisa_de: "Template de mind clone"
+      onde_encontrar: ".claude/templates/mind-template.yaml"
+
+  metricas:
+    variacao_aceitavel: "Fidelidade F >= 95%"
+    criterio_sucesso: "Clone passa em validacao de voz e comportamento"
+    review_cycle: "Apos cada clone + via mind-update incremental"
+
+  omega:
+    task_type: "validation"
+    threshold: 95
+    max_iterations: 3
