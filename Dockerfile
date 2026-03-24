@@ -1,21 +1,6 @@
-FROM node:20-slim AS base
-
-# Playwright needs these system deps for Chromium
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \
-    libxkbcommon0 libxcomposite1 libxdamage1 libxrandr2 libgbm1 \
-    libpango-1.0-0 libcairo2 libasound2 libxshmfence1 wget \
-    libxfixes3 libx11-6 libx11-xcb1 libxcb1 libxext6 libxi6 \
-    libxrender1 libxtst6 libglib2.0-0 libdbus-1-3 \
-    && rm -rf /var/lib/apt/lists/*
-
-# --- Dependencies ---
-FROM base AS deps
-WORKDIR /app
-COPY package.json package-lock.json* ./
-RUN npm ci --omit=dev
-# Install Playwright Chromium for production
-RUN npx playwright install chromium
+# Base com todas as deps do Chromium ja incluidas
+FROM mcr.microsoft.com/playwright:v1.52.0-noble AS base
+ENV DEBIAN_FRONTEND=noninteractive
 
 # --- Build ---
 FROM base AS builder
@@ -41,29 +26,17 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
-RUN addgroup --system --gid 1001 nodejs
-RUN adduser --system --uid 1001 nextjs
-
 # Copy standalone output
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 
-# Copy public folder if it exists
+# Copy public folder
 RUN mkdir -p ./public
 COPY --from=builder /app/public* ./public/
 
-# Copy Playwright browsers to a fixed path accessible by nextjs
-COPY --from=deps /root/.cache/ms-playwright /app/.playwright-browsers
-RUN chown -R nextjs:nodejs /app/.playwright-browsers
-
-# Tell Playwright where browsers are
-ENV PLAYWRIGHT_BROWSERS_PATH=/app/.playwright-browsers
-
-# Copy playwright package for runtime
-COPY --from=deps /app/node_modules/playwright /app/node_modules/playwright
-COPY --from=deps /app/node_modules/playwright-core /app/node_modules/playwright-core
-
-USER nextjs
+# Copy playwright packages for runtime
+COPY --from=builder /app/node_modules/playwright /app/node_modules/playwright
+COPY --from=builder /app/node_modules/playwright-core /app/node_modules/playwright-core
 
 EXPOSE 3000
 ENV PORT=3000
