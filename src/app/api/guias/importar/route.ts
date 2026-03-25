@@ -240,6 +240,22 @@ export async function POST(request: NextRequest) {
           )
         }
 
+        const isNetworkError = (msg: string): boolean => {
+          const lower = msg.toLowerCase()
+          return (
+            lower.includes('network error') ||
+            lower.includes('net::err_') ||
+            lower.includes('timeout') ||
+            lower.includes('timed out') ||
+            lower.includes('etimedout') ||
+            lower.includes('econnrefused') ||
+            lower.includes('econnreset') ||
+            lower.includes('err_connection')
+          )
+        }
+
+        const NETWORK_RETRY_DELAY_MS = 30_000
+
         const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 
         // Re-login helper: reconnects browser context + does fresh SAW login
@@ -338,6 +354,13 @@ export async function POST(request: NextRequest) {
                   break
                 }
               }
+              continue
+            }
+
+            // Network/timeout errors: aguarda 30s e retenta sem relogin
+            if (isNetworkError(msg) && attempt < MAX_RETRIES) {
+              send('info', `Guia ${guideNumber}: erro de rede/timeout (${msg}). Aguardando 30s... (tentativa ${attempt + 1}/${MAX_RETRIES})`, guideNumber)
+              await sleep(NETWORK_RETRY_DELAY_MS)
               continue
             }
 
@@ -601,6 +624,7 @@ export async function POST(request: NextRequest) {
           const guiaMsg = guiaErr instanceof Error ? guiaErr.message : 'Erro inesperado'
 
           const retries = outerRetryCount.get(i) ?? 0
+
           if (isSessionError(guiaMsg) && retries < MAX_RETRIES) {
             outerRetryCount.set(i, retries + 1)
             send('info', `Guia ${guideNumber}: erro de sessao durante processamento (${guiaMsg}). Reconectando... (recuperacao ${retries + 1}/${MAX_RETRIES})`, guideNumber)
@@ -610,6 +634,14 @@ export async function POST(request: NextRequest) {
               i--
               continue
             }
+          }
+
+          if (isNetworkError(guiaMsg) && retries < MAX_RETRIES) {
+            outerRetryCount.set(i, retries + 1)
+            send('info', `Guia ${guideNumber}: erro de rede/timeout (${guiaMsg}). Aguardando 30s... (recuperacao ${retries + 1}/${MAX_RETRIES})`, guideNumber)
+            await sleep(NETWORK_RETRY_DELAY_MS)
+            i--
+            continue
           }
 
           send('error', `Guia ${guideNumber}: erro inesperado (${guiaMsg}) — pulando para proxima guia`, guideNumber)
