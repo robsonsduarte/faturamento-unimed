@@ -60,7 +60,8 @@ export async function GET() {
           paciente,
           lote_id,
           lotes (
-            numero_lote
+            numero_lote,
+            status
           )
         )
       `)
@@ -88,10 +89,13 @@ export async function GET() {
         guide_number_prestador: string | null
         paciente: string | null
         lote_id: string | null
-        lotes: { numero_lote: string } | null
+        lotes: { numero_lote: string; status: string } | null
       }
 
       if (!guia || !guia.paciente || !proc.data_execucao || !proc.codigo_procedimento || !proc.nome_profissional) continue
+
+      // Excluir guias de lotes ja processados
+      if (guia.lotes?.status === 'processado' || guia.lotes?.status === 'faturado' || guia.lotes?.status === 'pago') continue
 
       const chave = `${guia.paciente.trim().toLowerCase()}|${proc.data_execucao}|${proc.nome_profissional.trim().toLowerCase()}|${proc.codigo_procedimento.trim()}`
 
