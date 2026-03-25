@@ -78,7 +78,7 @@ export async function GET() {
       return NextResponse.json({ duplicatas: [], total: 0 })
     }
 
-    // Agrupa por chave: data_execucao + nome_profissional + codigo_procedimento
+    // Agrupa por chave: paciente + data_execucao + nome_profissional + codigo_procedimento
     const groups = new Map<string, DuplicataItem[]>()
 
     for (const proc of procedimentos) {
@@ -91,9 +91,9 @@ export async function GET() {
         lotes: { numero_lote: string } | null
       }
 
-      if (!guia || !proc.data_execucao || !proc.codigo_procedimento || !proc.nome_profissional) continue
+      if (!guia || !guia.paciente || !proc.data_execucao || !proc.codigo_procedimento || !proc.nome_profissional) continue
 
-      const chave = `${proc.data_execucao}|${proc.nome_profissional.trim().toLowerCase()}|${proc.codigo_procedimento.trim()}`
+      const chave = `${guia.paciente.trim().toLowerCase()}|${proc.data_execucao}|${proc.nome_profissional.trim().toLowerCase()}|${proc.codigo_procedimento.trim()}`
 
       const item: DuplicataItem = {
         guide_number: guia.guide_number,
