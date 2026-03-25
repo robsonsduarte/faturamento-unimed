@@ -13,6 +13,12 @@ export function formatCurrency(value: number): string {
 }
 
 export function formatDate(date: string | Date): string {
+  // Dates stored as "YYYY-MM-DD" (no timezone) must be parsed as local time,
+  // not UTC. new Date("2026-03-02") is UTC midnight → shifts -1 day in BR.
+  if (typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    const [y, m, d] = date.split('-')
+    return `${d}/${m}/${y}`
+  }
   return new Intl.DateTimeFormat('pt-BR').format(new Date(date))
 }
 
