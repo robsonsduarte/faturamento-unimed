@@ -94,8 +94,8 @@ export async function GET() {
 
       if (!guia || !guia.paciente || !proc.data_execucao || !proc.codigo_procedimento || !proc.nome_profissional) continue
 
-      // Excluir guias de lotes ja processados
-      if (guia.lotes?.status === 'processado' || guia.lotes?.status === 'faturado' || guia.lotes?.status === 'pago') continue
+      // Excluir guias de lotes ja faturados ou pagos
+      if (guia.lotes?.status === 'faturado' || guia.lotes?.status === 'pago') continue
 
       const chave = `${guia.paciente.trim().toLowerCase()}|${proc.data_execucao}|${proc.nome_profissional.trim().toLowerCase()}|${proc.codigo_procedimento.trim()}`
 
