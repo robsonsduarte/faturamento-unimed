@@ -365,7 +365,7 @@ function buildGuiaContent(guia: Guia) {
       [ans('CNES')]: DEDICARE.CNES,
     },
     [ans('dadosAtendimento')]: {
-      [ans('tipoAtendimento')]: '03',
+      [ans('tipoAtendimento')]: tipoAtend,
       [ans('indicacaoAcidente')]: '9',
       [ans('tipoConsulta')]: '2',
       [ans('regimeAtendimento')]: '01',
