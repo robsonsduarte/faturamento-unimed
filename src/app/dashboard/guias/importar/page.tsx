@@ -65,10 +65,19 @@ export default function ImportarGuiasPage() {
   const [loadingPendentes, setLoadingPendentes] = useState(false)
   const [pendentesInfo, setPendentesInfo] = useState<{ loaded: number; total: number; statuses: string[] } | null>(null)
 
-  // Auto-carregar pendentes se vier com ?mode=pendentes
+  // Auto-carregar pendentes ou guias de validacao via query params
   useEffect(() => {
     if (searchParams.get('mode') === 'pendentes') {
       void handleCarregarPendentes()
+    }
+    // Pre-preencher guias da validacao de duplicatas (?guias=123,456,789)
+    const guiasParam = searchParams.get('guias')
+    if (guiasParam) {
+      const nums = guiasParam.split(',').filter(Boolean)
+      if (nums.length > 0) {
+        setGuideNumbers(nums.join('\n'))
+        toast.info(`${nums.length} guia(s) carregada(s) para reimportacao (validacao de duplicatas)`)
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])

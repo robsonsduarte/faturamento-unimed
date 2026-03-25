@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Header } from '@/components/layout/header'
+import { ValidacaoDuplicatasModal } from '@/components/shared/validacao-duplicatas-modal'
 
 export default async function DashboardLayout({
   children,
@@ -34,6 +35,7 @@ export default async function DashboardLayout({
           </div>
         </main>
       </div>
+      <ValidacaoDuplicatasModal />
     </div>
   )
 }
