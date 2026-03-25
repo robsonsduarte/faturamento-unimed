@@ -535,14 +535,17 @@ export async function POST(request: NextRequest) {
             valorUnitario: number
             valorTotal: number
           }
+          // Procedimentos realizados vem SEMPRE do SAW (nunca do CPro)
+          // Limpa procedimentos existentes e reinsere do SAW
           const sawProcedimentos = (sawData?.['procedimentosDetalhes'] ?? []) as ProcDetalhe[]
-          if (sawProcedimentos.length > 0) {
-            // Delete existing procedures for this guide to avoid duplicates on re-import
-            await db
-              .from('procedimentos')
-              .delete()
-              .eq('guia_id', upsertedGuia.id)
 
+          // Sempre deletar procedimentos antigos na reimportacao
+          await db
+            .from('procedimentos')
+            .delete()
+            .eq('guia_id', upsertedGuia.id)
+
+          if (sawProcedimentos.length > 0) {
             // Professional data from SAW (goes into each procedure row)
             const profNome = typeof sawData?.['nomeProfissional'] === 'string' ? sawData['nomeProfissional'] as string : null
             const profConselho = typeof sawData?.['conselhoProfissional'] === 'string' ? sawData['conselhoProfissional'] as string : null
@@ -581,8 +584,10 @@ export async function POST(request: NextRequest) {
             if (procError) {
               send('info', `Guia ${guideNumber}: falha ao salvar procedimentos (${procError.message})`, guideNumber)
             } else {
-              send('info', `Guia ${guideNumber}: ${procRows.length} procedimento(s) realizado(s) importado(s)`, guideNumber)
+              send('info', `Guia ${guideNumber}: ${procRows.length} procedimento(s) realizado(s) importado(s) do SAW`, guideNumber)
             }
+          } else if (procedimentosRealizados > 0) {
+            send('info', `Guia ${guideNumber}: SAW reportou ${procedimentosRealizados} realizados mas 0 detalhes extraidos`, guideNumber)
           }
 
           // Parse XML oficial do SAW (baixado durante readGuide, na mesma pagina)
