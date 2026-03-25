@@ -2,7 +2,7 @@
 
 import { use, useState } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, Download, Code2, Loader2, CheckCircle, Receipt } from 'lucide-react'
+import { ArrowLeft, Download, Code2, Loader2, CheckCircle, Receipt, Plus } from 'lucide-react'
 import { toast } from 'sonner'
 import { useLote, useUpdateLoteStatus } from '@/hooks/use-lotes'
 import { LoteStatusBadge, StatusBadge } from '@/components/shared/status-badge'
@@ -199,6 +199,18 @@ export default function LoteDetailPage({ params }: Props) {
                 Download XML
               </button>
             )}
+
+            <Link
+              href="/dashboard/lotes/novo"
+              className={cn(
+                'inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium',
+                'bg-[var(--color-primary)] text-white hover:opacity-90 transition-opacity',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]'
+              )}
+            >
+              <Plus className="w-4 h-4" />
+              Novo Lote
+            </Link>
 
             <Link
               href="/dashboard/lotes"
