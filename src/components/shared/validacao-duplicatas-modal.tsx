@@ -10,10 +10,12 @@ interface DuplicataItem {
   paciente: string | null
   lote_numero: string | null
   lote_id: string | null
+  lote_status: string | null
   data_execucao: string
   codigo_procedimento: string
   nome_profissional: string
   descricao: string | null
+  corrigivel: boolean
 }
 
 interface DuplicataGroup {
@@ -66,11 +68,11 @@ export function ValidacaoDuplicatasModal() {
   // Nada para mostrar
   if (loading || duplicatas.length === 0 || isImportPage) return null
 
-  // Guias unicas com problema
+  // Apenas guias corrigiveis (lote aberto) para reimportacao
   const guiasUnicas = new Map<string, DuplicataItem>()
   for (const group of duplicatas) {
     for (const guia of group.guias) {
-      guiasUnicas.set(guia.guide_number, guia)
+      if (guia.corrigivel) guiasUnicas.set(guia.guide_number, guia)
     }
   }
   const guideNumbers = Array.from(guiasUnicas.keys())
@@ -189,10 +191,16 @@ export function ValidacaoDuplicatasModal() {
                     <div
                       key={guia.guide_number}
                       className="flex items-center justify-between rounded px-3 py-1.5 text-sm"
-                      style={{ background: 'var(--color-card)' }}
+                      style={{
+                        background: 'var(--color-card)',
+                        opacity: guia.corrigivel ? 1 : 0.6,
+                      }}
                     >
                       <div className="flex items-center gap-3">
-                        <span className="font-mono font-semibold" style={{ color: 'var(--color-primary)' }}>
+                        <span
+                          className="font-mono font-semibold"
+                          style={{ color: guia.corrigivel ? 'var(--color-warning)' : 'var(--color-text-muted)' }}
+                        >
                           {guia.guide_number}
                         </span>
                         {guia.paciente && (
@@ -201,14 +209,32 @@ export function ValidacaoDuplicatasModal() {
                           </span>
                         )}
                       </div>
-                      {guia.lote_numero && (
-                        <span
-                          className="rounded px-2 py-0.5 text-xs font-medium"
-                          style={{ background: 'rgba(14, 165, 233, 0.15)', color: 'var(--color-secondary)' }}
-                        >
-                          Lote {guia.lote_numero}
-                        </span>
-                      )}
+                      <div className="flex items-center gap-2">
+                        {!guia.corrigivel && (
+                          <span
+                            className="rounded px-2 py-0.5 text-xs font-medium"
+                            style={{ background: 'rgba(34, 197, 94, 0.15)', color: 'var(--color-success)' }}
+                          >
+                            Faturado
+                          </span>
+                        )}
+                        {guia.corrigivel && (
+                          <span
+                            className="rounded px-2 py-0.5 text-xs font-medium"
+                            style={{ background: 'rgba(245, 158, 11, 0.15)', color: 'var(--color-warning)' }}
+                          >
+                            Corrigir
+                          </span>
+                        )}
+                        {guia.lote_numero && (
+                          <span
+                            className="rounded px-2 py-0.5 text-xs font-medium"
+                            style={{ background: 'rgba(14, 165, 233, 0.15)', color: 'var(--color-secondary)' }}
+                          >
+                            Lote {guia.lote_numero}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>

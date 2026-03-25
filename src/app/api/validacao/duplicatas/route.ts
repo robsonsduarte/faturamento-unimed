@@ -15,10 +15,13 @@ export interface DuplicataItem {
   paciente: string | null
   lote_numero: string | null
   lote_id: string | null
+  lote_status: string | null
   data_execucao: string
   codigo_procedimento: string
   nome_profissional: string
   descricao: string | null
+  /** true = guia em lote aberto (corrigivel), false = lote faturado/pago (referencia) */
+  corrigivel: boolean
 }
 
 export interface DuplicataGroup {
@@ -94,8 +97,9 @@ export async function GET() {
 
       if (!guia || !guia.paciente || !proc.data_execucao || !proc.codigo_procedimento || !proc.nome_profissional) continue
 
-      // Excluir guias de lotes ja faturados ou pagos
-      if (guia.lotes?.status === 'faturado' || guia.lotes?.status === 'pago') continue
+      // Todas as guias em lotes participam da pesquisa (inclusive faturadas/pagas como referencia)
+      const loteStatus = guia.lotes?.status ?? null
+      const corrigivel = loteStatus !== 'faturado' && loteStatus !== 'pago'
 
       const chave = `${guia.paciente.trim().toLowerCase()}|${proc.data_execucao}|${proc.nome_profissional.trim().toLowerCase()}|${proc.codigo_procedimento.trim()}`
 
@@ -105,10 +109,12 @@ export async function GET() {
         paciente: guia.paciente,
         lote_numero: guia.lotes?.numero_lote ?? null,
         lote_id: guia.lote_id,
+        lote_status: loteStatus,
         data_execucao: proc.data_execucao,
         codigo_procedimento: proc.codigo_procedimento,
         nome_profissional: proc.nome_profissional,
         descricao: proc.descricao,
+        corrigivel,
       }
 
       const existing = groups.get(chave) ?? []
@@ -116,17 +122,20 @@ export async function GET() {
       groups.set(chave, existing)
     }
 
-    // Filtra apenas grupos com 2+ guias DIFERENTES (duplicatas reais)
+    // Filtra grupos com 2+ guias DIFERENTES onde pelo menos 1 e corrigivel
     const duplicatas: DuplicataGroup[] = []
 
     for (const [chave, items] of groups) {
-      // Deduplica por guide_number (um procedimento pode aparecer 2x na mesma guia)
+      // Deduplica por guide_number
       const uniqueGuides = new Map<string, DuplicataItem>()
       for (const item of items) {
         uniqueGuides.set(item.guide_number, item)
       }
 
-      if (uniqueGuides.size >= 2) {
+      // Precisa de 2+ guias E pelo menos 1 corrigivel (lote aberto)
+      const guiasArr = Array.from(uniqueGuides.values())
+      const temCorrigivel = guiasArr.some((g) => g.corrigivel)
+      if (uniqueGuides.size >= 2 && temCorrigivel) {
         const [data_execucao, , codigo_procedimento] = chave.split('|')
         const first = items[0]
         duplicatas.push({
