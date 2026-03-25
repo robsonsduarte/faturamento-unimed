@@ -274,10 +274,17 @@ class SawClient {
 
         await page.goto(url, { waitUntil: 'networkidle', timeout: 30_000 })
 
+        // Wait for possible JS redirects
+        await page.waitForTimeout(2000)
+
         // Check if redirected to token page (MantemTokenDeAtendimento.do)
         // This means the guide requires biometric token BEFORE it can be viewed
         const currentUrl = page.url()
-        if (currentUrl.includes('MantemTokenDeAtendimento') || currentUrl.includes('TokenDeAtendimento')) {
+        const pageText = await page.evaluate(() => document.body?.innerText ?? '')
+        const isTokenPage = currentUrl.includes('MantemTokenDeAtendimento') ||
+          currentUrl.includes('TokenDeAtendimento') ||
+          pageText.includes('informe um token para continuar o atendimento')
+        if (isTokenPage) {
           console.log(`[SAW] Guia ${numeroGuia}: redirecionada para tela de token biometrico`)
           return {
             success: true,
