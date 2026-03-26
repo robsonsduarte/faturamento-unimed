@@ -1052,61 +1052,63 @@ class SawClient {
     token: string,
   ): Promise<{ success: boolean; error?: string }> {
     const entry = this.tokenPages.get(sessionId)
-    if (!entry) return { success: false, error: 'Sessao de token nao encontrada ou expirada' }
+    if (!entry) {
+      return { success: false, error: 'Sessao do SAW expirou. O operador precisa reiniciar o processo de token.' }
+    }
 
     const { page, numeroGuia } = entry
 
+    // Verify page is still alive
     try {
-      const digits = token.replace(/\D/g, '')
-      if (digits.length !== 6) {
-        return { success: false, error: `Token deve ter 6 digitos, recebido: "${token}"` }
-      }
+      await page.evaluate(() => true)
+    } catch {
+      this.tokenPages.delete(sessionId)
+      return { success: false, error: 'A pagina do SAW foi fechada. O operador precisa reiniciar o processo.' }
+    }
 
+    const digits = token.replace(/\D/g, '')
+    if (digits.length !== 6) {
+      return { success: false, error: `Token deve ter 6 digitos. Recebido: "${token}". Envie apenas os 6 numeros.` }
+    }
+
+    try {
       console.log(`[SAW] submitToken: preenchendo token ${digits} na guia ${numeroGuia}`)
 
       // Fill the 6 input fields
       const filled = await page.evaluate((d: string) => {
-        // Find token input fields (they are individual inputs for each digit)
         const inputs = document.querySelectorAll('input[type="text"][maxlength="1"], input[type="tel"][maxlength="1"], input.token-input, input[size="1"]')
 
-        if (inputs.length < 6) {
-          // Fallback: find any group of 6 small inputs
-          const allInputs = Array.from(document.querySelectorAll('input[type="text"]')).filter((inp) => {
-            const el = inp as HTMLInputElement
-            return el.maxLength <= 2 || el.size <= 2 || el.style.width?.includes('3') || el.style.width?.includes('4')
-          })
-          if (allInputs.length >= 6) {
-            for (let i = 0; i < 6; i++) {
-              const inp = allInputs[i] as HTMLInputElement
-              inp.value = d[i]
-              inp.dispatchEvent(new Event('input', { bubbles: true }))
-              inp.dispatchEvent(new Event('change', { bubbles: true }))
-              inp.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }))
-            }
-            return { ok: true, count: allInputs.length }
-          }
-          return { ok: false, count: inputs.length, error: 'Nao encontrou 6 inputs de token' }
+        const targetInputs = inputs.length >= 6
+          ? Array.from(inputs)
+          : Array.from(document.querySelectorAll('input[type="text"]')).filter((inp) => {
+              const el = inp as HTMLInputElement
+              return el.maxLength <= 2 || el.size <= 2
+            })
+
+        if (targetInputs.length < 6) {
+          return { ok: false, count: targetInputs.length }
         }
 
         for (let i = 0; i < 6; i++) {
-          const inp = inputs[i] as HTMLInputElement
+          const inp = targetInputs[i] as HTMLInputElement
           inp.value = d[i]
           inp.dispatchEvent(new Event('input', { bubbles: true }))
           inp.dispatchEvent(new Event('change', { bubbles: true }))
           inp.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }))
         }
 
-        return { ok: true, count: inputs.length }
+        return { ok: true, count: targetInputs.length }
       }, digits)
 
-      if (!filled.ok) {
-        return { success: false, error: (filled as { error?: string }).error ?? 'Falha ao preencher token' }
+      if (!filled || !filled.ok) {
+        // Nao fechar page — permitir retry
+        return { success: false, error: 'Campos de token nao encontrados na pagina do SAW. Tente reiniciar o processo.' }
       }
 
       console.log(`[SAW] submitToken: preencheu ${filled.count} campos, clicando Validar`)
       await page.waitForTimeout(500)
 
-      // Click "Validar" button
+      // Click "Validar"
       await page.evaluate(() => {
         const btns = Array.from(document.querySelectorAll('button, input[type="button"], input[type="submit"], a'))
         const validar = btns.find((b) => /validar/i.test((b as HTMLElement).textContent ?? '') || /validar/i.test((b as HTMLInputElement).value ?? ''))
@@ -1126,25 +1128,35 @@ class SawClient {
         }
       })
 
-      // Cleanup session
-      this.tokenPages.delete(sessionId)
-      await page.close().catch(() => {})
+      if (result.sucesso) {
+        // Sucesso — cleanup
+        this.tokenPages.delete(sessionId)
+        await page.close().catch(() => {})
+        console.log(`[SAW] submitToken: token validado com sucesso para guia ${numeroGuia}`)
+        return { success: true }
+      }
 
       if (result.tokenExpirado) {
-        return { success: false, error: 'Token expirado. Solicite um novo token.' }
+        // Token expirou — manter page aberta para novo token
+        return { success: false, error: 'Token expirado no SAW. Solicite um novo token e envie novamente.' }
       }
 
-      if (result.erro && !result.sucesso) {
-        return { success: false, error: `Token invalido: ${result.texto.substring(0, 200)}` }
+      if (result.erro) {
+        // Token incorreto — manter page aberta para retry
+        return { success: false, error: 'Token incorreto. Verifique o numero e tente novamente.' }
       }
 
-      console.log(`[SAW] submitToken: token validado com sucesso para guia ${numeroGuia}`)
-      return { success: true }
-    } catch (err) {
-      // Cleanup on error
+      // Sem mensagem clara do SAW — pode ter dado certo ou nao
+      // Cleanup e considerar sucesso (SAW nem sempre mostra mensagem)
       this.tokenPages.delete(sessionId)
       await page.close().catch(() => {})
-      return { success: false, error: err instanceof Error ? err.message : 'Erro ao submeter token' }
+      console.log(`[SAW] submitToken: resultado inconclusivo para guia ${numeroGuia}, assumindo sucesso`)
+      return { success: true }
+    } catch (err) {
+      // Nao fechar page em caso de erro — pode ser transitorio
+      const msg = err instanceof Error ? err.message : 'Erro desconhecido'
+      console.error(`[SAW] submitToken: erro para guia ${numeroGuia}: ${msg}`)
+      return { success: false, error: `Erro ao validar token no SAW: ${msg}` }
     }
   }
 

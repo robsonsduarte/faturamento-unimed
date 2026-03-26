@@ -150,30 +150,66 @@ export async function POST(request: NextRequest) {
     } else {
       console.log(`[EVOLUTION] Token falhou: ${result.error}`)
 
-      const isExpired = result.error?.includes('expirou') || result.error?.includes('Sessao')
-      const errorMsg = isExpired
-        ? 'A sessao expirou. O operador precisara reenviar a solicitacao.'
-        : 'O token informado esta incorreto ou expirado.'
+      const isExpired = result.error?.includes('expirou') || result.error?.includes('Sessao') || result.error?.includes('reiniciar')
+      const isIncorrect = result.error?.includes('incorreto') || result.error?.includes('invalido')
 
-      await db
-        .from('token_requests')
-        .update({ status: 'failed', error_message: result.error, updated_at: new Date().toISOString() })
-        .eq('id', pendingRequest.id)
+      // Calcular tempo restante da sessao (expires_at do token_request)
+      const expiresAt = new Date(pendingRequest.expires_at as string).getTime()
+      const remainingMs = expiresAt - Date.now()
+      const remainingMin = Math.max(0, Math.floor(remainingMs / 60000))
+      const remainingSec = Math.max(0, Math.floor((remainingMs % 60000) / 1000))
+      const tempoRestante = remainingMs > 0
+        ? `Tempo restante: *${remainingMin}:${remainingSec.toString().padStart(2, '0')}*`
+        : 'O tempo para este token *expirou*.'
 
-      await sendWhatsAppMessage(
-        senderPhone,
-        [
-          `❌ *Token nao validado*`,
+      // Se incorreto, atualizar status para waiting (permite retry)
+      if (isIncorrect && remainingMs > 0) {
+        await db
+          .from('token_requests')
+          .update({ status: 'waiting', error_message: result.error, token_received: token, updated_at: new Date().toISOString() })
+          .eq('id', pendingRequest.id)
+      } else {
+        await db
+          .from('token_requests')
+          .update({ status: 'failed', error_message: result.error, updated_at: new Date().toISOString() })
+          .eq('id', pendingRequest.id)
+      }
+
+      if (isExpired) {
+        await sendWhatsAppMessage(senderPhone, [
+          `⏰ *Tempo esgotado*`,
           ``,
-          errorMsg,
-          ``,
-          isExpired
-            ? `Aguarde o operador da clinica reenviar uma nova solicitacao.`
-            : `Por favor, tente novamente:\n1. Abra o *aplicativo da Unimed*\n2. Gere um *novo token*\n3. *Responda esta mensagem* com os 6 digitos`,
+          `A sessao para validacao do token expirou.`,
+          `Aguarde o operador da clinica reenviar uma nova solicitacao.`,
           ``,
           `_Clinica Dedicare_`,
-        ].join('\n')
-      )
+        ].join('\n'))
+      } else if (isIncorrect && remainingMs > 0) {
+        await sendWhatsAppMessage(senderPhone, [
+          `⚠️ *Token incorreto*`,
+          ``,
+          `O token *${token}* nao foi aceito pelo sistema.`,
+          tempoRestante,
+          ``,
+          `Por favor, verifique e envie novamente os *6 digitos corretos*.`,
+          `Voce ainda pode tentar com o mesmo token ou gerar um novo no aplicativo da Unimed.`,
+          ``,
+          `_Clinica Dedicare_`,
+        ].join('\n'))
+      } else {
+        await sendWhatsAppMessage(senderPhone, [
+          `❌ *Token nao validado*`,
+          ``,
+          `${result.error ?? 'Ocorreu um erro na validacao.'}`,
+          ``,
+          `Por favor, tente novamente:`,
+          `1. Abra o *aplicativo da Unimed*`,
+          `2. Gere um *novo token*`,
+          `3. *Responda esta mensagem* com os 6 digitos`,
+          ``,
+          `_Clinica Dedicare_`,
+        ].join('\n'))
+      }
     }
 
     return NextResponse.json({ received: true, processed: true, success: result.success })
