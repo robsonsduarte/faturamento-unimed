@@ -125,24 +125,54 @@ export default function GuiaDetailPage({ params }: Props) {
   async function handleIniciarToken() {
     if (!guia) return
     setTokenLoading(true)
-    setTokenStatus('Abrindo guia no SAW...')
+    setTokenStatus('Conectando ao SAW...')
     try {
       const res = await fetch('/api/biometria/iniciar-token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ guia_id: guia.id }),
       })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error)
 
-      setTokenSessionId(data.sessionId)
-      setTokenMethods(data.methods)
-      setTokenPhones(data.phones ?? [])
-      setTokenStep('method')
-      setTokenStatus('Escolha o metodo de autenticacao')
+      const reader = res.body?.getReader()
+      if (!reader) throw new Error('Stream nao disponivel')
+
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n\n')
+        buffer = lines.pop() ?? ''
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue
+          try {
+            const evt = JSON.parse(line.slice(6)) as Record<string, unknown>
+            if (evt.type === 'processing' || evt.type === 'success' || evt.type === 'info') {
+              setTokenStatus(evt.message as string)
+            }
+            if (evt.type === 'error') {
+              throw new Error(evt.message as string)
+            }
+            if (evt.type === 'result' && evt.success) {
+              setTokenSessionId(evt.sessionId as string)
+              setTokenMethods(evt.methods as { aplicativo: boolean; sms: boolean })
+              setTokenPhones((evt.phones as string[]) ?? [])
+              setTokenStep('method')
+              setTokenStatus('Escolha o metodo de autenticacao')
+            }
+          } catch (parseErr) {
+            if (parseErr instanceof Error && parseErr.message !== 'Stream nao disponivel') {
+              throw parseErr
+            }
+          }
+        }
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Erro ao abrir token')
       setTokenStatus('')
+      setTokenMode('none')
     } finally {
       setTokenLoading(false)
     }
