@@ -679,13 +679,12 @@ export default function GuiaDetailPage({ params }: Props) {
                           Refazer
                         </button>
                         <button
-                          onClick={async () => {
+                          onClick={() => {
                             if (!guia?.numero_carteira) return
-                            try {
-                              await fetch(`/api/biometria/foto/${encodeURIComponent(guia.numero_carteira)}`, { method: 'DELETE' })
-                              setBioPhoto(null)
-                              toast.success('Foto excluida')
-                            } catch { toast.error('Erro ao excluir foto') }
+                            if (!window.confirm('Tem certeza que deseja excluir a foto de biometria deste paciente?')) return
+                            fetch(`/api/biometria/foto/${encodeURIComponent(guia.numero_carteira)}`, { method: 'DELETE' })
+                              .then(() => { setBioPhoto(null); toast.success('Foto excluida') })
+                              .catch(() => toast.error('Erro ao excluir foto'))
                           }}
                           className="text-xs underline"
                           style={{ color: 'var(--color-danger)' }}
