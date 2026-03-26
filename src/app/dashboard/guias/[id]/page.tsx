@@ -514,7 +514,7 @@ export default function GuiaDetailPage({ params }: Props) {
       </div>
 
       {/* Resolver Token — apenas para guias TOKEN */}
-      {guia.status === 'TOKEN' && !isVisualizador && (
+      {guia.status === 'TOKEN' && (
         <div
           className="rounded-xl border overflow-hidden"
           style={{ borderColor: 'var(--color-warning)', background: 'var(--color-card)' }}

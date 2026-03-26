@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireRole, isAuthError } from '@/lib/auth'
+import { requireAuth, isAuthError } from '@/lib/auth'
 import { rateLimit } from '@/lib/rate-limit'
 import { capturarFotoSchema } from '@/lib/validations/biometria'
 import { salvarFotoBiometria } from '@/lib/services/biometria'
@@ -9,7 +9,7 @@ export async function POST(request: NextRequest) {
     const limited = rateLimit(request, 'biometria-capturar', 10, 60_000)
     if (limited) return limited
 
-    const auth = await requireRole(['admin', 'operador'])
+    const auth = await requireAuth()
     if (isAuthError(auth)) return auth.response
 
     const body = await request.json() as unknown

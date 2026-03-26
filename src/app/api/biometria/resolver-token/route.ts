@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
-import { requireRole, isAuthError } from '@/lib/auth'
+import { requireAuth, isAuthError } from '@/lib/auth'
 import { rateLimit } from '@/lib/rate-limit'
 import { resolverTokenSchema } from '@/lib/validations/biometria'
 import { buscarFotoBase64 } from '@/lib/services/biometria'
@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
   const limited = rateLimit(request, 'biometria-resolver', 5, 60_000)
   if (limited) return limited
 
-  const auth = await requireRole(['admin', 'operador'])
+  const auth = await requireAuth()
   if (isAuthError(auth)) {
     return new Response(JSON.stringify({ error: 'Nao autenticado' }), {
       status: 401,

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
-import { requireRole, isAuthError } from '@/lib/auth'
+import { requireAuth, isAuthError } from '@/lib/auth'
 import { rateLimit } from '@/lib/rate-limit'
 
 function getServiceClient() {
@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
     const limited = rateLimit(request, 'biometria-whatsapp', 10, 60_000)
     if (limited) return limited
 
-    const auth = await requireRole(['admin', 'operador'])
+    const auth = await requireAuth()
     if (isAuthError(auth)) return auth.response
     const { user } = auth
 

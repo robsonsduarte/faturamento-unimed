@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
-import { requireRole, isAuthError } from '@/lib/auth'
+import { requireAuth, isAuthError } from '@/lib/auth'
 import { rateLimit } from '@/lib/rate-limit'
 import { getSawClient } from '@/lib/saw/client'
 import type { SawCookie } from '@/lib/saw/client'
@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
   const limited = rateLimit(request, 'biometria-iniciar', 10, 60_000)
   if (limited) return limited
 
-  const auth = await requireRole(['admin', 'operador'])
+  const auth = await requireAuth()
   if (isAuthError(auth)) {
     return new Response(JSON.stringify({ error: 'Nao autenticado' }), {
       status: 401,

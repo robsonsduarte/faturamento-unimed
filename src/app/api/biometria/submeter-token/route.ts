@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
-import { requireRole, isAuthError } from '@/lib/auth'
+import { requireAuth, isAuthError } from '@/lib/auth'
 import { getSawClient } from '@/lib/saw/client'
 
 function getServiceClient() {
@@ -16,7 +16,7 @@ function getServiceClient() {
  */
 export async function POST(request: NextRequest) {
   try {
-    const auth = await requireRole(['admin', 'operador'])
+    const auth = await requireAuth()
     if (isAuthError(auth)) return auth.response
 
     const body = await request.json() as {
