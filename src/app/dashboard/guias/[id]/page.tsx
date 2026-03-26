@@ -665,7 +665,7 @@ export default function GuiaDetailPage({ params }: Props) {
                     </div>
                     <div className="space-y-2">
                       <p className="text-sm" style={{ color: 'var(--color-text)' }}>Foto salva.</p>
-                      <div className="flex gap-2">
+                      <div className="flex gap-2 items-center">
                         <button
                           onClick={handleResolverToken}
                           disabled={bioResolving}
@@ -676,7 +676,21 @@ export default function GuiaDetailPage({ params }: Props) {
                           Resolver Token
                         </button>
                         <button onClick={() => setShowCamera(true)} className="text-xs underline" style={{ color: 'var(--color-text-muted)' }}>
-                          Refazer foto
+                          Refazer
+                        </button>
+                        <button
+                          onClick={async () => {
+                            if (!guia?.numero_carteira) return
+                            try {
+                              await fetch(`/api/biometria/foto/${encodeURIComponent(guia.numero_carteira)}`, { method: 'DELETE' })
+                              setBioPhoto(null)
+                              toast.success('Foto excluida')
+                            } catch { toast.error('Erro ao excluir foto') }
+                          }}
+                          className="text-xs underline"
+                          style={{ color: 'var(--color-danger)' }}
+                        >
+                          Excluir
                         </button>
                       </div>
                     </div>
