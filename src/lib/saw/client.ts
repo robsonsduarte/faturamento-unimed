@@ -889,22 +889,38 @@ class SawClient {
         await page.screenshot({ path: '/tmp/debug-resolvetoken-3-after-inject.png', fullPage: false }).catch(() => {})
         await page.waitForTimeout(1000)
 
-        // === STEP 3: Clicar "Autenticar" ===
-        console.log(`[SAW] resolveToken: STEP 3 — clicando Autenticar...`)
-        let clicked = false
+        // === STEP 3: Preencher dropdown "Escolha" + Clicar "CONFIRMAR" ===
+        console.log(`[SAW] resolveToken: STEP 3 — preenchendo campos e clicando CONFIRMAR...`)
 
-        // Tentar no iframe
+        // Preencher dropdown "Escolha" se existir (selecionar primeira opcao)
+        const selectFilled = await trixFrame!.evaluate(() => {
+          const selects = document.querySelectorAll('select')
+          for (const sel of selects) {
+            if (sel.options.length > 1) {
+              sel.selectedIndex = 1 // primeira opcao apos "Escolha"
+              sel.dispatchEvent(new Event('change', { bubbles: true }))
+              return { ok: true, value: sel.options[1]?.text ?? '' }
+            }
+          }
+          return { ok: false, value: '' }
+        }).catch(() => ({ ok: false, value: '' }))
+
+        if (selectFilled.ok) {
+          console.log(`[SAW] resolveToken: dropdown selecionado: "${selectFilled.value}"`)
+        }
+
+        await page.waitForTimeout(500)
+
+        // Clicar CONFIRMAR (ou Autenticar) — tentar no iframe
+        let clicked = false
         try {
           clicked = await trixFrame!.evaluate(() => {
-            const selectors = ['#id-botao-autenticar', '#btn-autenticar', 'button', 'a', 'input[type="button"]']
-            for (const sel of selectors) {
-              const elements = document.querySelectorAll(sel)
-              for (const el of elements) {
-                const text = ((el as HTMLElement).textContent ?? '').toLowerCase()
-                if (text.includes('autenticar') || text.includes('autenticar foto')) {
-                  (el as HTMLElement).click()
-                  return true
-                }
+            const allClickable = Array.from(document.querySelectorAll('button, a, input[type="button"], input[type="submit"], div[onclick], span[onclick]'))
+            for (const el of allClickable) {
+              const text = ((el as HTMLElement).textContent ?? '').toLowerCase().trim()
+              if (text === 'confirmar' || text.includes('confirmar') || text.includes('autenticar')) {
+                (el as HTMLElement).click()
+                return true
               }
             }
             return false
@@ -914,10 +930,10 @@ class SawClient {
         // Fallback: pagina principal
         if (!clicked) {
           clicked = await page.evaluate(() => {
-            const btns = Array.from(document.querySelectorAll('button, a, input[type="button"], input[type="submit"], div[onclick]'))
-            const btn = btns.find((b) => {
-              const text = ((b as HTMLElement).textContent ?? '').toLowerCase()
-              return text.includes('autenticar')
+            const allClickable = Array.from(document.querySelectorAll('button, a, input[type="button"], input[type="submit"], div[onclick]'))
+            const btn = allClickable.find((b) => {
+              const text = ((b as HTMLElement).textContent ?? '').toLowerCase().trim()
+              return text === 'confirmar' || text.includes('confirmar') || text.includes('autenticar')
             })
             if (btn) { (btn as HTMLElement).click(); return true }
             return false
@@ -925,25 +941,42 @@ class SawClient {
         }
 
         if (!clicked) {
-          await page.screenshot({ path: '/tmp/debug-resolvetoken-4-no-auth-btn.png', fullPage: false }).catch(() => {})
-          return { success: false, error: 'Botao Autenticar nao encontrado. Verifique screenshots em /tmp/debug-resolvetoken-*.png' }
+          await page.screenshot({ path: '/tmp/debug-resolvetoken-4-no-confirm-btn.png', fullPage: false }).catch(() => {})
+          return { success: false, error: 'Botao CONFIRMAR nao encontrado.' }
         }
 
-        console.log(`[SAW] resolveToken: clicou autenticar, aguardando processamento TRIX`)
+        console.log(`[SAW] resolveToken: CONFIRMAR clicado`)
 
-        // Aguardar TRIX processar (10-15s)
-        await page.waitForTimeout(12_000)
+        console.log(`[SAW] resolveToken: aguardando processamento TRIX...`)
 
-        // Verificar resultado
-        const resultado = await trixFrame.evaluate(() => {
-          const body = document.body?.innerText ?? ''
-          const html = document.body?.innerHTML ?? ''
-          return {
-            texto: body.substring(0, 500),
-            temSucesso: /sucesso|autenticad|confirmad|aprovad/i.test(body),
-            temErro: /erro|falha|nao reconhecid|negad|timeout/i.test(body),
-          }
-        }).catch(() => ({ texto: '', temSucesso: false, temErro: false }))
+        // Aguardar TRIX processar (pode demorar 10-20s)
+        await page.waitForTimeout(15_000)
+
+        // Screenshot: resultado
+        await page.screenshot({ path: '/tmp/debug-resolvetoken-4-result.png', fullPage: false }).catch(() => {})
+
+        // Verificar resultado — tentar no iframe e na pagina principal
+        let resultado = { texto: '', temSucesso: false, temErro: false }
+        try {
+          resultado = await trixFrame!.evaluate(() => {
+            const body = document.body?.innerText ?? ''
+            return {
+              texto: body.substring(0, 500),
+              temSucesso: /sucesso|autenticad|confirmad|aprovad|ok/i.test(body) && !/erro/i.test(body),
+              temErro: /erro|falha|nao reconhecid|negad|timeout|erro geral/i.test(body),
+            }
+          })
+        } catch {
+          // Iframe pode ter fechado apos confirmar — verificar pagina principal
+          resultado = await page.evaluate(() => {
+            const body = document.body?.innerText ?? ''
+            return {
+              texto: body.substring(0, 500),
+              temSucesso: /sucesso|autenticad|confirmad|aprovad/i.test(body) && !/erro/i.test(body),
+              temErro: /erro|falha|nao reconhecid|negad|timeout|erro geral/i.test(body),
+            }
+          }).catch(() => ({ texto: '', temSucesso: false, temErro: false }))
+        }
 
         console.log(`[SAW] resolveToken: resultado TRIX — sucesso=${resultado.temSucesso}, erro=${resultado.temErro}, texto=${resultado.texto.substring(0, 100)}`)
 
