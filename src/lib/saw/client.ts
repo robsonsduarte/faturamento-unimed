@@ -856,6 +856,7 @@ class SawClient {
     methods?: { aplicativo: boolean; email: boolean; sms: boolean }
     phones?: string[]
     beneficiarioPhone?: string
+    tokenAlreadyResolved?: boolean
     error?: string
   }> {
     const context = await this.getContext(userId, cookies)
@@ -888,26 +889,62 @@ class SawClient {
 
       console.log(`[SAW] openTokenPage: URL=${currentUrl.substring(0, 80)}, texto=${pageText.substring(0, 100)}`)
 
-      const isTokenPage = currentUrl.includes('MantemTokenDeAtendimento') ||
+      const isTokenMethodPage = currentUrl.includes('MantemTokenDeAtendimento') ||
         currentUrl.includes('TokenDeAtendimento') ||
         pageText.includes('informe um token para continuar o atendimento') ||
-        pageText.includes('Selecione uma forma de envio') ||
-        pageText.includes('Aplicativo') && pageText.includes('SMS')
+        pageText.includes('Selecione uma forma de envio')
 
-      if (!isTokenPage) {
-        // Maybe it loaded the actual guide (token already resolved)
-        const isGuiaPage = pageText.includes('GUIA DE SERVI') || pageText.includes('SP/SADT')
-        await page.close().catch(() => {})
-        if (isGuiaPage) {
-          return { success: false, error: 'A guia abriu normalmente. O token pode ja ter sido resolvido. Reimporte a guia.' }
+      const isGuiaPage = pageText.includes('GUIA DE SERVI') || pageText.includes('SP/SADT') || pageText.includes('guia no prestador')
+
+      if (isGuiaPage) {
+        // Guia abriu normalmente — verificar icones
+        const icons = await page.evaluate(() => {
+          const text = document.body?.innerText ?? ''
+          const hasTokenValidado = /Token\s*Atendimento/i.test(text)
+          const hasCheckIn = /Check-?in/i.test(text)
+          const hasCheckInMsg = text.includes('Realize o check-in do Paciente')
+          return { hasTokenValidado, hasCheckIn, hasCheckInMsg }
+        }).catch(() => ({ hasTokenValidado: false, hasCheckIn: false, hasCheckInMsg: false }))
+
+        console.log(`[SAW] openTokenPage: guia aberta — tokenValidado=${icons.hasTokenValidado}, checkIn=${icons.hasCheckIn}`)
+
+        if (icons.hasTokenValidado && !icons.hasCheckIn && !icons.hasCheckInMsg) {
+          await page.close().catch(() => {})
+          return {
+            success: true,
+            sessionId: undefined,
+            methods: undefined,
+            phones: undefined,
+            beneficiarioPhone: undefined,
+            tokenAlreadyResolved: true,
+          }
         }
+
+        if (icons.hasCheckIn || icons.hasCheckInMsg) {
+          console.log(`[SAW] openTokenPage: clicando Check-in...`)
+          await page.evaluate(() => {
+            const links = Array.from(document.querySelectorAll('a, div[class*="link"], div[class*="caixa"]'))
+            const el = links.find((l) => /Check-?in/i.test((l as HTMLElement).textContent ?? ''))
+            if (el) (el as HTMLElement).click()
+          }).catch(() => {})
+          await page.waitForTimeout(3000)
+        } else {
+          await page.close().catch(() => {})
+          return { success: false, error: 'Guia abriu sem Check-in ou Token. Reimporte a guia.' }
+        }
+      } else if (!isTokenMethodPage) {
+        await page.close().catch(() => {})
         return { success: false, error: `Pagina inesperada: ${currentUrl.substring(0, 100)}` }
       }
 
-      // Extract available methods and phones — use pageText already captured above
-      const hasAplicativo = /aplicativo/i.test(pageText)
-      const hasEmail = /\bemail\b/i.test(pageText)
-      const hasSms = /\bsms\b/i.test(pageText)
+      // Atualizar texto (pode ter mudado apos clique no Check-in)
+      const finalPageText = await page.evaluate(() => document.body?.innerText ?? '')
+
+      // Extract available methods and phones
+      const textForMethods = finalPageText || pageText
+      const hasAplicativo = /aplicativo/i.test(textForMethods)
+      const hasEmail = /\bemail\b/i.test(textForMethods)
+      const hasSms = /\bsms\b/i.test(textForMethods)
 
       // Try to extract phone numbers from select (may not be visible yet)
       let phones: string[] = []

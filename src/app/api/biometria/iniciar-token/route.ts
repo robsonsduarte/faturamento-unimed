@@ -155,6 +155,28 @@ export async function POST(request: NextRequest) {
           return
         }
 
+        // Token ja resolvido? Reimportar direto
+        if (result.tokenAlreadyResolved) {
+          send({ type: 'success', message: 'Token ja validado! Reimportando guia...' })
+
+          try {
+            const readResult = await getSawClient().readGuide(user.id, cookies, guia.guide_number)
+            if (readResult.success) {
+              send({ type: 'success', message: 'Guia reimportada com sucesso.' })
+            }
+          } catch { /* */ }
+
+          await db.from('guias').update({
+            token_biometrico: true,
+            data_token: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          }).eq('id', guia.id)
+
+          send({ type: 'result', success: true, tokenAlreadyResolved: true })
+          controller.close()
+          return
+        }
+
         send({ type: 'success', message: 'Pagina de token aberta no SAW.' })
 
         // Buscar telefone do paciente no CPro

@@ -160,6 +160,15 @@ export default function GuiaDetailPage({ params }: Props) {
               throw new Error(evt.message as string)
             }
             if (evt.type === 'result' && evt.success) {
+              // Token ja resolvido — so reimportou
+              if (evt.tokenAlreadyResolved) {
+                setTokenStep('done')
+                setTokenStatus('Token ja estava validado! Guia reimportada.')
+                toast.success('Token ja validado. Guia atualizada.')
+                await refetch()
+                return
+              }
+
               setTokenSessionId(evt.sessionId as string)
               setTokenMethods(evt.methods as { aplicativo: boolean; sms: boolean })
               setTokenPhones((evt.phones as string[]) ?? [])
