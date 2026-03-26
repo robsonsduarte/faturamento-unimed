@@ -163,8 +163,11 @@ export default function GuiaDetailPage({ params }: Props) {
               setTokenSessionId(evt.sessionId as string)
               setTokenMethods(evt.methods as { aplicativo: boolean; sms: boolean })
               setTokenPhones((evt.phones as string[]) ?? [])
+              // Pre-preencher telefone do beneficiario se disponivel
+              const bPhone = evt.beneficiarioPhone as string ?? ''
+              if (bPhone && !whatsappPhone) setWhatsappPhone(bPhone)
               setTokenStep('method')
-              setTokenStatus('Escolha o metodo de autenticacao')
+              setTokenStatus('Escolha o metodo e informe o telefone')
             }
           } catch (parseErr) {
             if (parseErr instanceof Error && parseErr.message !== 'Stream nao disponivel') {
@@ -675,66 +678,85 @@ export default function GuiaDetailPage({ params }: Props) {
                   </div>
                 )}
 
-                {/* Step: Escolher metodo */}
+                {/* Step: Escolher metodo + telefone + enviar (tudo junto) */}
                 {tokenStep === 'method' && tokenMethods && (
-                  <div className="space-y-3">
-                    <p className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>Metodo de autenticacao:</p>
-                    <div className="flex flex-wrap gap-2">
-                      {tokenMethods.aplicativo && (
-                        <button
-                          onClick={() => setSelectedMethod('aplicativo')}
-                          className={cn(
-                            'rounded-lg border px-4 py-2 text-sm transition-colors',
-                            selectedMethod === 'aplicativo' ? 'border-[var(--color-primary)] text-[var(--color-primary)]' : 'border-[var(--color-border)] text-[var(--color-text-muted)]'
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {/* Metodo */}
+                      <div className="space-y-2">
+                        <label className="text-xs font-medium" style={{ color: 'var(--color-text-muted)' }}>Metodo:</label>
+                        <div className="flex gap-2">
+                          {tokenMethods.aplicativo && (
+                            <button
+                              onClick={() => setSelectedMethod('aplicativo')}
+                              className={cn(
+                                'flex-1 rounded-lg border px-3 py-2 text-sm transition-colors',
+                                selectedMethod === 'aplicativo' ? 'border-[var(--color-primary)] text-[var(--color-primary)]' : 'border-[var(--color-border)] text-[var(--color-text-muted)]'
+                              )}
+                            >
+                              <Smartphone className="w-4 h-4 inline mr-1" /> App
+                            </button>
                           )}
-                        >
-                          <Smartphone className="w-4 h-4 inline mr-1.5" />
-                          Aplicativo Unimed
-                        </button>
-                      )}
-                      {tokenMethods.sms && (
-                        <button
-                          onClick={() => setSelectedMethod('sms')}
-                          className={cn(
-                            'rounded-lg border px-4 py-2 text-sm transition-colors',
-                            selectedMethod === 'sms' ? 'border-[var(--color-primary)] text-[var(--color-primary)]' : 'border-[var(--color-border)] text-[var(--color-text-muted)]'
+                          {tokenMethods.sms && (
+                            <button
+                              onClick={() => setSelectedMethod('sms')}
+                              className={cn(
+                                'flex-1 rounded-lg border px-3 py-2 text-sm transition-colors',
+                                selectedMethod === 'sms' ? 'border-[var(--color-primary)] text-[var(--color-primary)]' : 'border-[var(--color-border)] text-[var(--color-text-muted)]'
+                              )}
+                            >
+                              <MessageSquare className="w-4 h-4 inline mr-1" /> SMS
+                            </button>
                           )}
-                        >
-                          <MessageSquare className="w-4 h-4 inline mr-1.5" />
-                          SMS
-                        </button>
+                        </div>
+                      </div>
+
+                      {/* Telefone SMS (se SMS selecionado) */}
+                      {selectedMethod === 'sms' && tokenPhones.length > 0 && (
+                        <div className="space-y-2">
+                          <label className="text-xs font-medium" style={{ color: 'var(--color-text-muted)' }}>Telefone SAW:</label>
+                          <select
+                            value={selectedPhone}
+                            onChange={(e) => setSelectedPhone(e.target.value)}
+                            className="w-full rounded-lg border px-3 py-2 text-sm"
+                            style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+                          >
+                            <option value="">Selecione...</option>
+                            {tokenPhones.map((p) => (
+                              <option key={p} value={p}>{p}</option>
+                            ))}
+                          </select>
+                        </div>
                       )}
                     </div>
 
-                    {/* Telefone para SMS */}
-                    {selectedMethod === 'sms' && tokenPhones.length > 0 && (
-                      <div className="space-y-2">
-                        <label className="text-xs font-medium" style={{ color: 'var(--color-text-muted)' }}>Telefone para SMS:</label>
-                        <select
-                          value={selectedPhone}
-                          onChange={(e) => setSelectedPhone(e.target.value)}
-                          className="w-full rounded-lg border px-3 py-2 text-sm"
-                          style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+                    {/* WhatsApp do paciente + botao unico */}
+                    {selectedMethod && (
+                      <div className="flex gap-2 items-end">
+                        <div className="flex-1 space-y-1">
+                          <label className="text-xs font-medium" style={{ color: 'var(--color-text-muted)' }}>WhatsApp do paciente:</label>
+                          <input
+                            type="tel"
+                            placeholder="DDD + numero (ex: 73999913940)"
+                            value={whatsappPhone}
+                            onChange={(e) => setWhatsappPhone(e.target.value)}
+                            className="w-full rounded-lg border px-3 py-2 text-sm"
+                            style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+                          />
+                        </div>
+                        <button
+                          onClick={async () => {
+                            await handleSelecionarMetodo()
+                            if (whatsappPhone) await handleEnviarWhatsApp()
+                          }}
+                          disabled={tokenLoading || !whatsappPhone || (selectedMethod === 'sms' && !selectedPhone)}
+                          className="inline-flex items-center gap-2 rounded-lg px-5 py-2 text-sm font-semibold text-white disabled:opacity-50 shrink-0"
+                          style={{ background: '#25d366' }}
                         >
-                          <option value="">Selecione...</option>
-                          {tokenPhones.map((p) => (
-                            <option key={p} value={p}>{p}</option>
-                          ))}
-                        </select>
+                          {tokenLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                          Enviar e Aguardar
+                        </button>
                       </div>
-                    )}
-
-                    {/* Confirmar metodo */}
-                    {selectedMethod && (selectedMethod === 'aplicativo' || selectedPhone) && (
-                      <button
-                        onClick={handleSelecionarMetodo}
-                        disabled={tokenLoading}
-                        className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white"
-                        style={{ background: 'var(--color-primary)' }}
-                      >
-                        {tokenLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
-                        {selectedMethod === 'sms' ? 'Enviar SMS' : 'Confirmar Aplicativo'}
-                      </button>
                     )}
                   </div>
                 )}
@@ -742,45 +764,33 @@ export default function GuiaDetailPage({ params }: Props) {
                 {/* Step: Aguardando token */}
                 {tokenStep === 'waiting' && (
                   <div className="space-y-4">
-                    {/* WhatsApp para o paciente */}
-                    <div className="rounded-lg border p-4 space-y-3" style={{ borderColor: 'var(--color-border)', background: 'var(--color-surface)' }}>
-                      <p className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>
-                        Enviar instrucoes via WhatsApp:
-                      </p>
-                      <div className="flex gap-2">
-                        <input
-                          type="tel"
-                          placeholder="Telefone do paciente (DDD + numero)"
-                          value={whatsappPhone}
-                          onChange={(e) => setWhatsappPhone(e.target.value)}
-                          className="flex-1 rounded-lg border px-3 py-2 text-sm"
-                          style={{ background: 'var(--color-card)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
-                        />
-                        <button
-                          onClick={handleEnviarWhatsApp}
-                          disabled={tokenLoading || !whatsappPhone}
-                          className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
-                          style={{ background: '#25d366' }}
-                        >
-                          {tokenLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                          Enviar
-                        </button>
+                    {/* Confirmacao de envio */}
+                    <div className="flex items-center gap-3 rounded-lg p-3" style={{ background: 'rgba(37, 211, 102, 0.1)' }}>
+                      <MessageSquare className="w-5 h-5" style={{ color: '#25d366' }} />
+                      <div>
+                        <p className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>
+                          Mensagem enviada para {whatsappPhone}
+                        </p>
+                        <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                          Aguardando o paciente responder com o token de 6 digitos...
+                        </p>
                       </div>
+                      <Loader2 className="w-4 h-4 animate-spin ml-auto" style={{ color: 'var(--color-text-muted)' }} />
                     </div>
 
-                    {/* Input manual do token */}
+                    {/* Input manual do token (fallback) */}
                     <div className="rounded-lg border p-4 space-y-3" style={{ borderColor: 'var(--color-border)', background: 'var(--color-surface)' }}>
-                      <p className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>
+                      <p className="text-xs font-medium" style={{ color: 'var(--color-text-muted)' }}>
                         Ou digite o token manualmente:
                       </p>
                       <div className="flex gap-2">
                         <input
                           type="text"
-                          placeholder="Token de 6 digitos"
+                          placeholder="000000"
                           maxLength={6}
                           value={manualToken}
                           onChange={(e) => setManualToken(e.target.value.replace(/\D/g, ''))}
-                          className="w-32 rounded-lg border px-3 py-2 text-sm font-mono text-center tracking-widest"
+                          className="w-28 rounded-lg border px-3 py-2 text-sm font-mono text-center tracking-[0.3em]"
                           style={{ background: 'var(--color-card)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
                         />
                         <button
@@ -793,9 +803,6 @@ export default function GuiaDetailPage({ params }: Props) {
                           Validar
                         </button>
                       </div>
-                      <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-                        O token sera preenchido automaticamente quando o paciente responder no WhatsApp.
-                      </p>
                     </div>
                   </div>
                 )}

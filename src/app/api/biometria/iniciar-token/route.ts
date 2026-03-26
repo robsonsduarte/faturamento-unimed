@@ -164,6 +164,7 @@ export async function POST(request: NextRequest) {
           paciente: guia.paciente,
           methods: result.methods,
           phones: result.phones,
+          beneficiarioPhone: result.beneficiarioPhone,
         })
       } catch (err) {
         send({ type: 'error', message: err instanceof Error ? err.message : 'Erro interno' })

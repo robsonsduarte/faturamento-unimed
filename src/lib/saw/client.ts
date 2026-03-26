@@ -855,6 +855,7 @@ class SawClient {
     sessionId?: string
     methods?: { aplicativo: boolean; email: boolean; sms: boolean }
     phones?: string[]
+    beneficiarioPhone?: string
     error?: string
   }> {
     const context = await this.getContext(userId, cookies)
@@ -926,7 +927,29 @@ class SawClient {
         phones = []
       }
 
-      const info = { hasAplicativo, hasEmail, hasSms, phones }
+      // Extrair telefone do beneficiario da pagina
+      let beneficiarioPhone = ''
+      try {
+        beneficiarioPhone = await page.evaluate(() => {
+          // Procurar em inputs hidden
+          const telInput = document.querySelector('input[name*="telefone"], input[name*="celular"], input[id*="telefone"]') as HTMLInputElement
+          if (telInput?.value) {
+            const digits = telInput.value.replace(/\D/g, '')
+            if (digits.length >= 8) return digits
+          }
+          // Procurar no texto da pagina
+          const text = document.body?.innerText ?? ''
+          const phoneMatch = text.match(/(?:celular|telefone|fone)[:\s]*[\(\d\s\-\*]+/i)
+          if (phoneMatch) {
+            // Extrair ultimos 4 digitos visiveis (SAW mascara com *****)
+            const partial = phoneMatch[0].replace(/\D/g, '')
+            if (partial.length >= 4) return partial
+          }
+          return ''
+        }) ?? ''
+      } catch { /* */ }
+
+      const info = { hasAplicativo, hasEmail, hasSms, phones, beneficiarioPhone }
 
       // Store page reference with a session ID
       const sessionId = `token-${userId}-${numeroGuia}-${Date.now()}`
@@ -953,6 +976,7 @@ class SawClient {
           sms: info.hasSms,
         },
         phones: info.phones,
+        beneficiarioPhone: info.beneficiarioPhone,
       }
     } catch (err) {
       await page.close().catch(() => {})
