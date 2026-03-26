@@ -904,28 +904,31 @@ class SawClient {
       }
 
       // Extract available methods and phones
-      const info = await page.evaluate(() => {
-        const aplicativoRadio = document.querySelector('input[type="radio"][value*="plicativo"], input[type="radio"]') as HTMLInputElement | null
-        const labels = Array.from(document.querySelectorAll('label, td, div')).map((e) => (e as HTMLElement).textContent?.trim() ?? '')
+      let info: { hasAplicativo: boolean; hasEmail: boolean; hasSms: boolean; phones: string[] }
+      try {
+        info = await page.evaluate(() => {
+          const allText = document.body?.innerText ?? ''
+          const hasAplicativo = /aplicativo/i.test(allText)
+          const hasEmail = /\bemail\b/i.test(allText)
+          const hasSms = /\bsms\b/i.test(allText)
 
-        const hasAplicativo = labels.some((l) => /aplicativo/i.test(l))
-        const hasEmail = labels.some((l) => /^email$/i.test(l))
-        const hasSms = labels.some((l) => /^sms$/i.test(l))
-
-        // Extract phone numbers from select options (SMS method)
-        const phones: string[] = []
-        const selects = document.querySelectorAll('select')
-        for (const sel of selects) {
-          for (const opt of sel.options) {
-            const val = opt.text?.trim()
-            if (val && /\(\d{2}\)/.test(val)) {
-              phones.push(val)
+          const phones: string[] = []
+          const selects = document.querySelectorAll('select')
+          for (const sel of selects) {
+            for (const opt of sel.options) {
+              const val = opt.text?.trim()
+              if (val && /\(\d{2}\)/.test(val)) {
+                phones.push(val)
+              }
             }
           }
-        }
 
-        return { hasAplicativo, hasEmail, hasSms, phones }
-      })
+          return { hasAplicativo, hasEmail, hasSms, phones }
+        })
+      } catch (evalErr) {
+        console.error(`[SAW] openTokenPage: evaluate falhou:`, evalErr)
+        info = { hasAplicativo: true, hasEmail: false, hasSms: true, phones: [] }
+      }
 
       // Store page reference with a session ID
       const sessionId = `token-${userId}-${numeroGuia}-${Date.now()}`
