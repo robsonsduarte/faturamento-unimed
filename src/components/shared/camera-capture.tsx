@@ -17,6 +17,10 @@ export function CameraCapture({ onCapture, onCancel }: CameraCaptureProps) {
 
   const startCamera = useCallback(async () => {
     try {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setError('camera_unsupported')
+        return
+      }
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'user', width: { ideal: 800 }, height: { ideal: 800 } },
         audio: false,
@@ -26,8 +30,13 @@ export function CameraCapture({ onCapture, onCancel }: CameraCaptureProps) {
         videoRef.current.srcObject = stream
         setCameraReady(true)
       }
-    } catch {
-      setError('Nao foi possivel acessar a camera. Verifique as permissoes do navegador.')
+    } catch (err) {
+      const name = (err as DOMException)?.name ?? ''
+      if (name === 'NotAllowedError') {
+        setError('camera_denied')
+      } else {
+        setError('camera_error')
+      }
     }
   }, [])
 
@@ -111,20 +120,38 @@ export function CameraCapture({ onCapture, onCancel }: CameraCaptureProps) {
         <>
           {error ? (
             <div className="space-y-3">
-              <p className="text-sm" style={{ color: 'var(--color-danger)' }}>{error}</p>
-              <label
-                className="inline-flex cursor-pointer items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-white"
-                style={{ background: 'var(--color-primary)' }}
-              >
-                <input
-                  type="file"
-                  accept="image/*"
-                  capture="user"
-                  className="hidden"
-                  onChange={handleFileInput}
-                />
-                Selecionar Foto
-              </label>
+              {error === 'camera_denied' && (
+                <div className="space-y-2">
+                  <p className="text-sm font-medium" style={{ color: 'var(--color-warning)' }}>
+                    Permissao de camera negada
+                  </p>
+                  <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                    Clique no icone do cadeado na barra de endereco do navegador, permita o acesso a camera e recarregue a pagina. Ou use o botao abaixo para selecionar uma foto.
+                  </p>
+                </div>
+              )}
+              {error === 'camera_unsupported' && (
+                <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
+                  Camera nao disponivel neste navegador. Use o botao abaixo para selecionar uma foto.
+                </p>
+              )}
+              {error === 'camera_error' && (
+                <p className="text-sm" style={{ color: 'var(--color-danger)' }}>
+                  Erro ao acessar a camera. Use o botao abaixo para selecionar uma foto.
+                </p>
+              )}
+              <div className="flex gap-2">
+                <label
+                  className="inline-flex cursor-pointer items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-white"
+                  style={{ background: 'var(--color-primary)' }}
+                >
+                  <input type="file" accept="image/*" capture="user" className="hidden" onChange={handleFileInput} />
+                  Selecionar Foto
+                </label>
+                <button onClick={onCancel} className="rounded-lg border px-4 py-2 text-sm" style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-muted)' }}>
+                  Cancelar
+                </button>
+              </div>
             </div>
           ) : (
             <div className="space-y-3">
