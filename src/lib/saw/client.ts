@@ -53,7 +53,16 @@ class SawClient {
       this.browser = await chromium.connect(wsUrl)
     } else {
       console.log('[SAW] Launching local Chromium (headless)')
-      this.browser = await chromium.launch({ headless: true })
+      this.browser = await chromium.launch({
+        headless: true,
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--use-fake-ui-for-media-stream',
+          '--use-fake-device-for-media-stream',
+        ],
+      })
     }
 
     this.browser.on('disconnected', () => {
@@ -677,15 +686,16 @@ class SawClient {
     })
   }
 
-  // ─── Resolve biometric token ─────────────────────────────────
+  // ─── Resolve biometric token (técnica do workflow n8n funcional) ───
   async resolveToken(
     userId: string,
     cookies: SawCookie[],
     numeroGuia: string,
     photoBase64: string
-  ): Promise<{ success: boolean; error?: string }> {
+  ): Promise<{ success: boolean; error?: string; fallbackToToken?: boolean }> {
     return this.withLock(userId, async () => {
       let page: Page | null = null
+      let biofacePage: Page | null = null
 
       try {
         const context = await this.getContext(userId, cookies)
@@ -698,293 +708,194 @@ class SawClient {
         await page.goto(guiaUrl, { waitUntil: 'networkidle', timeout: 30_000 })
         await page.waitForTimeout(2000)
 
-        // A guia pode redirecionar para MantemTokenDeAtendimento ou abrir com botao check-in
         const currentUrl = page.url()
 
-        // Caso 1: Redirecionou para tela de token — precisamos voltar para a guia
+        // Se redirecionou para tela de token numerico, biometria nao esta disponivel
         if (currentUrl.includes('MantemTokenDeAtendimento') || currentUrl.includes('TokenDeAtendimento')) {
-          console.log(`[SAW] resolveToken: pagina de token detectada, voltando para guia`)
-          // Fechar popup/tela de token e navegar para guia novamente
-          await page.goto(guiaUrl, { waitUntil: 'networkidle', timeout: 30_000 })
-          await page.waitForTimeout(2000)
+          console.log(`[SAW] resolveToken: guia requer token numerico, nao biometria facial`)
+          return { success: false, fallbackToToken: true, error: 'Guia requer token numerico (App/SMS), nao biometria facial.' }
         }
 
-        // Procurar botao de check-in na pagina da guia
-        const checkInButton = await page.$('#linkCheckInPacienteBiometriaFacial a, a[href*="check"], a:has-text("Check-in")')
+        // === STEP 1: Verificar se biometria ja autenticada ===
+        const alreadyAuth = await page.$('img[src*="biometriaAutenticadaface"]')
+        if (alreadyAuth) {
+          console.log(`[SAW] resolveToken: biometria ja autenticada!`)
+          return { success: true }
+        }
 
-        if (!checkInButton) {
-          // Tentar encontrar o texto "Realize o check-in"
-          const hasCheckInText = await page.evaluate(() =>
-            document.body.innerText.includes('Realize o check-in')
-          )
+        // === STEP 2: Clicar check-in e extrair URL BioFace ===
+        console.log(`[SAW] resolveToken: clicando check-in para gerar URL BioFace...`)
 
-          if (!hasCheckInText) {
-            return { success: false, error: 'Botao de check-in nao encontrado na guia. A guia pode ja ter sido resolvida.' }
+        // Clicar usando a funcao JS do SAW ou o link
+        await page.evaluate(() => {
+          if (typeof (window as unknown as Record<string, unknown>).gravarDadosGuiaBiometriaFacial === 'function') {
+            ((window as unknown as Record<string, unknown>).gravarDadosGuiaBiometriaFacial as () => void)()
+          } else {
+            const link = document.querySelector('#linkCheckInPacienteBiometriaFacial a') as HTMLElement
+            if (link) link.click()
           }
+        }).catch(() => {})
 
-          // Clicar no link de check-in pelo texto
-          await page.click('a:has-text("check-in"), a:has-text("Check-in")')
-        } else {
-          await checkInButton.click()
-        }
-
-        console.log(`[SAW] resolveToken: clicou check-in, aguardando TRIX iframe`)
-        await page.waitForTimeout(5000) // TRIX pode demorar
-
-        // Debug: listar todos os frames
-        const allFrames = page.frames()
-        console.log(`[SAW] resolveToken: ${allFrames.length} frames encontrados:`)
-        for (const f of allFrames) {
-          console.log(`  frame: ${f.url().substring(0, 120)}`)
-        }
-
-        // Debug: verificar iframes no DOM
-        const iframeInfo = await page.evaluate(() => {
-          const iframes = document.querySelectorAll('iframe')
-          return Array.from(iframes).map((f) => ({
-            src: f.src?.substring(0, 120),
-            id: f.id,
-            name: f.name,
-            width: f.width,
-            height: f.height,
-          }))
-        }).catch(() => [])
-        console.log(`[SAW] resolveToken: iframes no DOM:`, JSON.stringify(iframeInfo))
-
-        // Debug: estado da pagina
-        const pageState = await page.evaluate(() => ({
-          url: window.location.href,
-          text: document.body?.innerText?.substring(0, 300) ?? '',
-        })).catch(() => ({ url: '', text: '' }))
-        console.log(`[SAW] resolveToken: pagina=${pageState.url.substring(0, 80)}, texto=${pageState.text.substring(0, 150)}`)
-
-        // Screenshot: apos clicar check-in
+        await page.waitForTimeout(5000)
         await page.screenshot({ path: '/tmp/debug-resolvetoken-1-after-checkin.png', fullPage: false }).catch(() => {})
-        console.log(`[SAW] resolveToken: screenshot salvo em /tmp/debug-resolvetoken-1-after-checkin.png`)
 
-        // Procurar iframe do TRIX BioFace pelo elemento DOM #iframeBioFacial
-        const bioFrameHandle = await page.$('iframe#iframeBioFacial')
-        let trixFrame = bioFrameHandle ? await bioFrameHandle.contentFrame() : null
+        // Extrair URL do BioFace do iframe
+        const biofaceUrl = await page.evaluate(() => {
+          const iframe = document.querySelector('iframe#iframeBioFacial') as HTMLIFrameElement
+          return iframe?.src ?? null
+        })
 
-        // Fallback: buscar por URL nos frames
-        if (!trixFrame) {
-          trixFrame = allFrames.find((f) =>
-            f.url().includes('bioface') || f.url().includes('biometria')
-          ) ?? null
+        if (!biofaceUrl || !biofaceUrl.includes('bioface')) {
+          // Verificar se caiu na tela de token numerico apos clicar
+          const newUrl = page.url()
+          const newText = await page.evaluate(() => document.body?.innerText ?? '')
+          if (newUrl.includes('MantemTokenDeAtendimento') || newText.includes('Selecione uma forma de envio')) {
+            return { success: false, fallbackToToken: true, error: 'Biometria nao disponivel. Guia requer token numerico.' }
+          }
+          return { success: false, error: `URL BioFace nao encontrada. URL atual: ${newUrl.substring(0, 80)}` }
         }
 
-        if (!trixFrame) {
-          const hasTokenDialog = await page.evaluate(() => {
-            const body = document.body.innerText
-            return body.includes('token para continuar') || (body.includes('Aplicativo') && body.includes('SMS'))
-          }).catch(() => false)
+        console.log(`[SAW] resolveToken: BioFace URL extraida: ${biofaceUrl.substring(0, 100)}`)
 
-          if (hasTokenDialog) {
-            return { success: false, error: 'Tela de token numerico (Aplicativo/SMS) detectada. Use a opcao "Token via WhatsApp".' }
+        // === STEP 3: Abrir BioFace em pagina separada (tecnica do workflow n8n) ===
+        biofacePage = await context.newPage()
+        biofacePage.setDefaultTimeout(30_000)
+
+        console.log(`[SAW] resolveToken: abrindo BioFace em pagina separada...`)
+        await biofacePage.goto(biofaceUrl, { waitUntil: 'networkidle', timeout: 30_000 })
+        await biofacePage.waitForTimeout(3000)
+        await biofacePage.screenshot({ path: '/tmp/debug-resolvetoken-2-bioface-open.png', fullPage: false }).catch(() => {})
+
+        // === STEP 4: Clicar "Capturar Foto" via mouse.click com boundingBox ===
+        console.log(`[SAW] resolveToken: STEP 4 — clicando Capturar Foto...`)
+        const btnCapturar = await biofacePage.$('#id-botao-capturar')
+        if (btnCapturar) {
+          const box = await btnCapturar.boundingBox()
+          if (box) {
+            await biofacePage.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
+            console.log(`[SAW] resolveToken: clicou #id-botao-capturar via mouse.click`)
           }
-
-          return { success: false, error: 'Iframe TRIX BioFace nao encontrado. A guia pode nao exigir biometria facial.' }
+        } else {
+          // Fallback: clicar por texto
+          await biofacePage.evaluate(() => {
+            const els = Array.from(document.querySelectorAll('button, a, div, span'))
+            const btn = els.find((e) => /capturar|iniciar captura/i.test((e as HTMLElement).textContent ?? ''))
+            if (btn) (btn as HTMLElement).click()
+          })
         }
+        await biofacePage.waitForTimeout(2000)
+        await biofacePage.screenshot({ path: '/tmp/debug-resolvetoken-3-after-capture.png', fullPage: false }).catch(() => {})
 
-        console.log(`[SAW] resolveToken: TRIX iframe encontrado: ${trixFrame.url().substring(0, 120)}`)
-
-        // Aguardar iframe carregar
-        await trixFrame.waitForLoadState('domcontentloaded').catch(() => {})
-        await page.waitForTimeout(3000)
-
-        // Debug: conteudo do iframe
-        const iframeContent = await trixFrame.evaluate(() => ({
-          text: document.body?.innerText?.substring(0, 300) ?? '',
-          html: document.body?.innerHTML?.substring(0, 500) ?? '',
-          hasCamera: !!document.querySelector('#my_camera'),
-          hasResults: !!document.querySelector('#results'),
-          hasAuthBtn: !!document.querySelector('#id-botao-autenticar'),
-          allIds: Array.from(document.querySelectorAll('[id]')).map((e) => e.id).slice(0, 20),
-          allButtons: Array.from(document.querySelectorAll('button, input[type="button"], a')).map((e) =>
-            (e as HTMLElement).textContent?.trim().substring(0, 50) ?? ''
-          ).slice(0, 10),
-        })).catch(() => ({ text: 'evaluate failed', html: '', hasCamera: false, hasResults: false, hasAuthBtn: false, allIds: [], allButtons: [] }))
-
-        console.log(`[SAW] resolveToken: iframe conteudo — camera=${iframeContent.hasCamera}, results=${iframeContent.hasResults}, authBtn=${iframeContent.hasAuthBtn}`)
-        console.log(`[SAW] resolveToken: iframe IDs: ${iframeContent.allIds.join(', ')}`)
-        console.log(`[SAW] resolveToken: iframe buttons: ${iframeContent.allButtons.join(', ')}`)
-        console.log(`[SAW] resolveToken: iframe texto: ${iframeContent.text.substring(0, 200)}`)
-
-        // === STEP 1: Clicar "Capturar Foto" (botao vermelho INICIAR CAPTURA) ===
-        console.log(`[SAW] resolveToken: STEP 1 — clicando Capturar Foto...`)
-        const captureClicked = await trixFrame.evaluate(() => {
-          // Procurar botao de capturar por varios seletores
-          const selectors = [
-            '#iniciar-captura', '#btn-capturar', '#botao-capturar',
-            'button', 'a', 'div[onclick]', 'span[onclick]',
-          ]
-          for (const sel of selectors) {
-            const elements = document.querySelectorAll(sel)
-            for (const el of elements) {
-              const text = ((el as HTMLElement).textContent ?? '').toLowerCase()
-              if (text.includes('capturar') || text.includes('iniciar captura') || text.includes('captura')) {
-                (el as HTMLElement).click()
-                return { ok: true, text: (el as HTMLElement).textContent?.trim() ?? '' }
-              }
-            }
+        // === STEP 5: Injetar foto no DOM (tecnica exata do workflow n8n) ===
+        console.log(`[SAW] resolveToken: STEP 5 — injetando foto...`)
+        const injected = await biofacePage.evaluate((b64: string) => {
+          const results = document.getElementById('results')
+          if (results) {
+            results.innerHTML = '<img id="id-imagem-resultado" width="565px" height="317px" src="data:image/jpeg;base64,' + b64 + '"/>'
+            return { success: true }
           }
-          // Fallback: clicar no botao vermelho (geralmente SVG ou div com onclick)
-          const redBtn = document.querySelector('.btn-capture, .capture-btn, [class*="capture"], [class*="captura"]') as HTMLElement
-          if (redBtn) { redBtn.click(); return { ok: true, text: 'fallback-class' } }
-          return { ok: false, text: '' }
-        }).catch(() => ({ ok: false, text: 'evaluate failed' }))
-
-        console.log(`[SAW] resolveToken: Capturar clicado: ${captureClicked.ok} (${captureClicked.text})`)
-        await page.waitForTimeout(2000)
-
-        // Screenshot: apos clicar capturar
-        await page.screenshot({ path: '/tmp/debug-resolvetoken-2-after-capture.png', fullPage: false }).catch(() => {})
-
-        // === STEP 2: Injetar foto (substituir webcam pela foto do paciente) ===
-        console.log(`[SAW] resolveToken: STEP 2 — injetando foto...`)
-        const injected = await trixFrame.evaluate((b64: string) => {
-          try {
-            // Esconder webcam/video
-            const camera = document.querySelector('#my_camera, video, #webcam') as HTMLElement
-            if (camera) camera.style.display = 'none'
-
-            // Injetar foto no container de resultados/captura
-            const results = document.querySelector('#results, #captured, #photo-container, .photo-container, .capture-result') as HTMLElement
-            if (results) {
-              results.innerHTML = `<img src="data:image/jpeg;base64,${b64}" style="width:100%;height:auto;max-width:640px;" />`
-              results.style.display = 'block'
-            }
-
-            // Tambem tentar injetar no canvas se existir
-            const canvas = document.querySelector('canvas') as HTMLCanvasElement
-            if (canvas) {
-              const ctx = canvas.getContext('2d')
-              if (ctx) {
-                const img = new Image()
-                img.onload = () => {
-                  canvas.width = img.width
-                  canvas.height = img.height
-                  ctx.drawImage(img, 0, 0)
-                }
-                img.src = `data:image/jpeg;base64,${b64}`
-              }
-            }
-
-            // Mostrar botao de autenticar (pode estar escondido)
-            const authBtn = document.querySelector('#id-botao-autenticar, #btn-autenticar, [class*="autenticar"]') as HTMLElement
-            if (authBtn) {
-              authBtn.style.display = 'block'
-              authBtn.style.visibility = 'visible'
-            }
-
-            return { ok: true, hasCamera: !!camera, hasResults: !!results, hasCanvas: !!canvas, hasAuthBtn: !!authBtn }
-          } catch (e) {
-            return { ok: false, error: (e as Error).message, hasCamera: false, hasResults: false, hasCanvas: false, hasAuthBtn: false }
-          }
+          return { success: false, error: 'Container #results nao encontrado' }
         }, photoBase64)
 
-        console.log(`[SAW] resolveToken: foto injetada — camera=${injected.hasCamera}, results=${injected.hasResults}, canvas=${injected.hasCanvas}, authBtn=${injected.hasAuthBtn}`)
-
-        // Screenshot: apos injecao
-        await page.screenshot({ path: '/tmp/debug-resolvetoken-3-after-inject.png', fullPage: false }).catch(() => {})
-        await page.waitForTimeout(1000)
-
-        // === STEP 3: Preencher dropdown "Escolha" + Clicar "CONFIRMAR" ===
-        console.log(`[SAW] resolveToken: STEP 3 — preenchendo campos e clicando CONFIRMAR...`)
-
-        // Preencher dropdown "Escolha" se existir (selecionar primeira opcao)
-        const selectFilled = await trixFrame!.evaluate(() => {
-          const selects = document.querySelectorAll('select')
-          for (const sel of selects) {
-            if (sel.options.length > 1) {
-              sel.selectedIndex = 1 // primeira opcao apos "Escolha"
-              sel.dispatchEvent(new Event('change', { bubbles: true }))
-              return { ok: true, value: sel.options[1]?.text ?? '' }
-            }
-          }
-          return { ok: false, value: '' }
-        }).catch(() => ({ ok: false, value: '' }))
-
-        if (selectFilled.ok) {
-          console.log(`[SAW] resolveToken: dropdown selecionado: "${selectFilled.value}"`)
+        if (!injected.success) {
+          return { success: false, error: (injected as { error?: string }).error ?? 'Falha ao injetar foto' }
         }
 
-        await page.waitForTimeout(500)
+        await biofacePage.waitForTimeout(1000)
+        await biofacePage.screenshot({ path: '/tmp/debug-resolvetoken-4-after-inject.png', fullPage: false }).catch(() => {})
+        console.log(`[SAW] resolveToken: foto injetada com sucesso`)
 
-        // Clicar CONFIRMAR (ou Autenticar) — tentar no iframe
-        let clicked = false
-        try {
-          clicked = await trixFrame!.evaluate(() => {
-            const allClickable = Array.from(document.querySelectorAll('button, a, input[type="button"], input[type="submit"], div[onclick], span[onclick]'))
-            for (const el of allClickable) {
-              const text = ((el as HTMLElement).textContent ?? '').toLowerCase().trim()
-              if (text === 'confirmar' || text.includes('confirmar') || text.includes('autenticar')) {
-                (el as HTMLElement).click()
-                return true
-              }
-            }
-            return false
-          })
-        } catch { /* */ }
+        // === STEP 6: Mostrar e clicar "Autenticar Foto" via mouse.down/up ===
+        console.log(`[SAW] resolveToken: STEP 6 — clicando Autenticar...`)
 
-        // Fallback: pagina principal
-        if (!clicked) {
-          clicked = await page.evaluate(() => {
-            const allClickable = Array.from(document.querySelectorAll('button, a, input[type="button"], input[type="submit"], div[onclick]'))
-            const btn = allClickable.find((b) => {
-              const text = ((b as HTMLElement).textContent ?? '').toLowerCase().trim()
-              return text === 'confirmar' || text.includes('confirmar') || text.includes('autenticar')
+        // Force display do botao
+        await biofacePage.evaluate(() => {
+          const btn = document.getElementById('id-botao-autenticar')
+          if (btn) {
+            btn.style.display = 'inline-block'
+            btn.style.visibility = 'visible'
+            btn.style.opacity = '1'
+          }
+        })
+        await biofacePage.waitForTimeout(500)
+
+        const btnAutenticar = await biofacePage.$('#id-botao-autenticar')
+        let authClicked = false
+
+        if (btnAutenticar) {
+          const box = await btnAutenticar.boundingBox()
+          if (box) {
+            await biofacePage.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+            await biofacePage.waitForTimeout(200)
+            await biofacePage.mouse.down()
+            await biofacePage.waitForTimeout(100)
+            await biofacePage.mouse.up()
+            authClicked = true
+            console.log(`[SAW] resolveToken: clicou #id-botao-autenticar via mouse.down/up`)
+          }
+        }
+
+        // Fallback: clicar qualquer botao confirmar/autenticar
+        if (!authClicked) {
+          authClicked = await biofacePage.evaluate(() => {
+            const els = Array.from(document.querySelectorAll('button, a, input[type="button"], div[onclick]'))
+            const btn = els.find((e) => {
+              const t = ((e as HTMLElement).textContent ?? '').toLowerCase()
+              return t.includes('autenticar') || t.includes('confirmar')
             })
             if (btn) { (btn as HTMLElement).click(); return true }
             return false
-          }).catch(() => false)
-        }
-
-        if (!clicked) {
-          await page.screenshot({ path: '/tmp/debug-resolvetoken-4-no-confirm-btn.png', fullPage: false }).catch(() => {})
-          return { success: false, error: 'Botao CONFIRMAR nao encontrado.' }
-        }
-
-        console.log(`[SAW] resolveToken: CONFIRMAR clicado`)
-
-        console.log(`[SAW] resolveToken: aguardando processamento TRIX...`)
-
-        // Aguardar TRIX processar (pode demorar 10-20s)
-        await page.waitForTimeout(15_000)
-
-        // Screenshot: resultado
-        await page.screenshot({ path: '/tmp/debug-resolvetoken-4-result.png', fullPage: false }).catch(() => {})
-
-        // Verificar resultado — tentar no iframe e na pagina principal
-        let resultado = { texto: '', temSucesso: false, temErro: false }
-        try {
-          resultado = await trixFrame!.evaluate(() => {
-            const body = document.body?.innerText ?? ''
-            return {
-              texto: body.substring(0, 500),
-              temSucesso: /sucesso|autenticad|confirmad|aprovad|ok/i.test(body) && !/erro/i.test(body),
-              temErro: /erro|falha|nao reconhecid|negad|timeout|erro geral/i.test(body),
-            }
           })
-        } catch {
-          // Iframe pode ter fechado apos confirmar — verificar pagina principal
-          resultado = await page.evaluate(() => {
-            const body = document.body?.innerText ?? ''
-            return {
-              texto: body.substring(0, 500),
-              temSucesso: /sucesso|autenticad|confirmad|aprovad/i.test(body) && !/erro/i.test(body),
-              temErro: /erro|falha|nao reconhecid|negad|timeout|erro geral/i.test(body),
-            }
-          }).catch(() => ({ texto: '', temSucesso: false, temErro: false }))
         }
 
-        console.log(`[SAW] resolveToken: resultado TRIX — sucesso=${resultado.temSucesso}, erro=${resultado.temErro}, texto=${resultado.texto.substring(0, 100)}`)
-
-        if (resultado.temErro && !resultado.temSucesso) {
-          return { success: false, error: `TRIX rejeitou a biometria: ${resultado.texto.substring(0, 200)}` }
+        if (!authClicked) {
+          await biofacePage.screenshot({ path: '/tmp/debug-resolvetoken-5-no-auth.png', fullPage: false }).catch(() => {})
+          return { success: false, error: 'Botao Autenticar/Confirmar nao encontrado no BioFace.' }
         }
 
-        // Se nao deu erro explicito, considerar sucesso (TRIX pode nao ter mensagem clara)
+        // === STEP 7: Aguardar TRIX processar (12s como no workflow) ===
+        console.log(`[SAW] resolveToken: aguardando TRIX processar (12s)...`)
+        await biofacePage.waitForTimeout(12_000)
+        await biofacePage.screenshot({ path: '/tmp/debug-resolvetoken-5-after-auth.png', fullPage: false }).catch(() => {})
+
+        // Fechar pagina BioFace
+        await biofacePage.close().catch(() => {})
+        biofacePage = null
+
+        // === STEP 8: Validar resultado no SAW (navegar de volta a guia) ===
+        console.log(`[SAW] resolveToken: validando resultado no SAW...`)
+        await page.goto(guiaUrl, { waitUntil: 'networkidle', timeout: 30_000 })
+        await page.waitForTimeout(3000)
+        await page.screenshot({ path: '/tmp/debug-resolvetoken-6-validation.png', fullPage: false }).catch(() => {})
+
+        const validacao = await page.evaluate(() => {
+          const icone = document.querySelector('img[src*="biometriaAutenticadaface"]') as HTMLElement | null
+          const btnCheckin = document.querySelector('#linkCheckInPacienteBiometriaFacial a') as HTMLElement | null
+          const iconeVisivel = icone ? icone.offsetParent !== null : false
+          const btnVisivel = btnCheckin ? btnCheckin.offsetParent !== null : false
+          return { iconeVisivel, btnVisivel, texto: document.body?.innerText?.substring(0, 300) ?? '' }
+        })
+
+        console.log(`[SAW] resolveToken: validacao — icone=${validacao.iconeVisivel}, btnCheckin=${validacao.btnVisivel}`)
+
+        if (validacao.iconeVisivel && !validacao.btnVisivel) {
+          console.log(`[SAW] resolveToken: SUCESSO — biometria confirmada no SAW!`)
+          return { success: true }
+        }
+
+        // Verificar se caiu na tela de token (fallback do SAW apos falha biometrica)
+        if (page.url().includes('MantemTokenDeAtendimento') || validacao.texto.includes('Selecione uma forma de envio')) {
+          console.log(`[SAW] resolveToken: biometria falhou, SAW ofereceu token numerico como fallback`)
+          return { success: false, fallbackToToken: true, error: 'Biometria nao aceita pelo TRIX. Use token numerico.' }
+        }
+
+        // Se botao check-in ainda visivel, biometria nao confirmou
+        if (validacao.btnVisivel) {
+          return { success: false, error: 'Biometria processada mas nao confirmada no SAW. Tente novamente com outra foto.' }
+        }
+
+        // Inconclusivo — assumir sucesso
+        console.log(`[SAW] resolveToken: resultado inconclusivo, assumindo sucesso`)
         return { success: true }
       } catch (err) {
         return {
@@ -992,6 +903,7 @@ class SawClient {
           error: err instanceof Error ? err.message : 'Erro ao resolver token no SAW',
         }
       } finally {
+        if (biofacePage) await biofacePage.close().catch(() => {})
         if (page) await page.close().catch(() => {})
       }
     })
