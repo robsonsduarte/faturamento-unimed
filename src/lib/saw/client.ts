@@ -1074,30 +1074,68 @@ class SawClient {
     try {
       console.log(`[SAW] submitToken: preenchendo token ${digits} na guia ${numeroGuia}`)
 
-      // Fill the 6 input fields
+      // Debug: log what inputs exist on the page
+      const debugInfo = await page.evaluate(() => {
+        const allInputs = document.querySelectorAll('input')
+        const info = Array.from(allInputs).map((inp) => ({
+          type: inp.type,
+          name: inp.name,
+          id: inp.id,
+          maxLength: inp.maxLength,
+          size: inp.size,
+          className: inp.className,
+          value: inp.value,
+        }))
+        return { total: allInputs.length, inputs: info.slice(0, 20), bodyText: (document.body?.innerText ?? '').substring(0, 300) }
+      }).catch(() => ({ total: 0, inputs: [], bodyText: 'evaluate failed' }))
+
+      console.log(`[SAW] submitToken: DEBUG — ${debugInfo.total} inputs na pagina. Body: ${debugInfo.bodyText.substring(0, 150)}`)
+      console.log(`[SAW] submitToken: DEBUG inputs:`, JSON.stringify(debugInfo.inputs.slice(0, 10)))
+
+      // Fill the 6 input fields — try multiple strategies
       const filled = await page.evaluate((d: string) => {
-        const inputs = document.querySelectorAll('input[type="text"][maxlength="1"], input[type="tel"][maxlength="1"], input.token-input, input[size="1"]')
+        // Strategy 1: maxlength=1 inputs
+        let inputs = Array.from(document.querySelectorAll('input[type="text"][maxlength="1"], input[type="tel"][maxlength="1"], input[size="1"]'))
 
-        const targetInputs = inputs.length >= 6
-          ? Array.from(inputs)
-          : Array.from(document.querySelectorAll('input[type="text"]')).filter((inp) => {
-              const el = inp as HTMLInputElement
-              return el.maxLength <= 2 || el.size <= 2
-            })
+        // Strategy 2: inputs inside token container
+        if (inputs.length < 6) {
+          const tokenContainer = document.querySelector('.token, [class*="token"], [id*="token"], [class*="codigo"]')
+          if (tokenContainer) {
+            inputs = Array.from(tokenContainer.querySelectorAll('input'))
+          }
+        }
 
-        if (targetInputs.length < 6) {
-          return { ok: false, count: targetInputs.length }
+        // Strategy 3: small text inputs (maxlength <= 2)
+        if (inputs.length < 6) {
+          inputs = Array.from(document.querySelectorAll('input[type="text"]')).filter((inp) => {
+            const el = inp as HTMLInputElement
+            return el.maxLength <= 2 && el.maxLength > 0
+          })
+        }
+
+        // Strategy 4: all visible text inputs that are not hidden/large
+        if (inputs.length < 6) {
+          inputs = Array.from(document.querySelectorAll('input[type="text"], input[type="tel"], input[type="number"]')).filter((inp) => {
+            const el = inp as HTMLInputElement
+            const style = window.getComputedStyle(el)
+            const width = parseInt(style.width)
+            return style.display !== 'none' && style.visibility !== 'hidden' && (width < 80 || el.maxLength <= 6)
+          })
+        }
+
+        if (inputs.length < 6) {
+          return { ok: false, count: inputs.length, strategy: 'none' }
         }
 
         for (let i = 0; i < 6; i++) {
-          const inp = targetInputs[i] as HTMLInputElement
+          const inp = inputs[i] as HTMLInputElement
           inp.value = d[i]
           inp.dispatchEvent(new Event('input', { bubbles: true }))
           inp.dispatchEvent(new Event('change', { bubbles: true }))
           inp.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }))
         }
 
-        return { ok: true, count: targetInputs.length }
+        return { ok: true, count: inputs.length }
       }, digits)
 
       if (!filled || !filled.ok) {
