@@ -211,6 +211,16 @@ export interface SawConfig {
   cookie_key: string
 }
 
+export interface BiometriaFoto {
+  id: string
+  numero_carteira: string
+  paciente_nome: string
+  photo_path: string
+  captured_by: string | null
+  created_at: string
+  updated_at: string
+}
+
 export interface SawCredentials {
   id: string
   user_id: string

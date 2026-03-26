@@ -2,7 +2,7 @@
 
 import { use, useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, RefreshCw, CheckCircle, RotateCw } from 'lucide-react'
+import { ArrowLeft, RefreshCw, CheckCircle, RotateCw, Camera, Loader2, Send } from 'lucide-react'
 import { useGuia, useUpdateGuiaStatus } from '@/hooks/use-guias'
 import { useProfile } from '@/hooks/use-profile'
 import { StatusBadge } from '@/components/shared/status-badge'
@@ -12,6 +12,8 @@ import { formatCurrency, formatDate, cn } from '@/lib/utils'
 import { GUIDE_STATUS_FLOW } from '@/lib/constants'
 import type { GuideStatus } from '@/lib/constants'
 import type { ImportLog } from '@/lib/types'
+import { CameraCapture } from '@/components/shared/camera-capture'
+import { toast } from 'sonner'
 
 interface Props {
   params: Promise<{ id: string }>
@@ -26,6 +28,93 @@ export default function GuiaDetailPage({ params }: Props) {
   const [reimporting, setReimporting] = useState(false)
   const [logs, setLogs] = useState<ImportLog[]>([])
   const logsEndRef = useRef<HTMLDivElement>(null)
+
+  // Biometria states
+  const [showCamera, setShowCamera] = useState(false)
+  const [bioPhoto, setBioPhoto] = useState<string | null>(null)
+  const [bioLoading, setBioLoading] = useState(false)
+  const [bioResolving, setBioResolving] = useState(false)
+  const [bioLogs, setBioLogs] = useState<ImportLog[]>([])
+
+  // Buscar foto existente quando guia TOKEN carrega
+  useEffect(() => {
+    if (guia?.status === 'TOKEN' && guia.numero_carteira) {
+      fetch(`/api/biometria/foto/${encodeURIComponent(guia.numero_carteira)}`)
+        .then((r) => r.json())
+        .then((data) => {
+          if (data.exists && data.url) setBioPhoto(data.url)
+        })
+        .catch(() => {})
+    }
+  }, [guia?.status, guia?.numero_carteira])
+
+  async function handleCapturarFoto(base64: string) {
+    if (!guia) return
+    setBioLoading(true)
+    setShowCamera(false)
+    try {
+      const res = await fetch('/api/biometria/capturar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ guia_id: guia.id, photo_base64: base64 }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      // Buscar URL assinada da foto salva
+      if (guia.numero_carteira) {
+        const fotoRes = await fetch(`/api/biometria/foto/${encodeURIComponent(guia.numero_carteira)}`)
+        const fotoData = await fotoRes.json()
+        if (fotoData.exists && fotoData.url) setBioPhoto(fotoData.url)
+      }
+      toast.success('Foto capturada e salva com sucesso')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao salvar foto')
+    } finally {
+      setBioLoading(false)
+    }
+  }
+
+  async function handleResolverToken() {
+    if (!guia) return
+    setBioResolving(true)
+    setBioLogs([])
+    try {
+      const res = await fetch('/api/biometria/resolver-token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ guia_id: guia.id }),
+      })
+
+      const reader = res.body?.getReader()
+      if (!reader) throw new Error('Stream nao disponivel')
+
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n\n')
+        buffer = lines.pop() ?? ''
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const log = JSON.parse(line.slice(6)) as ImportLog
+              setBioLogs((prev) => [...prev, log])
+            } catch { /* ignore */ }
+          }
+        }
+      }
+
+      await refetch()
+      toast.success('Processo de biometria concluido')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao resolver token')
+    } finally {
+      setBioResolving(false)
+    }
+  }
 
   // Auto-scroll logs to bottom
   useEffect(() => {
@@ -278,6 +367,105 @@ export default function GuiaDetailPage({ params }: Props) {
           ))}
         </div>
       </div>
+
+      {/* Biometria Facial — apenas para guias TOKEN */}
+      {guia.status === 'TOKEN' && !isVisualizador && (
+        <div
+          className="rounded-xl border overflow-hidden"
+          style={{ borderColor: 'var(--color-warning)', background: 'var(--color-card)' }}
+        >
+          <div
+            className="flex items-center justify-between px-5 py-4 border-b"
+            style={{ borderColor: 'var(--color-warning)', background: 'rgba(245, 158, 11, 0.08)' }}
+          >
+            <div className="flex items-center gap-3">
+              <Camera className="w-5 h-5" style={{ color: 'var(--color-warning)' }} />
+              <h2 className="text-sm font-semibold" style={{ color: 'var(--color-warning)' }}>
+                Biometria Facial
+              </h2>
+            </div>
+            {bioPhoto && !bioResolving && (
+              <button
+                onClick={handleResolverToken}
+                className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white"
+                style={{ background: 'var(--color-primary)' }}
+              >
+                <Send className="w-4 h-4" />
+                Resolver Token
+              </button>
+            )}
+          </div>
+
+          <div className="p-5 space-y-4">
+            {/* Camera ou Preview */}
+            {showCamera ? (
+              <CameraCapture
+                onCapture={handleCapturarFoto}
+                onCancel={() => setShowCamera(false)}
+              />
+            ) : bioPhoto ? (
+              <div className="flex items-start gap-4">
+                <div className="shrink-0 overflow-hidden rounded-lg border" style={{ borderColor: 'var(--color-border)', width: 160 }}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={bioPhoto} alt="Foto biometria" className="w-full" />
+                </div>
+                <div className="space-y-2">
+                  <p className="text-sm" style={{ color: 'var(--color-text)' }}>
+                    Foto do paciente salva.
+                  </p>
+                  <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                    Clique em &quot;Resolver Token&quot; para injetar no SAW e desbloquear a guia.
+                  </p>
+                  <button
+                    onClick={() => setShowCamera(true)}
+                    className="text-xs underline"
+                    style={{ color: 'var(--color-text-muted)' }}
+                  >
+                    Atualizar foto
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-4 space-y-3">
+                <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
+                  Esta guia requer biometria facial. Capture a foto do paciente para resolver o token.
+                </p>
+                <button
+                  onClick={() => setShowCamera(true)}
+                  disabled={bioLoading}
+                  className="inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold text-white"
+                  style={{ background: 'var(--color-primary)' }}
+                >
+                  {bioLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Camera className="w-4 h-4" />}
+                  Capturar Foto
+                </button>
+              </div>
+            )}
+
+            {/* Logs da resolucao */}
+            {(bioResolving || bioLogs.length > 0) && (
+              <div
+                className="rounded-lg p-3 font-mono text-xs max-h-48 overflow-y-auto space-y-0.5"
+                style={{ background: '#0a0a0a' }}
+              >
+                {bioLogs.map((log, i) => (
+                  <div key={i} className={cn(
+                    log.type === 'success' && 'text-[#4ade80]',
+                    log.type === 'error' && 'text-[#f87171]',
+                    log.type === 'processing' && 'text-[#f0c040]',
+                    log.type === 'info' && 'text-[#a0a0a0]',
+                  )}>
+                    [{log.timestamp}] {log.message}
+                  </div>
+                ))}
+                {bioResolving && (
+                  <div className="text-[#f0c040] animate-pulse">Processando...</div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Procedimentos */}
       {guia.procedimentos && guia.procedimentos.length > 0 && (

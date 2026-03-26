@@ -670,6 +670,169 @@ class SawClient {
     })
   }
 
+  // ─── Resolve biometric token ─────────────────────────────────
+  async resolveToken(
+    userId: string,
+    cookies: SawCookie[],
+    numeroGuia: string,
+    photoBase64: string
+  ): Promise<{ success: boolean; error?: string }> {
+    return this.withLock(userId, async () => {
+      let page: Page | null = null
+
+      try {
+        const context = await this.getContext(userId, cookies)
+        page = await context.newPage()
+        page.setDefaultTimeout(30_000)
+
+        const guiaUrl = `${SAW_BASE}/saw/tiss/SolicitacaoDeSPSADT40.do?method=consultarGuiaDeSPSADT&manterTISSSPSADT40DTO.tissSolicitacaoDeSPSADTDTO.numeroDaGuia=${encodeURIComponent(numeroGuia)}&manterTISSSPSADT40DTO.tissSolicitacaoDeSPSADTDTO.isConsultaNaGuia=true`
+
+        console.log(`[SAW] resolveToken: navegando para guia ${numeroGuia}`)
+        await page.goto(guiaUrl, { waitUntil: 'networkidle', timeout: 30_000 })
+        await page.waitForTimeout(2000)
+
+        // A guia pode redirecionar para MantemTokenDeAtendimento ou abrir com botao check-in
+        const currentUrl = page.url()
+
+        // Caso 1: Redirecionou para tela de token — precisamos voltar para a guia
+        if (currentUrl.includes('MantemTokenDeAtendimento') || currentUrl.includes('TokenDeAtendimento')) {
+          console.log(`[SAW] resolveToken: pagina de token detectada, voltando para guia`)
+          // Fechar popup/tela de token e navegar para guia novamente
+          await page.goto(guiaUrl, { waitUntil: 'networkidle', timeout: 30_000 })
+          await page.waitForTimeout(2000)
+        }
+
+        // Procurar botao de check-in na pagina da guia
+        const checkInButton = await page.$('#linkCheckInPacienteBiometriaFacial a, a[href*="check"], a:has-text("Check-in")')
+
+        if (!checkInButton) {
+          // Tentar encontrar o texto "Realize o check-in"
+          const hasCheckInText = await page.evaluate(() =>
+            document.body.innerText.includes('Realize o check-in')
+          )
+
+          if (!hasCheckInText) {
+            return { success: false, error: 'Botao de check-in nao encontrado na guia. A guia pode ja ter sido resolvida.' }
+          }
+
+          // Clicar no link de check-in pelo texto
+          await page.click('a:has-text("check-in"), a:has-text("Check-in")')
+        } else {
+          await checkInButton.click()
+        }
+
+        console.log(`[SAW] resolveToken: clicou check-in, aguardando TRIX iframe`)
+        await page.waitForTimeout(3000)
+
+        // Procurar iframe do TRIX BioFace
+        const trixFrame = page.frames().find((f) =>
+          f.url().includes('bioface.trixti.com.br') || f.url().includes('trixti')
+        )
+
+        if (!trixFrame) {
+          // Pode ser um popup/nova aba — verificar se abriu dialog
+          const hasTokenDialog = await page.evaluate(() => {
+            const body = document.body.innerText
+            return body.includes('token para continuar') || body.includes('Aplicativo') && body.includes('Email') && body.includes('SMS')
+          })
+
+          if (hasTokenDialog) {
+            return { success: false, error: 'Tela de envio de token exibida (Aplicativo/Email/SMS). Esta guia requer token pelo app, nao biometria facial.' }
+          }
+
+          return { success: false, error: 'Iframe TRIX BioFace nao encontrado. Verifique se a guia realmente exige biometria facial.' }
+        }
+
+        console.log(`[SAW] resolveToken: TRIX iframe encontrado, injetando foto`)
+
+        // Aguardar iframe carregar
+        await trixFrame.waitForLoadState('domcontentloaded').catch(() => {})
+        await page.waitForTimeout(2000)
+
+        // Injetar foto no iframe TRIX
+        const injected = await trixFrame.evaluate((b64: string) => {
+          try {
+            // Esconder webcam
+            const camera = document.querySelector('#my_camera') as HTMLElement
+            if (camera) camera.style.display = 'none'
+
+            // Injetar foto no container de resultados
+            const results = document.querySelector('#results') as HTMLElement
+            if (results) {
+              results.innerHTML = `<img src="data:image/jpeg;base64,${b64}" style="width:100%;height:auto;" />`
+            }
+
+            // Mostrar botao de autenticar
+            const authBtn = document.querySelector('#id-botao-autenticar') as HTMLElement
+            if (authBtn) {
+              authBtn.style.display = 'block'
+              authBtn.style.visibility = 'visible'
+            }
+
+            return { ok: true, hasCamera: !!camera, hasResults: !!results, hasAuthBtn: !!authBtn }
+          } catch (e) {
+            return { ok: false, error: (e as Error).message }
+          }
+        }, photoBase64)
+
+        if (!injected.ok) {
+          return { success: false, error: `Falha ao injetar foto no TRIX: ${(injected as { error?: string }).error}` }
+        }
+
+        console.log(`[SAW] resolveToken: foto injetada (camera=${(injected as { hasCamera: boolean }).hasCamera}, results=${(injected as { hasResults: boolean }).hasResults}, authBtn=${(injected as { hasAuthBtn: boolean }).hasAuthBtn})`)
+
+        await page.waitForTimeout(1000)
+
+        // Clicar botao de autenticar
+        const clicked = await trixFrame.evaluate(() => {
+          const btn = document.querySelector('#id-botao-autenticar') as HTMLElement
+          if (btn) { btn.click(); return true }
+          // Fallback: qualquer botao com texto "autenticar"
+          const btns = Array.from(document.querySelectorAll('button, a, input[type="button"]'))
+          const authBtn = btns.find((b) => (b.textContent ?? '').toLowerCase().includes('autenticar'))
+          if (authBtn) { (authBtn as HTMLElement).click(); return true }
+          return false
+        })
+
+        if (!clicked) {
+          return { success: false, error: 'Botao de autenticacao nao encontrado no TRIX.' }
+        }
+
+        console.log(`[SAW] resolveToken: clicou autenticar, aguardando processamento TRIX`)
+
+        // Aguardar TRIX processar (10-15s)
+        await page.waitForTimeout(12_000)
+
+        // Verificar resultado
+        const resultado = await trixFrame.evaluate(() => {
+          const body = document.body?.innerText ?? ''
+          const html = document.body?.innerHTML ?? ''
+          return {
+            texto: body.substring(0, 500),
+            temSucesso: /sucesso|autenticad|confirmad|aprovad/i.test(body),
+            temErro: /erro|falha|nao reconhecid|negad|timeout/i.test(body),
+          }
+        }).catch(() => ({ texto: '', temSucesso: false, temErro: false }))
+
+        console.log(`[SAW] resolveToken: resultado TRIX — sucesso=${resultado.temSucesso}, erro=${resultado.temErro}, texto=${resultado.texto.substring(0, 100)}`)
+
+        if (resultado.temErro && !resultado.temSucesso) {
+          return { success: false, error: `TRIX rejeitou a biometria: ${resultado.texto.substring(0, 200)}` }
+        }
+
+        // Se nao deu erro explicito, considerar sucesso (TRIX pode nao ter mensagem clara)
+        return { success: true }
+      } catch (err) {
+        return {
+          success: false,
+          error: err instanceof Error ? err.message : 'Erro ao resolver token no SAW',
+        }
+      } finally {
+        if (page) await page.close().catch(() => {})
+      }
+    })
+  }
+
   // ─── Force reconnect for a specific user ────────────────────
   async forceReconnect(userId: string): Promise<void> {
     console.log(`[SAW] Force reconnecting for user ${userId.slice(0, 8)}...`)
