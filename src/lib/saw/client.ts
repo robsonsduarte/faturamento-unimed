@@ -865,19 +865,42 @@ class SawClient {
       const guiaUrl = `${SAW_BASE}/saw/tiss/SolicitacaoDeSPSADT40.do?method=consultarGuiaDeSPSADT&manterTISSSPSADT40DTO.tissSolicitacaoDeSPSADTDTO.numeroDaGuia=${encodeURIComponent(numeroGuia)}&manterTISSSPSADT40DTO.tissSolicitacaoDeSPSADTDTO.isConsultaNaGuia=true`
 
       console.log(`[SAW] openTokenPage: navegando para guia ${numeroGuia}`)
-      await page.goto(guiaUrl, { waitUntil: 'networkidle', timeout: 30_000 })
-      await page.waitForTimeout(2000)
+      await page.goto(guiaUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 })
+      // Wait for page to settle (SAW may do JS redirects)
+      await page.waitForTimeout(3000)
 
-      // Verify we're on the token page
+      // Check if session expired (redirected to login)
+      const hasLoginInputs = await page.evaluate(() => {
+        const u = document.querySelector('input[id="login"], input[name="login"]')
+        const p = document.querySelector('input[type="password"]')
+        return !!(u && p)
+      }).catch(() => false)
+
+      if (hasLoginInputs) {
+        await page.close().catch(() => {})
+        return { success: false, error: 'Sessao SAW expirou. Tente novamente.' }
+      }
+
+      // Verify we're on the token page or detected token indicators
+      const currentUrl = page.url()
       const pageText = await page.evaluate(() => document.body?.innerText ?? '')
-      const isTokenPage = page.url().includes('MantemTokenDeAtendimento') ||
-        page.url().includes('TokenDeAtendimento') ||
+
+      console.log(`[SAW] openTokenPage: URL=${currentUrl.substring(0, 80)}, texto=${pageText.substring(0, 100)}`)
+
+      const isTokenPage = currentUrl.includes('MantemTokenDeAtendimento') ||
+        currentUrl.includes('TokenDeAtendimento') ||
         pageText.includes('informe um token para continuar o atendimento') ||
-        pageText.includes('Selecione uma forma de envio')
+        pageText.includes('Selecione uma forma de envio') ||
+        pageText.includes('Aplicativo') && pageText.includes('SMS')
 
       if (!isTokenPage) {
+        // Maybe it loaded the actual guide (token already resolved)
+        const isGuiaPage = pageText.includes('GUIA DE SERVI') || pageText.includes('SP/SADT')
         await page.close().catch(() => {})
-        return { success: false, error: 'Guia nao redirecionou para tela de token. Pode ja ter sido resolvida.' }
+        if (isGuiaPage) {
+          return { success: false, error: 'A guia abriu normalmente. O token pode ja ter sido resolvido. Reimporte a guia.' }
+        }
+        return { success: false, error: `Pagina inesperada: ${currentUrl.substring(0, 100)}` }
       }
 
       // Extract available methods and phones
