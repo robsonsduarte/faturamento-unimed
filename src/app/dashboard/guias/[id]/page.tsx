@@ -2,7 +2,7 @@
 
 import { use, useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, RefreshCw, CheckCircle, RotateCw, Camera, Loader2, Send } from 'lucide-react'
+import { ArrowLeft, RefreshCw, CheckCircle, RotateCw, Camera, Loader2, Send, Smartphone, MessageSquare } from 'lucide-react'
 import { useGuia, useUpdateGuiaStatus } from '@/hooks/use-guias'
 import { useProfile } from '@/hooks/use-profile'
 import { StatusBadge } from '@/components/shared/status-badge'
@@ -36,6 +36,19 @@ export default function GuiaDetailPage({ params }: Props) {
   const [bioResolving, setBioResolving] = useState(false)
   const [bioLogs, setBioLogs] = useState<ImportLog[]>([])
 
+  // Token WhatsApp states
+  const [tokenMode, setTokenMode] = useState<'none' | 'biometria' | 'whatsapp'>('none')
+  const [tokenSessionId, setTokenSessionId] = useState<string | null>(null)
+  const [tokenMethods, setTokenMethods] = useState<{ aplicativo: boolean; sms: boolean } | null>(null)
+  const [tokenPhones, setTokenPhones] = useState<string[]>([])
+  const [selectedMethod, setSelectedMethod] = useState<'aplicativo' | 'sms' | null>(null)
+  const [selectedPhone, setSelectedPhone] = useState<string>('')
+  const [whatsappPhone, setWhatsappPhone] = useState('')
+  const [tokenStep, setTokenStep] = useState<'choose' | 'method' | 'waiting' | 'done'>('choose')
+  const [tokenLoading, setTokenLoading] = useState(false)
+  const [tokenStatus, setTokenStatus] = useState<string>('')
+  const [manualToken, setManualToken] = useState('')
+
   // Buscar foto existente quando guia TOKEN carrega
   useEffect(() => {
     if (guia?.status === 'TOKEN' && guia.numero_carteira) {
@@ -60,7 +73,6 @@ export default function GuiaDetailPage({ params }: Props) {
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
-      // Buscar URL assinada da foto salva
       if (guia.numero_carteira) {
         const fotoRes = await fetch(`/api/biometria/foto/${encodeURIComponent(guia.numero_carteira)}`)
         const fotoData = await fotoRes.json()
@@ -84,13 +96,10 @@ export default function GuiaDetailPage({ params }: Props) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ guia_id: guia.id }),
       })
-
       const reader = res.body?.getReader()
       if (!reader) throw new Error('Stream nao disponivel')
-
       const decoder = new TextDecoder()
       let buffer = ''
-
       while (true) {
         const { done, value } = await reader.read()
         if (done) break
@@ -99,20 +108,126 @@ export default function GuiaDetailPage({ params }: Props) {
         buffer = lines.pop() ?? ''
         for (const line of lines) {
           if (line.startsWith('data: ')) {
-            try {
-              const log = JSON.parse(line.slice(6)) as ImportLog
-              setBioLogs((prev) => [...prev, log])
-            } catch { /* ignore */ }
+            try { setBioLogs((prev) => [...prev, JSON.parse(line.slice(6)) as ImportLog]) } catch { /* */ }
           }
         }
       }
-
       await refetch()
       toast.success('Processo de biometria concluido')
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Erro ao resolver token')
     } finally {
       setBioResolving(false)
+    }
+  }
+
+  // WhatsApp token flow
+  async function handleIniciarToken() {
+    if (!guia) return
+    setTokenLoading(true)
+    setTokenStatus('Abrindo guia no SAW...')
+    try {
+      const res = await fetch('/api/biometria/iniciar-token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ guia_id: guia.id }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+
+      setTokenSessionId(data.sessionId)
+      setTokenMethods(data.methods)
+      setTokenPhones(data.phones ?? [])
+      setTokenStep('method')
+      setTokenStatus('Escolha o metodo de autenticacao')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao abrir token')
+      setTokenStatus('')
+    } finally {
+      setTokenLoading(false)
+    }
+  }
+
+  async function handleSelecionarMetodo() {
+    if (!tokenSessionId || !selectedMethod) return
+    setTokenLoading(true)
+    setTokenStatus(selectedMethod === 'sms' ? 'Enviando SMS...' : 'Selecionando aplicativo...')
+    try {
+      const res = await fetch('/api/biometria/selecionar-metodo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId: tokenSessionId,
+          method: selectedMethod,
+          phone: selectedMethod === 'sms' ? selectedPhone : undefined,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+
+      setTokenStatus(selectedMethod === 'sms'
+        ? 'SMS enviado! Aguardando token do paciente...'
+        : 'Aplicativo selecionado. Aguardando token do paciente...')
+      setTokenStep('waiting')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao selecionar metodo')
+    } finally {
+      setTokenLoading(false)
+    }
+  }
+
+  async function handleEnviarWhatsApp() {
+    if (!guia || !tokenSessionId || !selectedMethod || !whatsappPhone) return
+    setTokenLoading(true)
+    try {
+      const res = await fetch('/api/biometria/enviar-whatsapp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId: tokenSessionId,
+          guia_id: guia.id,
+          guide_number: guia.guide_number,
+          paciente_nome: guia.paciente,
+          phone_whatsapp: whatsappPhone,
+          method: selectedMethod,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      toast.success('Mensagem enviada ao paciente!')
+      setTokenStatus('Mensagem enviada. Aguardando resposta com o token...')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao enviar WhatsApp')
+    } finally {
+      setTokenLoading(false)
+    }
+  }
+
+  async function handleSubmeterTokenManual() {
+    if (!tokenSessionId || !manualToken || !guia) return
+    setTokenLoading(true)
+    setTokenStatus('Validando token...')
+    try {
+      const res = await fetch('/api/biometria/submeter-token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId: tokenSessionId,
+          token: manualToken,
+          guia_id: guia.id,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      toast.success('Token validado com sucesso!')
+      setTokenStep('done')
+      setTokenStatus('Token validado! Guia desbloqueada.')
+      await refetch()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Token invalido')
+      setTokenStatus('Token invalido. Tente novamente.')
+    } finally {
+      setTokenLoading(false)
     }
   }
 
@@ -368,86 +483,264 @@ export default function GuiaDetailPage({ params }: Props) {
         </div>
       </div>
 
-      {/* Biometria Facial — apenas para guias TOKEN */}
+      {/* Resolver Token — apenas para guias TOKEN */}
       {guia.status === 'TOKEN' && !isVisualizador && (
         <div
           className="rounded-xl border overflow-hidden"
           style={{ borderColor: 'var(--color-warning)', background: 'var(--color-card)' }}
         >
           <div
-            className="flex items-center justify-between px-5 py-4 border-b"
+            className="px-5 py-4 border-b"
             style={{ borderColor: 'var(--color-warning)', background: 'rgba(245, 158, 11, 0.08)' }}
           >
-            <div className="flex items-center gap-3">
-              <Camera className="w-5 h-5" style={{ color: 'var(--color-warning)' }} />
-              <h2 className="text-sm font-semibold" style={{ color: 'var(--color-warning)' }}>
-                Biometria Facial
-              </h2>
-            </div>
-            {bioPhoto && !bioResolving && (
-              <button
-                onClick={handleResolverToken}
-                className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white"
-                style={{ background: 'var(--color-primary)' }}
-              >
-                <Send className="w-4 h-4" />
-                Resolver Token
-              </button>
-            )}
+            <h2 className="text-sm font-semibold" style={{ color: 'var(--color-warning)' }}>
+              Resolver Token de Atendimento
+            </h2>
+            <p className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>
+              Esta guia requer autenticacao antes de ser acessada no SAW.
+            </p>
           </div>
 
           <div className="p-5 space-y-4">
-            {/* Camera ou Preview */}
-            {showCamera ? (
-              <CameraCapture
-                onCapture={handleCapturarFoto}
-                onCancel={() => setShowCamera(false)}
-              />
-            ) : bioPhoto ? (
-              <div className="flex items-start gap-4">
-                <div className="shrink-0 overflow-hidden rounded-lg border" style={{ borderColor: 'var(--color-border)', width: 160 }}>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={bioPhoto} alt="Foto biometria" className="w-full" />
-                </div>
-                <div className="space-y-2">
-                  <p className="text-sm" style={{ color: 'var(--color-text)' }}>
-                    Foto do paciente salva.
-                  </p>
-                  <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-                    Clique em &quot;Resolver Token&quot; para injetar no SAW e desbloquear a guia.
-                  </p>
-                  <button
-                    onClick={() => setShowCamera(true)}
-                    className="text-xs underline"
-                    style={{ color: 'var(--color-text-muted)' }}
-                  >
-                    Atualizar foto
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="text-center py-4 space-y-3">
-                <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
-                  Esta guia requer biometria facial. Capture a foto do paciente para resolver o token.
-                </p>
+            {/* Escolha do modo */}
+            {tokenMode === 'none' && !showCamera && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <button
-                  onClick={() => setShowCamera(true)}
-                  disabled={bioLoading}
-                  className="inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold text-white"
-                  style={{ background: 'var(--color-primary)' }}
+                  onClick={() => { setTokenMode('whatsapp'); handleIniciarToken() }}
+                  disabled={tokenLoading}
+                  className="flex items-center gap-3 rounded-lg border p-4 text-left transition-colors hover:border-[var(--color-primary)]"
+                  style={{ borderColor: 'var(--color-border)', background: 'var(--color-surface)' }}
                 >
-                  {bioLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Camera className="w-4 h-4" />}
-                  Capturar Foto
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full" style={{ background: 'rgba(16, 185, 129, 0.15)' }}>
+                    <MessageSquare className="w-5 h-5" style={{ color: 'var(--color-primary)' }} />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold" style={{ color: 'var(--color-text)' }}>Token via WhatsApp</p>
+                    <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Enviar instrucoes ao paciente por WhatsApp (App ou SMS)</p>
+                  </div>
+                </button>
+                <button
+                  onClick={() => { setTokenMode('biometria'); setShowCamera(true) }}
+                  className="flex items-center gap-3 rounded-lg border p-4 text-left transition-colors hover:border-[var(--color-primary)]"
+                  style={{ borderColor: 'var(--color-border)', background: 'var(--color-surface)' }}
+                >
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full" style={{ background: 'rgba(14, 165, 233, 0.15)' }}>
+                    <Camera className="w-5 h-5" style={{ color: 'var(--color-secondary)' }} />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold" style={{ color: 'var(--color-text)' }}>Biometria Facial</p>
+                    <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Capturar foto presencial do paciente</p>
+                  </div>
                 </button>
               </div>
             )}
 
-            {/* Logs da resolucao */}
+            {/* === MODO BIOMETRIA === */}
+            {tokenMode === 'biometria' && (
+              <>
+                {showCamera ? (
+                  <CameraCapture onCapture={handleCapturarFoto} onCancel={() => { setShowCamera(false); setTokenMode('none') }} />
+                ) : bioPhoto ? (
+                  <div className="flex items-start gap-4">
+                    <div className="shrink-0 overflow-hidden rounded-lg border" style={{ borderColor: 'var(--color-border)', width: 160 }}>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={bioPhoto} alt="Foto biometria" className="w-full" />
+                    </div>
+                    <div className="space-y-2">
+                      <p className="text-sm" style={{ color: 'var(--color-text)' }}>Foto salva.</p>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={handleResolverToken}
+                          disabled={bioResolving}
+                          className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white"
+                          style={{ background: 'var(--color-primary)' }}
+                        >
+                          {bioResolving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                          Resolver Token
+                        </button>
+                        <button onClick={() => setShowCamera(true)} className="text-xs underline" style={{ color: 'var(--color-text-muted)' }}>
+                          Refazer foto
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setShowCamera(true)}
+                    disabled={bioLoading}
+                    className="inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold text-white"
+                    style={{ background: 'var(--color-primary)' }}
+                  >
+                    {bioLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Camera className="w-4 h-4" />}
+                    Capturar Foto
+                  </button>
+                )}
+              </>
+            )}
+
+            {/* === MODO WHATSAPP === */}
+            {tokenMode === 'whatsapp' && (
+              <div className="space-y-4">
+                {/* Status */}
+                {tokenStatus && (
+                  <div className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-muted)' }}>
+                    {tokenLoading && <Loader2 className="w-4 h-4 animate-spin" />}
+                    <Smartphone className="w-4 h-4" />
+                    {tokenStatus}
+                  </div>
+                )}
+
+                {/* Step: Escolher metodo */}
+                {tokenStep === 'method' && tokenMethods && (
+                  <div className="space-y-3">
+                    <p className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>Metodo de autenticacao:</p>
+                    <div className="flex flex-wrap gap-2">
+                      {tokenMethods.aplicativo && (
+                        <button
+                          onClick={() => setSelectedMethod('aplicativo')}
+                          className={cn(
+                            'rounded-lg border px-4 py-2 text-sm transition-colors',
+                            selectedMethod === 'aplicativo' ? 'border-[var(--color-primary)] text-[var(--color-primary)]' : 'border-[var(--color-border)] text-[var(--color-text-muted)]'
+                          )}
+                        >
+                          <Smartphone className="w-4 h-4 inline mr-1.5" />
+                          Aplicativo Unimed
+                        </button>
+                      )}
+                      {tokenMethods.sms && (
+                        <button
+                          onClick={() => setSelectedMethod('sms')}
+                          className={cn(
+                            'rounded-lg border px-4 py-2 text-sm transition-colors',
+                            selectedMethod === 'sms' ? 'border-[var(--color-primary)] text-[var(--color-primary)]' : 'border-[var(--color-border)] text-[var(--color-text-muted)]'
+                          )}
+                        >
+                          <MessageSquare className="w-4 h-4 inline mr-1.5" />
+                          SMS
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Telefone para SMS */}
+                    {selectedMethod === 'sms' && tokenPhones.length > 0 && (
+                      <div className="space-y-2">
+                        <label className="text-xs font-medium" style={{ color: 'var(--color-text-muted)' }}>Telefone para SMS:</label>
+                        <select
+                          value={selectedPhone}
+                          onChange={(e) => setSelectedPhone(e.target.value)}
+                          className="w-full rounded-lg border px-3 py-2 text-sm"
+                          style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+                        >
+                          <option value="">Selecione...</option>
+                          {tokenPhones.map((p) => (
+                            <option key={p} value={p}>{p}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+
+                    {/* Confirmar metodo */}
+                    {selectedMethod && (selectedMethod === 'aplicativo' || selectedPhone) && (
+                      <button
+                        onClick={handleSelecionarMetodo}
+                        disabled={tokenLoading}
+                        className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white"
+                        style={{ background: 'var(--color-primary)' }}
+                      >
+                        {tokenLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+                        {selectedMethod === 'sms' ? 'Enviar SMS' : 'Confirmar Aplicativo'}
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {/* Step: Aguardando token */}
+                {tokenStep === 'waiting' && (
+                  <div className="space-y-4">
+                    {/* WhatsApp para o paciente */}
+                    <div className="rounded-lg border p-4 space-y-3" style={{ borderColor: 'var(--color-border)', background: 'var(--color-surface)' }}>
+                      <p className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>
+                        Enviar instrucoes via WhatsApp:
+                      </p>
+                      <div className="flex gap-2">
+                        <input
+                          type="tel"
+                          placeholder="Telefone do paciente (DDD + numero)"
+                          value={whatsappPhone}
+                          onChange={(e) => setWhatsappPhone(e.target.value)}
+                          className="flex-1 rounded-lg border px-3 py-2 text-sm"
+                          style={{ background: 'var(--color-card)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+                        />
+                        <button
+                          onClick={handleEnviarWhatsApp}
+                          disabled={tokenLoading || !whatsappPhone}
+                          className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                          style={{ background: '#25d366' }}
+                        >
+                          {tokenLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                          Enviar
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Input manual do token */}
+                    <div className="rounded-lg border p-4 space-y-3" style={{ borderColor: 'var(--color-border)', background: 'var(--color-surface)' }}>
+                      <p className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>
+                        Ou digite o token manualmente:
+                      </p>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          placeholder="Token de 6 digitos"
+                          maxLength={6}
+                          value={manualToken}
+                          onChange={(e) => setManualToken(e.target.value.replace(/\D/g, ''))}
+                          className="w-32 rounded-lg border px-3 py-2 text-sm font-mono text-center tracking-widest"
+                          style={{ background: 'var(--color-card)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+                        />
+                        <button
+                          onClick={handleSubmeterTokenManual}
+                          disabled={tokenLoading || manualToken.length !== 6}
+                          className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                          style={{ background: 'var(--color-primary)' }}
+                        >
+                          {tokenLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+                          Validar
+                        </button>
+                      </div>
+                      <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                        O token sera preenchido automaticamente quando o paciente responder no WhatsApp.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Step: Concluido */}
+                {tokenStep === 'done' && (
+                  <div className="flex items-center gap-3 rounded-lg p-4" style={{ background: 'rgba(34, 197, 94, 0.1)' }}>
+                    <CheckCircle className="w-5 h-5" style={{ color: 'var(--color-success)' }} />
+                    <p className="text-sm font-medium" style={{ color: 'var(--color-success)' }}>
+                      Token validado! Guia desbloqueada no SAW.
+                    </p>
+                  </div>
+                )}
+
+                {/* Botao voltar */}
+                {tokenStep !== 'done' && (
+                  <button
+                    onClick={() => { setTokenMode('none'); setTokenStep('choose'); setTokenSessionId(null); setTokenStatus('') }}
+                    className="text-xs underline"
+                    style={{ color: 'var(--color-text-muted)' }}
+                  >
+                    Voltar
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Logs (biometria) */}
             {(bioResolving || bioLogs.length > 0) && (
-              <div
-                className="rounded-lg p-3 font-mono text-xs max-h-48 overflow-y-auto space-y-0.5"
-                style={{ background: '#0a0a0a' }}
-              >
+              <div className="rounded-lg p-3 font-mono text-xs max-h-48 overflow-y-auto space-y-0.5" style={{ background: '#0a0a0a' }}>
                 {bioLogs.map((log, i) => (
                   <div key={i} className={cn(
                     log.type === 'success' && 'text-[#4ade80]',
@@ -458,9 +751,7 @@ export default function GuiaDetailPage({ params }: Props) {
                     [{log.timestamp}] {log.message}
                   </div>
                 ))}
-                {bioResolving && (
-                  <div className="text-[#f0c040] animate-pulse">Processando...</div>
-                )}
+                {bioResolving && <div className="text-[#f0c040] animate-pulse">Processando...</div>}
               </div>
             )}
           </div>
