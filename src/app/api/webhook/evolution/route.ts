@@ -60,12 +60,31 @@ export async function POST(request: NextRequest) {
 
     const db = getServiceClient()
 
-    // Find active token session waiting for this phone number
-    // We store pending sessions in a simple approach: check all active token_requests
+    // Gerar variações do telefone para matching flexível
+    // WhatsApp pode enviar 557399913940 ou 5573999913940 (com/sem 9 extra)
+    const digits = senderPhone.replace(/\D/g, '')
+    const phoneVariations: string[] = [digits]
+
+    // Se começa com 55 + 2 dígitos DDD + 8 dígitos (sem 9), adicionar versão com 9
+    if (/^55\d{2}\d{8}$/.test(digits)) {
+      const ddd = digits.substring(2, 4)
+      const num = digits.substring(4)
+      phoneVariations.push(`55${ddd}9${num}`)
+    }
+    // Se começa com 55 + 2 dígitos DDD + 9 + 8 dígitos (com 9), adicionar versão sem 9
+    if (/^55\d{2}9\d{8}$/.test(digits)) {
+      const ddd = digits.substring(2, 4)
+      const num = digits.substring(5) // pula o 9
+      phoneVariations.push(`55${ddd}${num}`)
+    }
+
+    console.log(`[EVOLUTION] Buscando token_request para variações: ${phoneVariations.join(', ')}`)
+
+    // Find active token session for any phone variation
     const { data: pendingRequest } = await db
       .from('token_requests')
       .select('*')
-      .eq('phone_whatsapp', senderPhone)
+      .in('phone_whatsapp', phoneVariations)
       .eq('status', 'waiting')
       .gte('expires_at', new Date().toISOString())
       .order('created_at', { ascending: false })
@@ -73,7 +92,7 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (!pendingRequest) {
-      console.log(`[EVOLUTION] Nenhuma solicitacao pendente para ${senderPhone}`)
+      console.log(`[EVOLUTION] Nenhuma solicitacao pendente para ${phoneVariations.join('/')}`)
       return NextResponse.json({ received: true, noPending: true })
     }
 
