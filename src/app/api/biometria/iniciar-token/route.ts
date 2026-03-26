@@ -155,7 +155,127 @@ export async function POST(request: NextRequest) {
           return
         }
 
-        // Sucesso — enviar dados finais
+        send({ type: 'success', message: 'Pagina de token aberta no SAW.' })
+
+        // Buscar telefone do paciente no CPro
+        send({ type: 'processing', message: 'Buscando telefone do paciente...' })
+
+        let patientPhone = ''
+        try {
+          const { data: cproInteg } = await db.from('integracoes').select('config, ativo').eq('slug', 'cpro').single()
+          if (cproInteg?.ativo) {
+            const cproCfg = cproInteg.config as Record<string, string>
+            const cproUrl = `${cproCfg.api_url}/service/api/v1/executions/by-guide-number/${guia.guide_number}?company=${cproCfg.company ?? '1'}`
+
+            const https = await import('https')
+            const cproRes = await new Promise<string>((resolve) => {
+              const parsed = new URL(cproUrl)
+              const req = https.request({
+                hostname: parsed.hostname,
+                port: parsed.port || 443,
+                path: parsed.pathname + parsed.search,
+                method: 'GET',
+                headers: { 'X-API-Key': cproCfg.api_key, Host: 'consultoriopro.com.br', Accept: 'application/json' },
+                rejectUnauthorized: false,
+                timeout: 10000,
+              }, (res) => {
+                let body = ''
+                res.on('data', (c: Buffer) => { body += c.toString() })
+                res.on('end', () => resolve(body))
+              })
+              req.on('error', () => resolve(''))
+              req.on('timeout', () => { req.destroy(); resolve('') })
+              req.end()
+            })
+
+            if (cproRes) {
+              const cproJson = JSON.parse(cproRes)
+              const mobile = cproJson?.data?.patient?.mobile as string ?? ''
+              if (mobile) {
+                patientPhone = mobile.replace(/\D/g, '')
+                if (!patientPhone.startsWith('55')) patientPhone = `55${patientPhone}`
+              }
+            }
+          }
+        } catch {
+          // CPro falhou — continua sem telefone
+        }
+
+        if (!patientPhone) {
+          // Fallback: retorna resultado para o usuario preencher manualmente
+          send({
+            type: 'result',
+            success: true,
+            sessionId: result.sessionId,
+            guideNumber: guia.guide_number,
+            paciente: guia.paciente,
+            methods: result.methods,
+            phones: result.phones,
+            patientPhone: '',
+            autoSent: false,
+          })
+          controller.close()
+          return
+        }
+
+        send({ type: 'success', message: `Telefone encontrado: ${patientPhone.replace(/^55(\d{2})(\d+)/, '($1) $2')}` })
+
+        // Selecionar metodo "Aplicativo" automaticamente
+        send({ type: 'processing', message: 'Selecionando metodo Aplicativo...' })
+        await getSawClient().selectTokenMethod(result.sessionId!, 'aplicativo')
+
+        // Enviar WhatsApp automaticamente
+        send({ type: 'processing', message: 'Enviando WhatsApp ao paciente...' })
+
+        const evolutionUrl = process.env.EVOLUTION_API_URL ?? ''
+        const evolutionKey = process.env.EVOLUTION_API_KEY ?? ''
+        const instanceName = process.env.EVOLUTION_INSTANCE ?? 'Espaço Dedicare'
+
+        const whatsappMsg = [
+          `Ola! Precisamos do *token de atendimento* para a guia do paciente *${guia.paciente ?? ''}*.`,
+          '',
+          'Por favor, siga os passos:',
+          '1. Abra o *aplicativo da Unimed* no celular',
+          '2. Acesse a *carteira digital*',
+          '3. Copie o *token de 6 digitos* gerado',
+          '4. *Responda esta mensagem* com o token',
+          '',
+          'O token expira em *4 minutos e 30 segundos*.',
+          '',
+          '_Clinica Dedicare - Faturamento_',
+        ].join('\n')
+
+        let whatsappSent = false
+        if (evolutionKey) {
+          try {
+            const jid = `${patientPhone}@s.whatsapp.net`
+            const wRes = await fetch(`${evolutionUrl}/message/sendText/${encodeURIComponent(instanceName)}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', apikey: evolutionKey },
+              body: JSON.stringify({ number: jid, text: whatsappMsg }),
+            })
+            whatsappSent = wRes.ok
+          } catch { /* */ }
+        }
+
+        // Criar token_request para tracking
+        let requestId = ''
+        try {
+          const { data: tokenReq } = await db.from('token_requests').insert({
+            guia_id: guia.id,
+            guide_number: guia.guide_number,
+            paciente_nome: guia.paciente ?? '',
+            phone_whatsapp: patientPhone,
+            method: 'aplicativo',
+            session_id: result.sessionId!,
+            status: 'waiting',
+            expires_at: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+            created_by: user.id,
+          }).select('id').single()
+          requestId = tokenReq?.id ?? ''
+        } catch { /* */ }
+
+        const phoneDisplay = patientPhone.replace(/^55(\d{2})(\d+)/, '($1) $2')
         send({
           type: 'result',
           success: true,
@@ -164,7 +284,10 @@ export async function POST(request: NextRequest) {
           paciente: guia.paciente,
           methods: result.methods,
           phones: result.phones,
-          beneficiarioPhone: result.beneficiarioPhone,
+          patientPhone,
+          phoneDisplay,
+          autoSent: whatsappSent,
+          requestId,
         })
       } catch (err) {
         send({ type: 'error', message: err instanceof Error ? err.message : 'Erro interno' })

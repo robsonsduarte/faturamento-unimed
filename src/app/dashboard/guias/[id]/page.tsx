@@ -163,11 +163,31 @@ export default function GuiaDetailPage({ params }: Props) {
               setTokenSessionId(evt.sessionId as string)
               setTokenMethods(evt.methods as { aplicativo: boolean; sms: boolean })
               setTokenPhones((evt.phones as string[]) ?? [])
-              // Pre-preencher telefone do beneficiario se disponivel
-              const bPhone = evt.beneficiarioPhone as string ?? ''
-              if (bPhone && !whatsappPhone) setWhatsappPhone(bPhone)
-              setTokenStep('method')
-              setTokenStatus('Escolha o metodo e informe o telefone')
+
+              const autoSent = evt.autoSent as boolean
+              const phone = (evt.patientPhone as string) ?? ''
+              const phoneDisplay = (evt.phoneDisplay as string) ?? phone
+              const reqId = (evt.requestId as string) ?? ''
+
+              if (autoSent && reqId) {
+                // WhatsApp ja enviado automaticamente — pular para aguardando
+                setWhatsappPhone(phoneDisplay)
+                setSelectedMethod('aplicativo')
+                setTokenRequestId(reqId)
+                setTokenStep('waiting')
+                setTokenStatus(`Mensagem enviada para ${phoneDisplay}. Aguardando token...`)
+                startPolling(reqId)
+                toast.success(`WhatsApp enviado para ${phoneDisplay}`)
+              } else if (phone) {
+                // Tem telefone mas nao enviou — preencher e mostrar tela
+                setWhatsappPhone(phone)
+                setTokenStep('method')
+                setTokenStatus('Confirme o metodo e envie')
+              } else {
+                // Sem telefone — mostrar tela para preencher
+                setTokenStep('method')
+                setTokenStatus('Informe o telefone do paciente')
+              }
             }
           } catch (parseErr) {
             if (parseErr instanceof Error && parseErr.message !== 'Stream nao disponivel') {
