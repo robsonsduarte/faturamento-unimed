@@ -729,32 +729,81 @@ class SawClient {
         }
 
         console.log(`[SAW] resolveToken: clicou check-in, aguardando TRIX iframe`)
-        await page.waitForTimeout(3000)
+        await page.waitForTimeout(5000) // TRIX pode demorar
 
-        // Procurar iframe do TRIX BioFace
-        const trixFrame = page.frames().find((f) =>
-          f.url().includes('bioface.trixti.com.br') || f.url().includes('trixti')
-        )
-
-        if (!trixFrame) {
-          // Pode ser um popup/nova aba — verificar se abriu dialog
-          const hasTokenDialog = await page.evaluate(() => {
-            const body = document.body.innerText
-            return body.includes('token para continuar') || body.includes('Aplicativo') && body.includes('Email') && body.includes('SMS')
-          })
-
-          if (hasTokenDialog) {
-            return { success: false, error: 'Tela de envio de token exibida (Aplicativo/Email/SMS). Esta guia requer token pelo app, nao biometria facial.' }
-          }
-
-          return { success: false, error: 'Iframe TRIX BioFace nao encontrado. Verifique se a guia realmente exige biometria facial.' }
+        // Debug: listar todos os frames
+        const allFrames = page.frames()
+        console.log(`[SAW] resolveToken: ${allFrames.length} frames encontrados:`)
+        for (const f of allFrames) {
+          console.log(`  frame: ${f.url().substring(0, 120)}`)
         }
 
-        console.log(`[SAW] resolveToken: TRIX iframe encontrado, injetando foto`)
+        // Debug: verificar iframes no DOM
+        const iframeInfo = await page.evaluate(() => {
+          const iframes = document.querySelectorAll('iframe')
+          return Array.from(iframes).map((f) => ({
+            src: f.src?.substring(0, 120),
+            id: f.id,
+            name: f.name,
+            width: f.width,
+            height: f.height,
+          }))
+        }).catch(() => [])
+        console.log(`[SAW] resolveToken: iframes no DOM:`, JSON.stringify(iframeInfo))
+
+        // Debug: estado da pagina
+        const pageState = await page.evaluate(() => ({
+          url: window.location.href,
+          text: document.body?.innerText?.substring(0, 300) ?? '',
+        })).catch(() => ({ url: '', text: '' }))
+        console.log(`[SAW] resolveToken: pagina=${pageState.url.substring(0, 80)}, texto=${pageState.text.substring(0, 150)}`)
+
+        // Procurar iframe do TRIX BioFace
+        let trixFrame = allFrames.find((f) =>
+          f.url().includes('bioface') || f.url().includes('trixti') || f.url().includes('biometria')
+        )
+
+        // Fallback: qualquer iframe que nao seja a pagina principal
+        if (!trixFrame) {
+          trixFrame = allFrames.find((f) => f !== page!.mainFrame() && f.url() !== '' && f.url() !== 'about:blank')
+        }
+
+        if (!trixFrame) {
+          const hasTokenDialog = await page.evaluate(() => {
+            const body = document.body.innerText
+            return body.includes('token para continuar') || (body.includes('Aplicativo') && body.includes('SMS'))
+          }).catch(() => false)
+
+          if (hasTokenDialog) {
+            return { success: false, error: 'Tela de token numerico (Aplicativo/SMS) detectada. Use a opcao "Token via WhatsApp".' }
+          }
+
+          return { success: false, error: 'Iframe TRIX BioFace nao encontrado. A guia pode nao exigir biometria facial.' }
+        }
+
+        console.log(`[SAW] resolveToken: TRIX iframe encontrado: ${trixFrame.url().substring(0, 120)}`)
 
         // Aguardar iframe carregar
         await trixFrame.waitForLoadState('domcontentloaded').catch(() => {})
-        await page.waitForTimeout(2000)
+        await page.waitForTimeout(3000)
+
+        // Debug: conteudo do iframe
+        const iframeContent = await trixFrame.evaluate(() => ({
+          text: document.body?.innerText?.substring(0, 300) ?? '',
+          html: document.body?.innerHTML?.substring(0, 500) ?? '',
+          hasCamera: !!document.querySelector('#my_camera'),
+          hasResults: !!document.querySelector('#results'),
+          hasAuthBtn: !!document.querySelector('#id-botao-autenticar'),
+          allIds: Array.from(document.querySelectorAll('[id]')).map((e) => e.id).slice(0, 20),
+          allButtons: Array.from(document.querySelectorAll('button, input[type="button"], a')).map((e) =>
+            (e as HTMLElement).textContent?.trim().substring(0, 50) ?? ''
+          ).slice(0, 10),
+        })).catch(() => ({ text: 'evaluate failed', html: '', hasCamera: false, hasResults: false, hasAuthBtn: false, allIds: [], allButtons: [] }))
+
+        console.log(`[SAW] resolveToken: iframe conteudo — camera=${iframeContent.hasCamera}, results=${iframeContent.hasResults}, authBtn=${iframeContent.hasAuthBtn}`)
+        console.log(`[SAW] resolveToken: iframe IDs: ${iframeContent.allIds.join(', ')}`)
+        console.log(`[SAW] resolveToken: iframe buttons: ${iframeContent.allButtons.join(', ')}`)
+        console.log(`[SAW] resolveToken: iframe texto: ${iframeContent.text.substring(0, 200)}`)
 
         // Injetar foto no iframe TRIX
         const injected = await trixFrame.evaluate((b64: string) => {
