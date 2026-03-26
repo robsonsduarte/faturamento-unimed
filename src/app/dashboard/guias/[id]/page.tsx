@@ -2,7 +2,7 @@
 
 import { use, useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, RefreshCw, CheckCircle, RotateCw, Camera, Loader2, Send, Smartphone, MessageSquare } from 'lucide-react'
+import { ArrowLeft, RefreshCw, CheckCircle, XCircle, RotateCw, Camera, Loader2, Send, Smartphone, MessageSquare } from 'lucide-react'
 import { useGuia, useUpdateGuiaStatus } from '@/hooks/use-guias'
 import { useProfile } from '@/hooks/use-profile'
 import { StatusBadge } from '@/components/shared/status-badge'
@@ -49,6 +49,8 @@ export default function GuiaDetailPage({ params }: Props) {
   const [tokenStatus, setTokenStatus] = useState<string>('')
   const [manualToken, setManualToken] = useState('')
   const [tokenRequestId, setTokenRequestId] = useState<string | null>(null)
+  const [tokenError, setTokenError] = useState<string | null>(null)
+  const [tokenRecebido, setTokenRecebido] = useState<string | null>(null)
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // Buscar foto existente quando guia TOKEN carrega
@@ -228,6 +230,8 @@ export default function GuiaDetailPage({ params }: Props) {
           clearInterval(pollingRef.current!)
           pollingRef.current = null
           setTokenStep('done')
+          setTokenRecebido(data.token_received ?? null)
+          setTokenError(null)
           setTokenStatus('Token validado! Guia desbloqueada.')
           setTokenLoading(false)
           toast.success(`Token ${data.token_received ?? ''} validado com sucesso!`)
@@ -235,10 +239,13 @@ export default function GuiaDetailPage({ params }: Props) {
         } else if (data.status === 'failed') {
           clearInterval(pollingRef.current!)
           pollingRef.current = null
-          setTokenStatus(`Falha: ${data.error_message ?? 'Token invalido'}. Tente novamente.`)
+          setTokenRecebido(data.token_received ?? null)
+          setTokenError(data.error_message ?? 'Token invalido ou expirado')
+          setTokenStatus('')
           setTokenLoading(false)
           toast.error(data.error_message ?? 'Token invalido')
         } else if (data.status === 'processing') {
+          setTokenRecebido(data.token_received ?? null)
           setTokenStatus('Token recebido! Validando no SAW...')
         }
       } catch {
@@ -793,12 +800,43 @@ export default function GuiaDetailPage({ params }: Props) {
                   </div>
                 )}
 
+                {/* Resultado do token (erro) */}
+                {tokenError && tokenStep !== 'done' && (
+                  <div className="rounded-lg border p-4 space-y-2" style={{ borderColor: 'var(--color-danger)', background: 'rgba(239, 68, 68, 0.08)' }}>
+                    <div className="flex items-start gap-2">
+                      <XCircle className="w-5 h-5 shrink-0 mt-0.5" style={{ color: 'var(--color-danger)' }} />
+                      <div>
+                        <p className="text-sm font-medium" style={{ color: 'var(--color-danger)' }}>Token nao validado</p>
+                        {tokenRecebido && (
+                          <p className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>
+                            Token recebido: <span className="font-mono font-semibold">{tokenRecebido}</span>
+                          </p>
+                        )}
+                        <p className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>{tokenError}</p>
+                        <p className="text-xs mt-2" style={{ color: 'var(--color-text-muted)' }}>
+                          Solicite ao paciente que gere um novo token e tente novamente. Se a sessao expirou, clique em &quot;Voltar&quot; e reinicie o processo.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Step: Concluido */}
                 {tokenStep === 'done' && (
-                  <div className="flex items-center gap-3 rounded-lg p-4" style={{ background: 'rgba(34, 197, 94, 0.1)' }}>
-                    <CheckCircle className="w-5 h-5" style={{ color: 'var(--color-success)' }} />
-                    <p className="text-sm font-medium" style={{ color: 'var(--color-success)' }}>
-                      Token validado! Guia desbloqueada no SAW.
+                  <div className="rounded-lg border p-4 space-y-1" style={{ borderColor: 'var(--color-success)', background: 'rgba(34, 197, 94, 0.08)' }}>
+                    <div className="flex items-center gap-2">
+                      <CheckCircle className="w-5 h-5" style={{ color: 'var(--color-success)' }} />
+                      <p className="text-sm font-medium" style={{ color: 'var(--color-success)' }}>
+                        Token validado com sucesso!
+                      </p>
+                    </div>
+                    {tokenRecebido && (
+                      <p className="text-xs ml-7" style={{ color: 'var(--color-text-muted)' }}>
+                        Token: <span className="font-mono font-semibold">{tokenRecebido}</span>
+                      </p>
+                    )}
+                    <p className="text-xs ml-7" style={{ color: 'var(--color-text-muted)' }}>
+                      Guia desbloqueada no SAW. Reimporte para atualizar o status.
                     </p>
                   </div>
                 )}

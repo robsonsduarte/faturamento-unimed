@@ -108,18 +108,24 @@ export async function POST(request: NextRequest) {
       .eq('id', pendingRequest.id)
 
     // Submit token to the waiting SAW page
-    const result = await getSawClient().submitToken(sessionId, token)
+    let result: { success: boolean; error?: string }
+    try {
+      result = await getSawClient().submitToken(sessionId, token)
+    } catch (submitErr) {
+      const errMsg = submitErr instanceof Error ? submitErr.message : 'Erro desconhecido'
+      result = { success: false, error: `Sessao SAW expirou ou foi fechada. ${errMsg}` }
+    }
+
+    const pacienteNome = (pendingRequest.paciente_nome as string)?.split(' ')[0] ?? 'paciente'
 
     if (result.success) {
       console.log(`[EVOLUTION] Token validado com sucesso para guia ${guiaId}`)
 
-      // Mark as completed
       await db
         .from('token_requests')
         .update({ status: 'completed', updated_at: new Date().toISOString() })
         .eq('id', pendingRequest.id)
 
-      // Mark guia as resolved
       await db
         .from('guias')
         .update({
@@ -129,13 +135,25 @@ export async function POST(request: NextRequest) {
         })
         .eq('id', guiaId)
 
-      // Send success message via Evolution API
       await sendWhatsAppMessage(
         senderPhone,
-        `Token validado com sucesso! A guia ${pendingRequest.guide_number} foi desbloqueada.`
+        [
+          `✅ *Token validado com sucesso!*`,
+          ``,
+          `O token de atendimento do(a) *${pacienteNome}* foi confirmado.`,
+          `A guia ja esta liberada para atendimento.`,
+          ``,
+          `Obrigado! 🙏`,
+          `_Clinica Dedicare_`,
+        ].join('\n')
       )
     } else {
       console.log(`[EVOLUTION] Token falhou: ${result.error}`)
+
+      const isExpired = result.error?.includes('expirou') || result.error?.includes('Sessao')
+      const errorMsg = isExpired
+        ? 'A sessao expirou. O operador precisara reenviar a solicitacao.'
+        : 'O token informado esta incorreto ou expirado.'
 
       await db
         .from('token_requests')
@@ -144,7 +162,17 @@ export async function POST(request: NextRequest) {
 
       await sendWhatsAppMessage(
         senderPhone,
-        `Token invalido ou expirado. ${result.error ?? 'Tente gerar um novo token no aplicativo da Unimed.'}`
+        [
+          `❌ *Token nao validado*`,
+          ``,
+          errorMsg,
+          ``,
+          isExpired
+            ? `Aguarde o operador da clinica reenviar uma nova solicitacao.`
+            : `Por favor, tente novamente:\n1. Abra o *aplicativo da Unimed*\n2. Gere um *novo token*\n3. *Responda esta mensagem* com os 6 digitos`,
+          ``,
+          `_Clinica Dedicare_`,
+        ].join('\n')
       )
     }
 
