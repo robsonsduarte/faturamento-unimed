@@ -31,9 +31,16 @@ interface UserContext {
   cleanupTimer: ReturnType<typeof setTimeout>
 }
 
+interface TokenPageEntry {
+  page: Page
+  numeroGuia: string
+  createdAt: number
+}
+
 class SawClient {
   private browser: Browser | null = null
   private contexts: Map<string, UserContext> = new Map()
+  private tokenPages: Map<string, TokenPageEntry> = new Map()
   private locks: Map<string, Promise<void>> = new Map()
 
   // ─── Browser lifecycle ──────────────────────────────────────
@@ -831,6 +838,301 @@ class SawClient {
         if (page) await page.close().catch(() => {})
       }
     })
+  }
+
+  // ─── Interactive token resolution (WhatsApp flow) ────────────
+  /**
+   * Opens the token page on SAW, extracts available methods/phones,
+   * selects the chosen method, and returns a session ID.
+   * The page stays open waiting for the token to be submitted via submitToken().
+   */
+  async openTokenPage(
+    userId: string,
+    cookies: SawCookie[],
+    numeroGuia: string,
+  ): Promise<{
+    success: boolean
+    sessionId?: string
+    methods?: { aplicativo: boolean; email: boolean; sms: boolean }
+    phones?: string[]
+    error?: string
+  }> {
+    const context = await this.getContext(userId, cookies)
+    const page = await context.newPage()
+    page.setDefaultTimeout(30_000)
+
+    try {
+      const guiaUrl = `${SAW_BASE}/saw/tiss/SolicitacaoDeSPSADT40.do?method=consultarGuiaDeSPSADT&manterTISSSPSADT40DTO.tissSolicitacaoDeSPSADTDTO.numeroDaGuia=${encodeURIComponent(numeroGuia)}&manterTISSSPSADT40DTO.tissSolicitacaoDeSPSADTDTO.isConsultaNaGuia=true`
+
+      console.log(`[SAW] openTokenPage: navegando para guia ${numeroGuia}`)
+      await page.goto(guiaUrl, { waitUntil: 'networkidle', timeout: 30_000 })
+      await page.waitForTimeout(2000)
+
+      // Verify we're on the token page
+      const pageText = await page.evaluate(() => document.body?.innerText ?? '')
+      const isTokenPage = page.url().includes('MantemTokenDeAtendimento') ||
+        page.url().includes('TokenDeAtendimento') ||
+        pageText.includes('informe um token para continuar o atendimento') ||
+        pageText.includes('Selecione uma forma de envio')
+
+      if (!isTokenPage) {
+        await page.close().catch(() => {})
+        return { success: false, error: 'Guia nao redirecionou para tela de token. Pode ja ter sido resolvida.' }
+      }
+
+      // Extract available methods and phones
+      const info = await page.evaluate(() => {
+        const aplicativoRadio = document.querySelector('input[type="radio"][value*="plicativo"], input[type="radio"]') as HTMLInputElement | null
+        const labels = Array.from(document.querySelectorAll('label, td, div')).map((e) => (e as HTMLElement).textContent?.trim() ?? '')
+
+        const hasAplicativo = labels.some((l) => /aplicativo/i.test(l))
+        const hasEmail = labels.some((l) => /^email$/i.test(l))
+        const hasSms = labels.some((l) => /^sms$/i.test(l))
+
+        // Extract phone numbers from select options (SMS method)
+        const phones: string[] = []
+        const selects = document.querySelectorAll('select')
+        for (const sel of selects) {
+          for (const opt of sel.options) {
+            const val = opt.text?.trim()
+            if (val && /\(\d{2}\)/.test(val)) {
+              phones.push(val)
+            }
+          }
+        }
+
+        return { hasAplicativo, hasEmail, hasSms, phones }
+      })
+
+      // Store page reference with a session ID
+      const sessionId = `token-${userId}-${numeroGuia}-${Date.now()}`
+      this.tokenPages.set(sessionId, { page, numeroGuia, createdAt: Date.now() })
+
+      // Auto-cleanup after 10 minutes (token expires in 4:30 on SAW)
+      setTimeout(() => {
+        const entry = this.tokenPages.get(sessionId)
+        if (entry) {
+          entry.page.close().catch(() => {})
+          this.tokenPages.delete(sessionId)
+          console.log(`[SAW] openTokenPage: session ${sessionId} expired and cleaned up`)
+        }
+      }, 10 * 60 * 1000)
+
+      console.log(`[SAW] openTokenPage: token page open for guia ${numeroGuia} (session=${sessionId}, methods: app=${info.hasAplicativo} email=${info.hasEmail} sms=${info.hasSms}, phones=${info.phones.length})`)
+
+      return {
+        success: true,
+        sessionId,
+        methods: {
+          aplicativo: info.hasAplicativo,
+          email: info.hasEmail,
+          sms: info.hasSms,
+        },
+        phones: info.phones,
+      }
+    } catch (err) {
+      await page.close().catch(() => {})
+      return { success: false, error: err instanceof Error ? err.message : 'Erro ao abrir pagina de token' }
+    }
+  }
+
+  /**
+   * Select a method (aplicativo or SMS) on an already-open token page.
+   * For SMS: selects phone and clicks "Enviar".
+   */
+  async selectTokenMethod(
+    sessionId: string,
+    method: 'aplicativo' | 'sms',
+    phone?: string,
+  ): Promise<{ success: boolean; error?: string }> {
+    const entry = this.tokenPages.get(sessionId)
+    if (!entry) return { success: false, error: 'Sessao de token nao encontrada ou expirada' }
+
+    const { page } = entry
+
+    try {
+      if (method === 'aplicativo') {
+        // Click the Aplicativo radio button
+        await page.evaluate(() => {
+          const radios = document.querySelectorAll('input[type="radio"]')
+          for (const radio of radios) {
+            const parent = radio.closest('td, div, label')
+            if (parent && /aplicativo/i.test(parent.textContent ?? '')) {
+              (radio as HTMLInputElement).click()
+              break
+            }
+          }
+        })
+        await page.waitForTimeout(1000)
+        console.log(`[SAW] selectTokenMethod: selected Aplicativo`)
+      } else if (method === 'sms') {
+        // Click SMS radio
+        await page.evaluate(() => {
+          const radios = document.querySelectorAll('input[type="radio"]')
+          for (const radio of radios) {
+            const parent = radio.closest('td, div, label')
+            if (parent && /sms/i.test(parent.textContent ?? '')) {
+              (radio as HTMLInputElement).click()
+              break
+            }
+          }
+        })
+        await page.waitForTimeout(1000)
+
+        // Select phone from dropdown
+        if (phone) {
+          await page.evaluate((phoneVal: string) => {
+            const selects = document.querySelectorAll('select')
+            for (const sel of selects) {
+              for (let i = 0; i < sel.options.length; i++) {
+                if (sel.options[i].text.includes(phoneVal) || sel.options[i].value.includes(phoneVal)) {
+                  sel.selectedIndex = i
+                  sel.dispatchEvent(new Event('change', { bubbles: true }))
+                  break
+                }
+              }
+            }
+          }, phone)
+          await page.waitForTimeout(500)
+        }
+
+        // Click "Enviar" button
+        await page.evaluate(() => {
+          const btns = Array.from(document.querySelectorAll('button, input[type="button"], input[type="submit"], a'))
+          const enviar = btns.find((b) => /enviar/i.test((b as HTMLElement).textContent ?? '') || /enviar/i.test((b as HTMLInputElement).value ?? ''))
+          if (enviar) (enviar as HTMLElement).click()
+        })
+        await page.waitForTimeout(2000)
+
+        // Verify SMS was sent
+        const pageText = await page.evaluate(() => document.body?.innerText ?? '')
+        if (pageText.includes('Token de Atendimento enviado com sucesso')) {
+          console.log(`[SAW] selectTokenMethod: SMS enviado com sucesso`)
+        } else {
+          console.log(`[SAW] selectTokenMethod: SMS pode nao ter sido enviado. Texto: ${pageText.substring(0, 200)}`)
+        }
+      }
+
+      return { success: true }
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : 'Erro ao selecionar metodo' }
+    }
+  }
+
+  /**
+   * Submit a 6-digit token on an already-open token page.
+   * Fills the 6 input fields and clicks "Validar".
+   */
+  async submitToken(
+    sessionId: string,
+    token: string,
+  ): Promise<{ success: boolean; error?: string }> {
+    const entry = this.tokenPages.get(sessionId)
+    if (!entry) return { success: false, error: 'Sessao de token nao encontrada ou expirada' }
+
+    const { page, numeroGuia } = entry
+
+    try {
+      const digits = token.replace(/\D/g, '')
+      if (digits.length !== 6) {
+        return { success: false, error: `Token deve ter 6 digitos, recebido: "${token}"` }
+      }
+
+      console.log(`[SAW] submitToken: preenchendo token ${digits} na guia ${numeroGuia}`)
+
+      // Fill the 6 input fields
+      const filled = await page.evaluate((d: string) => {
+        // Find token input fields (they are individual inputs for each digit)
+        const inputs = document.querySelectorAll('input[type="text"][maxlength="1"], input[type="tel"][maxlength="1"], input.token-input, input[size="1"]')
+
+        if (inputs.length < 6) {
+          // Fallback: find any group of 6 small inputs
+          const allInputs = Array.from(document.querySelectorAll('input[type="text"]')).filter((inp) => {
+            const el = inp as HTMLInputElement
+            return el.maxLength <= 2 || el.size <= 2 || el.style.width?.includes('3') || el.style.width?.includes('4')
+          })
+          if (allInputs.length >= 6) {
+            for (let i = 0; i < 6; i++) {
+              const inp = allInputs[i] as HTMLInputElement
+              inp.value = d[i]
+              inp.dispatchEvent(new Event('input', { bubbles: true }))
+              inp.dispatchEvent(new Event('change', { bubbles: true }))
+              inp.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }))
+            }
+            return { ok: true, count: allInputs.length }
+          }
+          return { ok: false, count: inputs.length, error: 'Nao encontrou 6 inputs de token' }
+        }
+
+        for (let i = 0; i < 6; i++) {
+          const inp = inputs[i] as HTMLInputElement
+          inp.value = d[i]
+          inp.dispatchEvent(new Event('input', { bubbles: true }))
+          inp.dispatchEvent(new Event('change', { bubbles: true }))
+          inp.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }))
+        }
+
+        return { ok: true, count: inputs.length }
+      }, digits)
+
+      if (!filled.ok) {
+        return { success: false, error: (filled as { error?: string }).error ?? 'Falha ao preencher token' }
+      }
+
+      console.log(`[SAW] submitToken: preencheu ${filled.count} campos, clicando Validar`)
+      await page.waitForTimeout(500)
+
+      // Click "Validar" button
+      await page.evaluate(() => {
+        const btns = Array.from(document.querySelectorAll('button, input[type="button"], input[type="submit"], a'))
+        const validar = btns.find((b) => /validar/i.test((b as HTMLElement).textContent ?? '') || /validar/i.test((b as HTMLInputElement).value ?? ''))
+        if (validar) (validar as HTMLElement).click()
+      })
+
+      await page.waitForTimeout(5000)
+
+      // Check result
+      const result = await page.evaluate(() => {
+        const body = document.body?.innerText ?? ''
+        return {
+          texto: body.substring(0, 500),
+          sucesso: /sucesso|validado|autenticado|confirmado/i.test(body),
+          erro: /erro|invalido|expirado|incorreto|falha/i.test(body),
+          tokenExpirado: /expirado|solicitar novo/i.test(body),
+        }
+      })
+
+      // Cleanup session
+      this.tokenPages.delete(sessionId)
+      await page.close().catch(() => {})
+
+      if (result.tokenExpirado) {
+        return { success: false, error: 'Token expirado. Solicite um novo token.' }
+      }
+
+      if (result.erro && !result.sucesso) {
+        return { success: false, error: `Token invalido: ${result.texto.substring(0, 200)}` }
+      }
+
+      console.log(`[SAW] submitToken: token validado com sucesso para guia ${numeroGuia}`)
+      return { success: true }
+    } catch (err) {
+      // Cleanup on error
+      this.tokenPages.delete(sessionId)
+      await page.close().catch(() => {})
+      return { success: false, error: err instanceof Error ? err.message : 'Erro ao submeter token' }
+    }
+  }
+
+  /**
+   * Close a token session (cleanup).
+   */
+  async closeTokenSession(sessionId: string): Promise<void> {
+    const entry = this.tokenPages.get(sessionId)
+    if (entry) {
+      await entry.page.close().catch(() => {})
+      this.tokenPages.delete(sessionId)
+    }
   }
 
   // ─── Force reconnect for a specific user ────────────────────
