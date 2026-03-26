@@ -810,75 +810,123 @@ class SawClient {
         console.log(`[SAW] resolveToken: iframe buttons: ${iframeContent.allButtons.join(', ')}`)
         console.log(`[SAW] resolveToken: iframe texto: ${iframeContent.text.substring(0, 200)}`)
 
-        // Injetar foto no iframe TRIX
+        // === STEP 1: Clicar "Capturar Foto" (botao vermelho INICIAR CAPTURA) ===
+        console.log(`[SAW] resolveToken: STEP 1 — clicando Capturar Foto...`)
+        const captureClicked = await trixFrame.evaluate(() => {
+          // Procurar botao de capturar por varios seletores
+          const selectors = [
+            '#iniciar-captura', '#btn-capturar', '#botao-capturar',
+            'button', 'a', 'div[onclick]', 'span[onclick]',
+          ]
+          for (const sel of selectors) {
+            const elements = document.querySelectorAll(sel)
+            for (const el of elements) {
+              const text = ((el as HTMLElement).textContent ?? '').toLowerCase()
+              if (text.includes('capturar') || text.includes('iniciar captura') || text.includes('captura')) {
+                (el as HTMLElement).click()
+                return { ok: true, text: (el as HTMLElement).textContent?.trim() ?? '' }
+              }
+            }
+          }
+          // Fallback: clicar no botao vermelho (geralmente SVG ou div com onclick)
+          const redBtn = document.querySelector('.btn-capture, .capture-btn, [class*="capture"], [class*="captura"]') as HTMLElement
+          if (redBtn) { redBtn.click(); return { ok: true, text: 'fallback-class' } }
+          return { ok: false, text: '' }
+        }).catch(() => ({ ok: false, text: 'evaluate failed' }))
+
+        console.log(`[SAW] resolveToken: Capturar clicado: ${captureClicked.ok} (${captureClicked.text})`)
+        await page.waitForTimeout(2000)
+
+        // Screenshot: apos clicar capturar
+        await page.screenshot({ path: '/tmp/debug-resolvetoken-2-after-capture.png', fullPage: false }).catch(() => {})
+
+        // === STEP 2: Injetar foto (substituir webcam pela foto do paciente) ===
+        console.log(`[SAW] resolveToken: STEP 2 — injetando foto...`)
         const injected = await trixFrame.evaluate((b64: string) => {
           try {
-            // Esconder webcam
-            const camera = document.querySelector('#my_camera') as HTMLElement
+            // Esconder webcam/video
+            const camera = document.querySelector('#my_camera, video, #webcam') as HTMLElement
             if (camera) camera.style.display = 'none'
 
-            // Injetar foto no container de resultados
-            const results = document.querySelector('#results') as HTMLElement
+            // Injetar foto no container de resultados/captura
+            const results = document.querySelector('#results, #captured, #photo-container, .photo-container, .capture-result') as HTMLElement
             if (results) {
-              results.innerHTML = `<img src="data:image/jpeg;base64,${b64}" style="width:100%;height:auto;" />`
+              results.innerHTML = `<img src="data:image/jpeg;base64,${b64}" style="width:100%;height:auto;max-width:640px;" />`
+              results.style.display = 'block'
             }
 
-            // Mostrar botao de autenticar
-            const authBtn = document.querySelector('#id-botao-autenticar') as HTMLElement
+            // Tambem tentar injetar no canvas se existir
+            const canvas = document.querySelector('canvas') as HTMLCanvasElement
+            if (canvas) {
+              const ctx = canvas.getContext('2d')
+              if (ctx) {
+                const img = new Image()
+                img.onload = () => {
+                  canvas.width = img.width
+                  canvas.height = img.height
+                  ctx.drawImage(img, 0, 0)
+                }
+                img.src = `data:image/jpeg;base64,${b64}`
+              }
+            }
+
+            // Mostrar botao de autenticar (pode estar escondido)
+            const authBtn = document.querySelector('#id-botao-autenticar, #btn-autenticar, [class*="autenticar"]') as HTMLElement
             if (authBtn) {
               authBtn.style.display = 'block'
               authBtn.style.visibility = 'visible'
             }
 
-            return { ok: true, hasCamera: !!camera, hasResults: !!results, hasAuthBtn: !!authBtn }
+            return { ok: true, hasCamera: !!camera, hasResults: !!results, hasCanvas: !!canvas, hasAuthBtn: !!authBtn }
           } catch (e) {
-            return { ok: false, error: (e as Error).message }
+            return { ok: false, error: (e as Error).message, hasCamera: false, hasResults: false, hasCanvas: false, hasAuthBtn: false }
           }
         }, photoBase64)
 
-        if (!injected.ok) {
-          return { success: false, error: `Falha ao injetar foto no TRIX: ${(injected as { error?: string }).error}` }
-        }
+        console.log(`[SAW] resolveToken: foto injetada — camera=${injected.hasCamera}, results=${injected.hasResults}, canvas=${injected.hasCanvas}, authBtn=${injected.hasAuthBtn}`)
 
-        console.log(`[SAW] resolveToken: foto injetada (camera=${(injected as { hasCamera: boolean }).hasCamera}, results=${(injected as { hasResults: boolean }).hasResults}, authBtn=${(injected as { hasAuthBtn: boolean }).hasAuthBtn})`)
-
-        // Screenshot: apos injecao da foto
-        await page.screenshot({ path: '/tmp/debug-resolvetoken-2-after-inject.png', fullPage: false }).catch(() => {})
-
+        // Screenshot: apos injecao
+        await page.screenshot({ path: '/tmp/debug-resolvetoken-3-after-inject.png', fullPage: false }).catch(() => {})
         await page.waitForTimeout(1000)
 
-        // Clicar botao de autenticar — tentar no iframe e na pagina principal
+        // === STEP 3: Clicar "Autenticar" ===
+        console.log(`[SAW] resolveToken: STEP 3 — clicando Autenticar...`)
         let clicked = false
+
+        // Tentar no iframe
         try {
           clicked = await trixFrame!.evaluate(() => {
-            const btn = document.querySelector('#id-botao-autenticar') as HTMLElement
-            if (btn) { btn.click(); return true }
-            const btns = Array.from(document.querySelectorAll('button, a, input[type="button"]'))
-            const authBtn = btns.find((b) => (b.textContent ?? '').toLowerCase().includes('autenticar'))
-            if (authBtn) { (authBtn as HTMLElement).click(); return true }
+            const selectors = ['#id-botao-autenticar', '#btn-autenticar', 'button', 'a', 'input[type="button"]']
+            for (const sel of selectors) {
+              const elements = document.querySelectorAll(sel)
+              for (const el of elements) {
+                const text = ((el as HTMLElement).textContent ?? '').toLowerCase()
+                if (text.includes('autenticar') || text.includes('autenticar foto')) {
+                  (el as HTMLElement).click()
+                  return true
+                }
+              }
+            }
             return false
           })
-        } catch { /* iframe pode ter sido fechado */ }
+        } catch { /* */ }
 
-        // Fallback: tentar clicar na pagina principal (botao pode estar fora do iframe)
+        // Fallback: pagina principal
         if (!clicked) {
           clicked = await page.evaluate(() => {
-            const btn = document.querySelector('#id-botao-autenticar') as HTMLElement
-            if (btn) { btn.click(); return true }
-            const btns = Array.from(document.querySelectorAll('button, a, input[type="button"], input[type="submit"]'))
-            const authBtn = btns.find((b) => {
+            const btns = Array.from(document.querySelectorAll('button, a, input[type="button"], input[type="submit"], div[onclick]'))
+            const btn = btns.find((b) => {
               const text = ((b as HTMLElement).textContent ?? '').toLowerCase()
-              return text.includes('autenticar') || text.includes('validar') || text.includes('confirmar')
+              return text.includes('autenticar')
             })
-            if (authBtn) { (authBtn as HTMLElement).click(); return true }
+            if (btn) { (btn as HTMLElement).click(); return true }
             return false
           }).catch(() => false)
         }
 
         if (!clicked) {
-          // Screenshot: quando nao encontra botao
-          await page.screenshot({ path: '/tmp/debug-resolvetoken-3-no-button.png', fullPage: false }).catch(() => {})
-          return { success: false, error: 'Botao de autenticacao nao encontrado. Screenshots salvas em /tmp/debug-resolvetoken-*.png' }
+          await page.screenshot({ path: '/tmp/debug-resolvetoken-4-no-auth-btn.png', fullPage: false }).catch(() => {})
+          return { success: false, error: 'Botao Autenticar nao encontrado. Verifique screenshots em /tmp/debug-resolvetoken-*.png' }
         }
 
         console.log(`[SAW] resolveToken: clicou autenticar, aguardando processamento TRIX`)
