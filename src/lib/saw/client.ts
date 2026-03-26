@@ -903,32 +903,30 @@ class SawClient {
         return { success: false, error: `Pagina inesperada: ${currentUrl.substring(0, 100)}` }
       }
 
-      // Extract available methods and phones
-      let info: { hasAplicativo: boolean; hasEmail: boolean; hasSms: boolean; phones: string[] }
-      try {
-        info = await page.evaluate(() => {
-          const allText = document.body?.innerText ?? ''
-          const hasAplicativo = /aplicativo/i.test(allText)
-          const hasEmail = /\bemail\b/i.test(allText)
-          const hasSms = /\bsms\b/i.test(allText)
+      // Extract available methods and phones — use pageText already captured above
+      const hasAplicativo = /aplicativo/i.test(pageText)
+      const hasEmail = /\bemail\b/i.test(pageText)
+      const hasSms = /\bsms\b/i.test(pageText)
 
-          const phones: string[] = []
+      // Try to extract phone numbers from select (may not be visible yet)
+      let phones: string[] = []
+      try {
+        phones = await page.evaluate(() => {
+          const result: string[] = []
           const selects = document.querySelectorAll('select')
           for (const sel of selects) {
             for (const opt of sel.options) {
               const val = opt.text?.trim()
-              if (val && /\(\d{2}\)/.test(val)) {
-                phones.push(val)
-              }
+              if (val && /\(\d{2}\)/.test(val)) result.push(val)
             }
           }
-
-          return { hasAplicativo, hasEmail, hasSms, phones }
-        })
-      } catch (evalErr) {
-        console.error(`[SAW] openTokenPage: evaluate falhou:`, evalErr)
-        info = { hasAplicativo: true, hasEmail: false, hasSms: true, phones: [] }
+          return result
+        }) ?? []
+      } catch {
+        phones = []
       }
+
+      const info = { hasAplicativo, hasEmail, hasSms, phones }
 
       // Store page reference with a session ID
       const sessionId = `token-${userId}-${numeroGuia}-${Date.now()}`
