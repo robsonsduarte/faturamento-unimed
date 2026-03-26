@@ -758,14 +758,19 @@ class SawClient {
         })).catch(() => ({ url: '', text: '' }))
         console.log(`[SAW] resolveToken: pagina=${pageState.url.substring(0, 80)}, texto=${pageState.text.substring(0, 150)}`)
 
-        // Procurar iframe do TRIX BioFace
-        let trixFrame = allFrames.find((f) =>
-          f.url().includes('bioface') || f.url().includes('trixti') || f.url().includes('biometria')
-        )
+        // Screenshot: apos clicar check-in
+        await page.screenshot({ path: '/tmp/debug-resolvetoken-1-after-checkin.png', fullPage: false }).catch(() => {})
+        console.log(`[SAW] resolveToken: screenshot salvo em /tmp/debug-resolvetoken-1-after-checkin.png`)
 
-        // Fallback: qualquer iframe que nao seja a pagina principal
+        // Procurar iframe do TRIX BioFace pelo elemento DOM #iframeBioFacial
+        const bioFrameHandle = await page.$('iframe#iframeBioFacial')
+        let trixFrame = bioFrameHandle ? await bioFrameHandle.contentFrame() : null
+
+        // Fallback: buscar por URL nos frames
         if (!trixFrame) {
-          trixFrame = allFrames.find((f) => f !== page!.mainFrame() && f.url() !== '' && f.url() !== 'about:blank')
+          trixFrame = allFrames.find((f) =>
+            f.url().includes('bioface') || f.url().includes('biometria')
+          ) ?? null
         }
 
         if (!trixFrame) {
@@ -837,21 +842,43 @@ class SawClient {
 
         console.log(`[SAW] resolveToken: foto injetada (camera=${(injected as { hasCamera: boolean }).hasCamera}, results=${(injected as { hasResults: boolean }).hasResults}, authBtn=${(injected as { hasAuthBtn: boolean }).hasAuthBtn})`)
 
+        // Screenshot: apos injecao da foto
+        await page.screenshot({ path: '/tmp/debug-resolvetoken-2-after-inject.png', fullPage: false }).catch(() => {})
+
         await page.waitForTimeout(1000)
 
-        // Clicar botao de autenticar
-        const clicked = await trixFrame.evaluate(() => {
-          const btn = document.querySelector('#id-botao-autenticar') as HTMLElement
-          if (btn) { btn.click(); return true }
-          // Fallback: qualquer botao com texto "autenticar"
-          const btns = Array.from(document.querySelectorAll('button, a, input[type="button"]'))
-          const authBtn = btns.find((b) => (b.textContent ?? '').toLowerCase().includes('autenticar'))
-          if (authBtn) { (authBtn as HTMLElement).click(); return true }
-          return false
-        })
+        // Clicar botao de autenticar — tentar no iframe e na pagina principal
+        let clicked = false
+        try {
+          clicked = await trixFrame!.evaluate(() => {
+            const btn = document.querySelector('#id-botao-autenticar') as HTMLElement
+            if (btn) { btn.click(); return true }
+            const btns = Array.from(document.querySelectorAll('button, a, input[type="button"]'))
+            const authBtn = btns.find((b) => (b.textContent ?? '').toLowerCase().includes('autenticar'))
+            if (authBtn) { (authBtn as HTMLElement).click(); return true }
+            return false
+          })
+        } catch { /* iframe pode ter sido fechado */ }
+
+        // Fallback: tentar clicar na pagina principal (botao pode estar fora do iframe)
+        if (!clicked) {
+          clicked = await page.evaluate(() => {
+            const btn = document.querySelector('#id-botao-autenticar') as HTMLElement
+            if (btn) { btn.click(); return true }
+            const btns = Array.from(document.querySelectorAll('button, a, input[type="button"], input[type="submit"]'))
+            const authBtn = btns.find((b) => {
+              const text = ((b as HTMLElement).textContent ?? '').toLowerCase()
+              return text.includes('autenticar') || text.includes('validar') || text.includes('confirmar')
+            })
+            if (authBtn) { (authBtn as HTMLElement).click(); return true }
+            return false
+          }).catch(() => false)
+        }
 
         if (!clicked) {
-          return { success: false, error: 'Botao de autenticacao nao encontrado no TRIX.' }
+          // Screenshot: quando nao encontra botao
+          await page.screenshot({ path: '/tmp/debug-resolvetoken-3-no-button.png', fullPage: false }).catch(() => {})
+          return { success: false, error: 'Botao de autenticacao nao encontrado. Screenshots salvas em /tmp/debug-resolvetoken-*.png' }
         }
 
         console.log(`[SAW] resolveToken: clicou autenticar, aguardando processamento TRIX`)
