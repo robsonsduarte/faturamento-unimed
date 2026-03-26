@@ -48,6 +48,8 @@ export default function GuiaDetailPage({ params }: Props) {
   const [tokenLoading, setTokenLoading] = useState(false)
   const [tokenStatus, setTokenStatus] = useState<string>('')
   const [manualToken, setManualToken] = useState('')
+  const [tokenRequestId, setTokenRequestId] = useState<string | null>(null)
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // Buscar foto existente quando guia TOKEN carrega
   useEffect(() => {
@@ -206,6 +208,45 @@ export default function GuiaDetailPage({ params }: Props) {
     }
   }
 
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => {
+      if (pollingRef.current) clearInterval(pollingRef.current)
+    }
+  }, [])
+
+  function startPolling(requestId: string) {
+    if (pollingRef.current) clearInterval(pollingRef.current)
+
+    pollingRef.current = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/biometria/token-status/${requestId}`)
+        if (!res.ok) return
+        const data = await res.json() as { status: string; token_received?: string; error_message?: string }
+
+        if (data.status === 'completed') {
+          clearInterval(pollingRef.current!)
+          pollingRef.current = null
+          setTokenStep('done')
+          setTokenStatus('Token validado! Guia desbloqueada.')
+          setTokenLoading(false)
+          toast.success(`Token ${data.token_received ?? ''} validado com sucesso!`)
+          await refetch()
+        } else if (data.status === 'failed') {
+          clearInterval(pollingRef.current!)
+          pollingRef.current = null
+          setTokenStatus(`Falha: ${data.error_message ?? 'Token invalido'}. Tente novamente.`)
+          setTokenLoading(false)
+          toast.error(data.error_message ?? 'Token invalido')
+        } else if (data.status === 'processing') {
+          setTokenStatus('Token recebido! Validando no SAW...')
+        }
+      } catch {
+        // Silently continue polling
+      }
+    }, 5000)
+  }
+
   async function handleEnviarWhatsApp() {
     if (!guia || !tokenSessionId || !selectedMethod || !whatsappPhone) return
     setTokenLoading(true)
@@ -222,10 +263,17 @@ export default function GuiaDetailPage({ params }: Props) {
           method: selectedMethod,
         }),
       })
-      const data = await res.json()
+      const data = await res.json() as { success?: boolean; error?: string; requestId?: string }
       if (!res.ok) throw new Error(data.error)
+
       toast.success('Mensagem enviada ao paciente!')
       setTokenStatus('Mensagem enviada. Aguardando resposta com o token...')
+
+      // Iniciar polling para detectar quando o token chegar via webhook
+      if (data.requestId) {
+        setTokenRequestId(data.requestId)
+        startPolling(data.requestId)
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Erro ao enviar WhatsApp')
     } finally {
