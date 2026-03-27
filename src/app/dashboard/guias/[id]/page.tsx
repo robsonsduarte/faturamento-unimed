@@ -195,15 +195,13 @@ export default function GuiaDetailPage({ params }: Props) {
                 startPolling(reqId)
                 startCountdown()
                 toast.success(`WhatsApp enviado para ${phoneDisplay}`)
-              } else if (phone) {
-                // Tem telefone mas nao enviou — preencher e mostrar tela
-                setWhatsappPhone(phone)
-                setTokenStep('method')
-                setTokenStatus('Confirme o metodo e envie')
               } else {
-                // Sem telefone — mostrar tela para preencher
+                // Envio automatico nao aconteceu — mostrar tela manual
+                if (phone) setWhatsappPhone(phone)
+                // Garantir que metodos existam (fallback)
+                if (!evt.methods) setTokenMethods({ aplicativo: true, sms: true })
                 setTokenStep('method')
-                setTokenStatus('Informe o telefone do paciente')
+                setTokenStatus(phone ? 'Confirme o metodo e envie' : 'Informe o telefone do paciente')
               }
             }
           } catch (parseErr) {

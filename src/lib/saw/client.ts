@@ -1016,9 +1016,25 @@ class SawClient {
       const hasEmail = /\bemail\b/i.test(textForMethods)
       const hasSms = /\bsms\b/i.test(textForMethods)
 
-      // Try to extract phone numbers from select (may not be visible yet)
+      // Clicar no radio SMS para revelar select de telefones, extrair, depois voltar
       let phones: string[] = []
       try {
+        if (hasSms) {
+          // Clicar radio SMS para revelar select
+          await page.evaluate(() => {
+            const radios = document.querySelectorAll('input[type="radio"]')
+            for (const radio of radios) {
+              const parent = radio.closest('td, div, label')
+              if (parent && /sms/i.test(parent.textContent ?? '')) {
+                (radio as HTMLInputElement).click()
+                break
+              }
+            }
+          })
+          await page.waitForTimeout(1500)
+        }
+
+        // Extrair telefones do select
         phones = await page.evaluate(() => {
           const result: string[] = []
           const selects = document.querySelectorAll('select')
@@ -1030,6 +1046,20 @@ class SawClient {
           }
           return result
         }) ?? []
+
+        // Voltar para estado neutro (clicar radio Aplicativo se existir)
+        if (hasSms && hasAplicativo) {
+          await page.evaluate(() => {
+            const radios = document.querySelectorAll('input[type="radio"]')
+            for (const radio of radios) {
+              const parent = radio.closest('td, div, label')
+              if (parent && /aplicativo/i.test(parent.textContent ?? '')) {
+                (radio as HTMLInputElement).click()
+                break
+              }
+            }
+          }).catch(() => {})
+        }
       } catch {
         phones = []
       }
