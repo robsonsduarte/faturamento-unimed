@@ -57,6 +57,8 @@ export default function GuiaDetailPage({ params }: Props) {
   const [tokenError, setTokenError] = useState<string | null>(null)
   const [tokenRecebido, setTokenRecebido] = useState<string | null>(null)
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const [countdown, setCountdown] = useState<number>(0) // segundos restantes
+  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // Buscar foto existente quando guia TOKEN carrega
   useEffect(() => {
@@ -191,6 +193,7 @@ export default function GuiaDetailPage({ params }: Props) {
                 setTokenStep('waiting')
                 setTokenStatus(`Mensagem enviada para ${phoneDisplay}. Aguardando token...`)
                 startPolling(reqId)
+                startCountdown()
                 toast.success(`WhatsApp enviado para ${phoneDisplay}`)
               } else if (phone) {
                 // Tem telefone mas nao enviou — preencher e mostrar tela
@@ -240,6 +243,7 @@ export default function GuiaDetailPage({ params }: Props) {
         ? 'SMS enviado! Aguardando token do paciente...'
         : 'Aplicativo selecionado. Aguardando token do paciente...')
       setTokenStep('waiting')
+      startCountdown()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Erro ao selecionar metodo')
     } finally {
@@ -247,12 +251,30 @@ export default function GuiaDetailPage({ params }: Props) {
     }
   }
 
-  // Cleanup polling on unmount
+  // Cleanup polling + countdown on unmount
   useEffect(() => {
     return () => {
       if (pollingRef.current) clearInterval(pollingRef.current)
+      if (countdownRef.current) clearInterval(countdownRef.current)
     }
   }, [])
+
+  function startCountdown() {
+    if (countdownRef.current) clearInterval(countdownRef.current)
+    setCountdown(270) // 4:30 = 270 segundos
+    countdownRef.current = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          clearInterval(countdownRef.current!)
+          countdownRef.current = null
+          // Tempo esgotado — recarregar pagina
+          window.location.reload()
+          return 0
+        }
+        return prev - 1
+      })
+    }, 1000)
+  }
 
   function startPolling(requestId: string) {
     if (pollingRef.current) clearInterval(pollingRef.current)
@@ -266,6 +288,8 @@ export default function GuiaDetailPage({ params }: Props) {
         if (data.status === 'completed') {
           clearInterval(pollingRef.current!)
           pollingRef.current = null
+          if (countdownRef.current) { clearInterval(countdownRef.current); countdownRef.current = null }
+          setCountdown(0)
           setTokenStep('done')
           setTokenRecebido(data.token_received ?? null)
           setTokenError(null)
@@ -817,10 +841,10 @@ export default function GuiaDetailPage({ params }: Props) {
                 {/* Step: Aguardando token */}
                 {tokenStep === 'waiting' && (
                   <div className="space-y-4">
-                    {/* Confirmacao de envio */}
+                    {/* Confirmacao de envio + countdown */}
                     <div className="flex items-center gap-3 rounded-lg p-3" style={{ background: 'rgba(37, 211, 102, 0.1)' }}>
-                      <MessageSquare className="w-5 h-5" style={{ color: '#25d366' }} />
-                      <div>
+                      <MessageSquare className="w-5 h-5 shrink-0" style={{ color: '#25d366' }} />
+                      <div className="flex-1">
                         <p className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>
                           Mensagem enviada para {whatsappPhone}
                         </p>
@@ -828,7 +852,17 @@ export default function GuiaDetailPage({ params }: Props) {
                           Aguardando o paciente responder com o token de 6 digitos...
                         </p>
                       </div>
-                      <Loader2 className="w-4 h-4 animate-spin ml-auto" style={{ color: 'var(--color-text-muted)' }} />
+                      <div className="flex items-center gap-2 shrink-0">
+                        {countdown > 0 && (
+                          <span
+                            className="font-mono text-sm font-bold tabular-nums"
+                            style={{ color: countdown < 60 ? 'var(--color-danger)' : 'var(--color-warning)' }}
+                          >
+                            {Math.floor(countdown / 60)}:{(countdown % 60).toString().padStart(2, '0')}
+                          </span>
+                        )}
+                        <Loader2 className="w-4 h-4 animate-spin" style={{ color: 'var(--color-text-muted)' }} />
+                      </div>
                     </div>
 
                     {/* Input manual do token (fallback) */}
