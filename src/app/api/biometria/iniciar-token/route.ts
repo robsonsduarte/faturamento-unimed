@@ -223,81 +223,12 @@ export async function POST(request: NextRequest) {
           // CPro falhou — continua sem telefone
         }
 
-        if (!patientPhone) {
-          // Fallback: retorna resultado para o usuario preencher manualmente
-          send({
-            type: 'result',
-            success: true,
-            sessionId: result.sessionId,
-            guideNumber: guia.guide_number,
-            paciente: guia.paciente,
-            methods: result.methods,
-            phones: result.phones,
-            patientPhone: '',
-            autoSent: false,
-          })
-          controller.close()
-          return
+        // Retornar resultado com telefone (operador escolhe metodo na UI)
+        const phoneDisplay = patientPhone ? patientPhone.replace(/^55(\d{2})(\d+)/, '($1) $2') : ''
+        if (patientPhone) {
+          send({ type: 'success', message: `Telefone encontrado: ${phoneDisplay}` })
         }
 
-        send({ type: 'success', message: `Telefone encontrado: ${patientPhone.replace(/^55(\d{2})(\d+)/, '($1) $2')}` })
-
-        // Selecionar metodo "Aplicativo" automaticamente
-        send({ type: 'processing', message: 'Selecionando metodo Aplicativo...' })
-        await getSawClient().selectTokenMethod(result.sessionId!, 'aplicativo')
-
-        // Enviar WhatsApp automaticamente
-        send({ type: 'processing', message: 'Enviando WhatsApp ao paciente...' })
-
-        const evolutionUrl = process.env.EVOLUTION_API_URL ?? ''
-        const evolutionKey = process.env.EVOLUTION_API_KEY ?? ''
-        const instanceName = process.env.EVOLUTION_INSTANCE ?? 'Espaço Dedicare'
-
-        const whatsappMsg = [
-          `Ola! Precisamos do *token de atendimento* para a guia do paciente *${guia.paciente ?? ''}*.`,
-          '',
-          'Por favor, siga os passos:',
-          '1. Abra o *aplicativo da Unimed* no celular',
-          '2. Acesse a *carteira digital*',
-          '3. Copie o *token de 6 digitos* gerado',
-          '4. *Responda esta mensagem* com o token',
-          '',
-          'O token expira em *4 minutos e 30 segundos*.',
-          '',
-          '_Clinica Dedicare - Faturamento_',
-        ].join('\n')
-
-        let whatsappSent = false
-        if (evolutionKey) {
-          try {
-            const jid = `${patientPhone}@s.whatsapp.net`
-            const wRes = await fetch(`${evolutionUrl}/message/sendText/${encodeURIComponent(instanceName)}`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', apikey: evolutionKey },
-              body: JSON.stringify({ number: jid, text: whatsappMsg }),
-            })
-            whatsappSent = wRes.ok
-          } catch { /* */ }
-        }
-
-        // Criar token_request para tracking
-        let requestId = ''
-        try {
-          const { data: tokenReq } = await db.from('token_requests').insert({
-            guia_id: guia.id,
-            guide_number: guia.guide_number,
-            paciente_nome: guia.paciente ?? '',
-            phone_whatsapp: patientPhone,
-            method: 'aplicativo',
-            session_id: result.sessionId!,
-            status: 'waiting',
-            expires_at: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
-            created_by: user.id,
-          }).select('id').single()
-          requestId = tokenReq?.id ?? ''
-        } catch { /* */ }
-
-        const phoneDisplay = patientPhone.replace(/^55(\d{2})(\d+)/, '($1) $2')
         send({
           type: 'result',
           success: true,
@@ -308,8 +239,6 @@ export async function POST(request: NextRequest) {
           phones: result.phones,
           patientPhone,
           phoneDisplay,
-          autoSent: whatsappSent,
-          requestId,
         })
       } catch (err) {
         send({ type: 'error', message: err instanceof Error ? err.message : 'Erro interno' })

@@ -192,29 +192,13 @@ export default function GuiaDetailPage({ params }: Props) {
               setTokenMethods(evt.methods as { aplicativo: boolean; sms: boolean })
               setTokenPhones((evt.phones as string[]) ?? [])
 
-              const autoSent = evt.autoSent as boolean
-              const phone = (evt.patientPhone as string) ?? ''
-              const phoneDisplay = (evt.phoneDisplay as string) ?? phone
-              const reqId = (evt.requestId as string) ?? ''
+              const phone = (evt.patientPhone as string) ?? (evt.phoneDisplay as string) ?? ''
 
-              if (autoSent && reqId) {
-                // WhatsApp ja enviado automaticamente — pular para aguardando
-                setWhatsappPhone(phoneDisplay)
-                setSelectedMethod('aplicativo')
-                setTokenRequestId(reqId)
-                setTokenStep('waiting')
-                setTokenStatus(`Mensagem enviada para ${phoneDisplay}. Aguardando token...`)
-                startPolling(reqId)
-                startCountdown()
-                toast.success(`WhatsApp enviado para ${phoneDisplay}`)
-              } else {
-                // Envio automatico nao aconteceu — mostrar tela manual
-                if (phone) setWhatsappPhone(phone)
-                // Garantir que metodos existam (fallback)
-                if (!evt.methods) setTokenMethods({ aplicativo: true, sms: true })
-                setTokenStep('method')
-                setTokenStatus(phone ? 'Confirme o metodo e envie' : 'Informe o telefone do paciente')
-              }
+              // Sempre mostrar tela de metodo para o operador escolher App/SMS
+              if (phone) setWhatsappPhone(phone)
+              if (!evt.methods) setTokenMethods({ aplicativo: true, sms: true })
+              setTokenStep('method')
+              setTokenStatus('Escolha o metodo de autenticacao')
             }
           } catch (parseErr) {
             if (parseErr instanceof Error && parseErr.message !== 'Stream nao disponivel') {
