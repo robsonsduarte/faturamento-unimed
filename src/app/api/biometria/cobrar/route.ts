@@ -115,7 +115,10 @@ export async function POST(request: NextRequest) {
   }
   const { user } = auth
 
-  const body = await request.json().catch(() => ({})) as { guia_id?: string }
+  const body = await request.json().catch(() => ({})) as {
+    guia_id?: string
+    atendimentos?: Array<{ date: string; start: string; end: string }>
+  }
   if (!body.guia_id) {
     return new Response(JSON.stringify({ error: 'guia_id obrigatorio' }), {
       status: 400,
@@ -170,21 +173,38 @@ export async function POST(request: NextRequest) {
           .map((p) => p.data_execucao)
           .filter(Boolean) as string[]
 
-        // 4. Buscar procedimentos pendentes do CPro
-        send('processing', '[4/7] Buscando procedimentos pendentes no CPro...')
-        const { data: cproInteg } = await db.from('integracoes').select('config, ativo').eq('slug', 'cpro').single()
-        if (!cproInteg?.ativo) {
-          send('error', 'CPro nao configurado')
-          controller.close(); return
-        }
-        const cproCfg = cproInteg.config as Record<string, string>
+        // 4. Preparar procedimentos para cobrar
+        let pendentes: Array<{ data: string; horaInicial: string; horaFinal: string; quantidade: string; viaAcesso: string; tecnica: string; redAcresc: string }>
 
-        const pendentes = await fetchPendingFromCpro(guia.guide_number, realizedDates, cproCfg)
+        if (body.atendimentos && body.atendimentos.length > 0) {
+          // Atendimentos selecionados pelo operador
+          send('processing', `[4/7] ${body.atendimentos.length} atendimento(s) selecionado(s)`)
+          pendentes = body.atendimentos.map((a) => {
+            const [y, m, d] = a.date.split('-')
+            return {
+              data: `${d}${m}${y}`,
+              horaInicial: a.start.replace(/:/g, '').substring(0, 4),
+              horaFinal: a.end.replace(/:/g, '').substring(0, 4),
+              quantidade: '1',
+              viaAcesso: '1',
+              tecnica: '1',
+              redAcresc: '1.0',
+            }
+          })
+        } else {
+          // Fallback: buscar todos os pendentes do CPro
+          send('processing', '[4/7] Buscando procedimentos pendentes no CPro...')
+          const { data: cproInteg } = await db.from('integracoes').select('config, ativo').eq('slug', 'cpro').single()
+          if (!cproInteg?.ativo) { send('error', 'CPro nao configurado'); controller.close(); return }
+          const cproCfg = cproInteg.config as Record<string, string>
+          pendentes = await fetchPendingFromCpro(guia.guide_number, realizedDates, cproCfg)
+        }
+
         if (pendentes.length === 0) {
           send('info', 'Nenhum procedimento pendente encontrado.')
           controller.close(); return
         }
-        send('success', `[4/7] ${pendentes.length} procedimento(s) pendente(s) encontrado(s)`)
+        send('success', `[4/7] ${pendentes.length} procedimento(s) para cobrar`)
 
         // 5. Login SAW
         send('processing', '[5/7] Verificando sessao SAW...')

@@ -2,7 +2,7 @@
 
 import { use, useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, RefreshCw, CheckCircle, XCircle, RotateCw, Camera, Loader2, Send, Smartphone, MessageSquare } from 'lucide-react'
+import { ArrowLeft, RefreshCw, CheckCircle, XCircle, X, RotateCw, Camera, Loader2, Send, Smartphone, MessageSquare } from 'lucide-react'
 import { useGuia, useUpdateGuiaStatus } from '@/hooks/use-guias'
 import { useProfile } from '@/hooks/use-profile'
 import { StatusBadge } from '@/components/shared/status-badge'
@@ -65,7 +65,10 @@ export default function GuiaDetailPage({ params }: Props) {
   const [cobrarLogs, setCobrarLogs] = useState<ImportLog[]>([])
   const cobrarEndRef = useRef<HTMLDivElement>(null)
   const [cobrarShowCamera, setCobrarShowCamera] = useState(false)
-  const [cobrarHasFoto, setCobrarHasFoto] = useState<boolean | null>(null) // null = loading
+  const [cobrarHasFoto, setCobrarHasFoto] = useState<boolean | null>(null)
+  const [cobrarModalOpen, setCobrarModalOpen] = useState(false)
+  const [cobrarPendentes, setCobrarPendentes] = useState<Array<{ date: string; start: string; end: string; checked: boolean }>>([])
+  const [cobrarLoadingPendentes, setCobrarLoadingPendentes] = useState(false)
 
   // Buscar foto existente quando guia TOKEN ou PENDENTE carrega
   useEffect(() => {
@@ -266,15 +269,41 @@ export default function GuiaDetailPage({ params }: Props) {
     }
   }, [])
 
-  async function handleCobrarAtendimentos() {
+  async function handleAbrirCobrarModal() {
     if (!guia) return
+    setCobrarModalOpen(true)
+    setCobrarLoadingPendentes(true)
+    setCobrarPendentes([])
+    try {
+      // Buscar atendimentos do CPro
+      const res = await fetch(`/api/biometria/pendentes/${guia.guide_number}`)
+      const data = await res.json()
+      if (data.pendentes) {
+        setCobrarPendentes(data.pendentes.map((p: { date: string; start: string; end: string }) => ({ ...p, checked: true })))
+      }
+    } catch {
+      toast.error('Erro ao buscar atendimentos pendentes')
+    } finally {
+      setCobrarLoadingPendentes(false)
+    }
+  }
+
+  async function handleCobrarSelecionados() {
+    if (!guia) return
+    const selecionados = cobrarPendentes.filter((p) => p.checked)
+    if (selecionados.length === 0) { toast.error('Selecione ao menos um atendimento'); return }
+
+    setCobrarModalOpen(false)
     setCobrando(true)
     setCobrarLogs([])
     try {
       const res = await fetch('/api/biometria/cobrar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ guia_id: guia.id }),
+        body: JSON.stringify({
+          guia_id: guia.id,
+          atendimentos: selecionados.map((p) => ({ date: p.date, start: p.start, end: p.end })),
+        }),
       })
       const reader = res.body?.getReader()
       if (!reader) throw new Error('Stream nao disponivel')
@@ -1042,35 +1071,29 @@ export default function GuiaDetailPage({ params }: Props) {
                 Executar procedimentos pendentes no SAW com biometria
               </p>
             </div>
-            {cobrarHasFoto && (
+            <div className="flex items-center gap-2">
+              {!cobrando && (
+                <button
+                  onClick={() => setCobrarShowCamera(true)}
+                  className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs"
+                  style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-muted)' }}
+                >
+                  <Camera className="w-3.5 h-3.5" />
+                  {cobrarHasFoto ? 'Nova foto' : 'Capturar foto'}
+                </button>
+              )}
               <button
-                onClick={handleCobrarAtendimentos}
-                disabled={cobrando}
+                onClick={handleAbrirCobrarModal}
+                disabled={cobrando || cobrarHasFoto === false}
                 className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
                 style={{ background: 'var(--color-secondary)' }}
+                title={cobrarHasFoto === false ? 'Capture a foto primeiro' : ''}
               >
                 {cobrando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                 {cobrando ? 'Cobrando...' : 'Cobrar Atendimentos'}
               </button>
-            )}
-          </div>
-
-          {/* Sem foto — capturar primeiro */}
-          {cobrarHasFoto === false && !cobrarShowCamera && !cobrando && (
-            <div className="p-5 space-y-3">
-              <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
-                Para cobrar, e necessario uma foto do paciente para autenticacao biometrica no SAW.
-              </p>
-              <button
-                onClick={() => setCobrarShowCamera(true)}
-                className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white"
-                style={{ background: 'var(--color-primary)' }}
-              >
-                <Camera className="w-4 h-4" />
-                Capturar Foto
-              </button>
             </div>
-          )}
+          </div>
 
           {/* Camera de captura */}
           {cobrarShowCamera && (
@@ -1093,7 +1116,7 @@ export default function GuiaDetailPage({ params }: Props) {
                       const fotoData = await fotoRes.json()
                       if (fotoData.exists && fotoData.url) setBioPhoto(fotoData.url)
                     }
-                    toast.success('Foto salva! Agora pode cobrar.')
+                    toast.success('Foto salva!')
                   } catch (err) {
                     toast.error(err instanceof Error ? err.message : 'Erro ao salvar foto')
                   }
@@ -1103,15 +1126,24 @@ export default function GuiaDetailPage({ params }: Props) {
             </div>
           )}
 
-          {/* Foto existente — mini preview */}
-          {cobrarHasFoto && bioPhoto && !cobrando && cobrarLogs.length === 0 && (
-            <div className="px-5 pb-4 flex items-center gap-3">
+          {/* Sem foto — aviso */}
+          {cobrarHasFoto === false && !cobrarShowCamera && !cobrando && cobrarLogs.length === 0 && (
+            <div className="px-5 py-4">
+              <p className="text-sm" style={{ color: 'var(--color-warning)' }}>
+                Foto do paciente necessaria. Clique em &quot;Capturar foto&quot; acima.
+              </p>
+            </div>
+          )}
+
+          {/* Foto mini preview */}
+          {cobrarHasFoto && bioPhoto && !cobrarShowCamera && !cobrando && cobrarLogs.length === 0 && (
+            <div className="px-5 py-3 flex items-center gap-3">
               <div className="shrink-0 w-16 h-9 overflow-hidden rounded border" style={{ borderColor: 'var(--color-border)' }}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={bioPhoto} alt="Foto" className="w-full h-full object-cover" />
               </div>
               <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-                Foto do paciente disponivel para autenticacao biometrica.
+                Foto disponivel para biometria.
               </p>
             </div>
           )}
@@ -1145,6 +1177,103 @@ export default function GuiaDetailPage({ params }: Props) {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Modal de selecao de atendimentos para cobrar */}
+      {cobrarModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div
+            className="mx-4 w-full max-w-lg rounded-xl border shadow-2xl"
+            style={{ background: 'var(--color-card)', borderColor: 'var(--color-secondary)' }}
+          >
+            <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: 'var(--color-border)' }}>
+              <div>
+                <h2 className="text-sm font-semibold" style={{ color: 'var(--color-secondary)' }}>Selecionar Atendimentos</h2>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
+                  Guia {guia.guide_number} — {guia.paciente}
+                </p>
+              </div>
+              <button onClick={() => setCobrarModalOpen(false)} className="p-1 rounded hover:bg-white/10">
+                <X className="w-4 h-4" style={{ color: 'var(--color-text-muted)' }} />
+              </button>
+            </div>
+
+            <div className="px-6 py-4 max-h-[400px] overflow-y-auto">
+              {cobrarLoadingPendentes ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="w-5 h-5 animate-spin" style={{ color: 'var(--color-text-muted)' }} />
+                </div>
+              ) : cobrarPendentes.length === 0 ? (
+                <p className="text-sm text-center py-6" style={{ color: 'var(--color-text-muted)' }}>
+                  Nenhum atendimento pendente encontrado.
+                </p>
+              ) : (
+                <div className="space-y-1">
+                  {/* Selecionar todos */}
+                  <label className="flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer hover:bg-[var(--color-surface)]">
+                    <input
+                      type="checkbox"
+                      checked={cobrarPendentes.every((p) => p.checked)}
+                      onChange={(e) => setCobrarPendentes((prev) => prev.map((p) => ({ ...p, checked: e.target.checked })))}
+                      className="w-4 h-4 rounded accent-[var(--color-secondary)]"
+                    />
+                    <span className="text-xs font-semibold" style={{ color: 'var(--color-text-muted)' }}>
+                      Selecionar todos ({cobrarPendentes.length})
+                    </span>
+                  </label>
+
+                  <div className="border-t my-1" style={{ borderColor: 'var(--color-border)' }} />
+
+                  {cobrarPendentes.map((p, i) => (
+                    <label
+                      key={i}
+                      className="flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer hover:bg-[var(--color-surface)] transition-colors"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={p.checked}
+                        onChange={() => setCobrarPendentes((prev) => prev.map((pp, j) => j === i ? { ...pp, checked: !pp.checked } : pp))}
+                        className="w-4 h-4 rounded accent-[var(--color-secondary)]"
+                      />
+                      <div className="flex-1">
+                        <span className="text-sm font-mono font-semibold" style={{ color: 'var(--color-text)' }}>
+                          {formatDate(p.date)}
+                        </span>
+                        <span className="text-xs ml-2" style={{ color: 'var(--color-text-muted)' }}>
+                          {p.start.substring(0, 5)} - {p.end.substring(0, 5)}
+                        </span>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-between px-6 py-4 border-t" style={{ borderColor: 'var(--color-border)' }}>
+              <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                {cobrarPendentes.filter((p) => p.checked).length} de {cobrarPendentes.length} selecionado(s)
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setCobrarModalOpen(false)}
+                  className="rounded-lg border px-4 py-2 text-sm"
+                  style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-muted)' }}
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleCobrarSelecionados}
+                  disabled={cobrarPendentes.filter((p) => p.checked).length === 0}
+                  className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                  style={{ background: 'var(--color-secondary)' }}
+                >
+                  <Send className="w-4 h-4" />
+                  Cobrar {cobrarPendentes.filter((p) => p.checked).length} atendimento(s)
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
