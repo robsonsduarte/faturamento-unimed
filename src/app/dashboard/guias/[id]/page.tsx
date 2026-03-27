@@ -1226,25 +1226,36 @@ export default function GuiaDetailPage({ params }: Props) {
                   <div className="border-t my-1" style={{ borderColor: 'var(--color-border)' }} />
 
                   {cobrarPendentes.map((p, i) => (
-                    <label
+                    <div
                       key={i}
-                      className="flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer hover:bg-[var(--color-surface)] transition-colors"
+                      className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-[var(--color-surface)] transition-colors"
                     >
                       <input
                         type="checkbox"
                         checked={p.checked}
                         onChange={() => setCobrarPendentes((prev) => prev.map((pp, j) => j === i ? { ...pp, checked: !pp.checked } : pp))}
-                        className="w-4 h-4 rounded accent-[var(--color-secondary)]"
+                        className="w-4 h-4 rounded accent-[var(--color-secondary)] shrink-0"
                       />
-                      <div className="flex-1">
-                        <span className="text-sm font-mono font-semibold" style={{ color: 'var(--color-text)' }}>
-                          {formatDate(p.date)}
-                        </span>
-                        <span className="text-xs ml-2" style={{ color: 'var(--color-text-muted)' }}>
-                          {p.start.substring(0, 5)} - {p.end.substring(0, 5)}
-                        </span>
-                      </div>
-                    </label>
+                      <input
+                        type="date"
+                        value={p.date}
+                        onChange={(e) => setCobrarPendentes((prev) => prev.map((pp, j) => j === i ? { ...pp, date: e.target.value } : pp))}
+                        className="w-[130px] px-2 py-1 rounded border text-sm font-mono bg-[var(--color-surface)] border-[var(--color-border)] text-[var(--color-text)]"
+                      />
+                      <input
+                        type="time"
+                        value={p.start.substring(0, 5)}
+                        onChange={(e) => setCobrarPendentes((prev) => prev.map((pp, j) => j === i ? { ...pp, start: e.target.value + ':00' } : pp))}
+                        className="w-[90px] px-2 py-1 rounded border text-xs font-mono bg-[var(--color-surface)] border-[var(--color-border)] text-[var(--color-text-muted)]"
+                      />
+                      <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>-</span>
+                      <input
+                        type="time"
+                        value={p.end.substring(0, 5)}
+                        onChange={(e) => setCobrarPendentes((prev) => prev.map((pp, j) => j === i ? { ...pp, end: e.target.value + ':00' } : pp))}
+                        className="w-[90px] px-2 py-1 rounded border text-xs font-mono bg-[var(--color-surface)] border-[var(--color-border)] text-[var(--color-text-muted)]"
+                      />
+                    </div>
                   ))}
                 </div>
               )}
