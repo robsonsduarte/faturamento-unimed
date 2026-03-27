@@ -1252,28 +1252,38 @@ class SawClient {
       let phones: { value: string; text: string }[] = []
       try {
         if (hasSms) {
-          // Clicar radio SMS — usar locator com texto "SMS"
+          // Clicar radio SMS — precisa clicar no input radio diretamente
           console.log(`[SAW] openTokenPage: clicando radio SMS...`)
-          try {
-            // Tentar clicar no label/texto "SMS" que contem o radio
-            await page.locator('text=SMS').first().click({ timeout: 5000 })
-          } catch {
-            // Fallback: clicar via evaluate
-            await page.evaluate(() => {
-              const radios = document.querySelectorAll('input[type="radio"]')
-              for (const radio of radios) {
-                const parent = radio.closest('td, div, label, fieldset')
-                if (parent && /\bsms\b/i.test(parent.textContent ?? '')) {
-                  (radio as HTMLInputElement).click();
-                  (radio as HTMLInputElement).dispatchEvent(new Event('change', { bubbles: true }))
-                  break
-                }
+          const smsClicked = await page.evaluate(() => {
+            // Encontrar todos os radios e clicar no que esta perto do texto "SMS"
+            const radios = Array.from(document.querySelectorAll('input[type="radio"]'))
+            for (const radio of radios) {
+              // Verificar o parent/container do radio
+              const container = radio.closest('td, div, label, fieldset, tr')
+              if (container && /\bsms\b/i.test(container.textContent ?? '')) {
+                // Clicar no radio diretamente
+                (radio as HTMLInputElement).checked = true
+                radio.dispatchEvent(new Event('click', { bubbles: true }))
+                radio.dispatchEvent(new Event('change', { bubbles: true }))
+                // Tentar tambem o onclick nativo se existir
+                // Trigger onclick handler if exists
+                try { radio.dispatchEvent(new MouseEvent('click', { bubbles: true })) } catch { /* */ }
+                return true
               }
-            })
-          }
+            }
+            // Fallback: clicar no 3o radio (geralmente SMS e o 3o: App, Email, SMS)
+            if (radios.length >= 3) {
+              (radios[2] as HTMLInputElement).checked = true
+              radios[2].dispatchEvent(new Event('click', { bubbles: true }))
+              radios[2].dispatchEvent(new Event('change', { bubbles: true }))
+              return true
+            }
+            return false
+          })
+          console.log(`[SAW] openTokenPage: radio SMS clicado: ${smsClicked}`)
           await page.waitForTimeout(2000)
           await page.screenshot({ path: '/tmp/debug-opentoken-sms-clicked.png' }).catch(() => {})
-          console.log(`[SAW] openTokenPage: radio SMS clicado, aguardando select...`)
+          console.log(`[SAW] openTokenPage: aguardando select de telefones...`)
         }
 
         // Aguardar select aparecer
