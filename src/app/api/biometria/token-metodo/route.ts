@@ -90,9 +90,33 @@ export async function POST(request: NextRequest) {
           send({ type: 'success', message: 'Sessao SAW ativa.' })
         }
 
+        // 2.5 Buscar data de nascimento do paciente (para justificativa BioFace)
+        let dataNascimento: string | undefined
+        try {
+          const { data: cproInteg } = await db.from('integracoes').select('config, ativo').eq('slug', 'cpro').single()
+          if (cproInteg?.ativo) {
+            const cfg = cproInteg.config as Record<string, string>
+            const cproUrl = `${cfg.api_url}/service/api/v1/executions/by-guide-number/${guia.guide_number}?company=${cfg.company ?? '1'}`
+            const cproBody = await new Promise<string>((resolve) => {
+              const parsed = new URL(cproUrl)
+              const req = https.request({
+                hostname: parsed.hostname, port: parsed.port || 443,
+                path: parsed.pathname + parsed.search, method: 'GET',
+                headers: { 'X-API-Key': cfg.api_key, Host: 'consultoriopro.com.br', Accept: 'application/json' },
+                rejectUnauthorized: false, timeout: 10000,
+              }, (res) => { let d = ''; res.on('data', (c: Buffer) => { d += c.toString() }); res.on('end', () => resolve(d)) })
+              req.on('error', () => resolve('')); req.on('timeout', () => { req.destroy(); resolve('') }); req.end()
+            })
+            if (cproBody) {
+              const cproJson = JSON.parse(cproBody)
+              dataNascimento = cproJson?.data?.patient?.born_at ?? undefined
+            }
+          }
+        } catch { /* */ }
+
         // 3. Abrir pagina de token (com retry se sessao expirou)
         send({ type: 'processing', message: 'Abrindo guia no SAW...' })
-        let result = await getSawClient().openTokenPage(user.id, cookies, guia.guide_number)
+        let result = await getSawClient().openTokenPage(user.id, cookies, guia.guide_number, dataNascimento)
 
         // Se sessao expirou, refazer login e tentar de novo
         if (!result.success && result.error?.includes('expirou')) {
@@ -104,7 +128,7 @@ export async function POST(request: NextRequest) {
           await db.from('saw_sessions').insert({ user_id: user.id, cookies, valida: true, expires_at: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString() })
           send({ type: 'success', message: 'Re-login realizado.' })
 
-          result = await getSawClient().openTokenPage(user.id, cookies, guia.guide_number)
+          result = await getSawClient().openTokenPage(user.id, cookies, guia.guide_number, dataNascimento)
         }
 
         if (!result.success) {

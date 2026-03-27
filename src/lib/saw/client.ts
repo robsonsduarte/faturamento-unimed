@@ -1152,6 +1152,7 @@ class SawClient {
     userId: string,
     cookies: SawCookie[],
     numeroGuia: string,
+    dataNascimento?: string, // YYYY-MM-DD para calcular idade
   ): Promise<{
     success: boolean
     sessionId?: string
@@ -1235,11 +1236,125 @@ class SawClient {
           return { success: false, error: 'Guia abriu sem Check-in ou Token. Reimporte a guia.' }
         }
       } else if (!isTokenMethodPage) {
-        await page.close().catch(() => {})
-        return { success: false, error: `Pagina inesperada: ${currentUrl.substring(0, 100)}` }
+        // Verificar se e pagina BioFace (pode aparecer direto)
+        const isBioFace = pageText.includes('PULAR CAPTURA') || pageText.includes('Capturar Foto') ||
+          pageText.includes('BIOFACE') || currentUrl.includes('bioface')
+
+        if (!isBioFace) {
+          await page.close().catch(() => {})
+          return { success: false, error: `Pagina inesperada: ${currentUrl.substring(0, 100)}` }
+        }
       }
 
-      // Atualizar texto (pode ter mudado apos clique no Check-in)
+      // Se BioFace esta visivel (dentro da guia ou como redirect), pular captura
+      const hasBioFace = await page.evaluate(() => {
+        const text = document.body?.innerText ?? ''
+        return text.includes('PULAR CAPTURA') || text.includes('Capturar Foto') || text.includes('BIOFACE')
+      }).catch(() => false)
+
+      if (hasBioFace) {
+        console.log(`[SAW] openTokenPage: BioFace detectado — pulando captura...`)
+
+        // Calcular idade para escolher justificativa
+        let age = 99
+        if (dataNascimento) {
+          const born = new Date(dataNascimento)
+          const today = new Date()
+          age = today.getFullYear() - born.getFullYear()
+          if (today.getMonth() < born.getMonth() || (today.getMonth() === born.getMonth() && today.getDate() < born.getDate())) age--
+        }
+        const justificativa = age < 14 ? 'TEA' : 'recusou'
+        console.log(`[SAW] openTokenPage: idade=${age}, justificativa=${justificativa}`)
+
+        // Procurar iframe BioFace ou botao na pagina principal
+        const bioFrameHandle = await page.$('iframe#iframeBioFacial, iframe[src*="bioface"]')
+        const targetFrame = bioFrameHandle ? await bioFrameHandle.contentFrame() : null
+        const targetPage = targetFrame ?? page
+
+        // 1. Clicar "PULAR CAPTURA"
+        try {
+          // Tentar via locator no frame/page
+          const pularBtn = targetPage.locator('text=PULAR CAPTURA').first()
+          if (await pularBtn.count() > 0) {
+            await pularBtn.click()
+          } else {
+            // Fallback: qualquer botao/div com "pular"
+            await targetPage.evaluate(() => {
+              const els = Array.from(document.querySelectorAll('button, a, div, span'))
+              const btn = els.find(e => /pular/i.test((e as HTMLElement).textContent ?? ''))
+              if (btn) (btn as HTMLElement).click()
+            })
+          }
+          console.log(`[SAW] openTokenPage: clicou PULAR CAPTURA`)
+          await page.waitForTimeout(2000)
+          await page.screenshot({ path: '/tmp/debug-opentoken-bioface-pular.png' }).catch(() => {})
+        } catch {
+          console.log(`[SAW] openTokenPage: nao encontrou botao PULAR CAPTURA`)
+        }
+
+        // 2. Selecionar justificativa no dropdown
+        try {
+          const justResult = await targetPage.evaluate((just) => {
+            const selects = document.querySelectorAll('select')
+            for (const sel of selects) {
+              for (let i = 0; i < sel.options.length; i++) {
+                const optText = sel.options[i].text.toLowerCase()
+                if (just === 'TEA' && optText.includes('tea')) {
+                  sel.selectedIndex = i
+                  sel.dispatchEvent(new Event('change', { bubbles: true }))
+                  return JSON.stringify({ ok: true, selected: sel.options[i].text })
+                }
+                if (just === 'recusou' && (optText.includes('recusou') || optText.includes('recusa'))) {
+                  sel.selectedIndex = i
+                  sel.dispatchEvent(new Event('change', { bubbles: true }))
+                  return JSON.stringify({ ok: true, selected: sel.options[i].text })
+                }
+              }
+              // Fallback: selecionar primeira opcao nao vazia
+              if (sel.options.length > 1) {
+                sel.selectedIndex = 1
+                sel.dispatchEvent(new Event('change', { bubbles: true }))
+                return JSON.stringify({ ok: true, selected: sel.options[1].text })
+              }
+            }
+            return JSON.stringify({ ok: false })
+          }, justificativa)
+          console.log(`[SAW] openTokenPage: justificativa: ${justResult}`)
+          await page.waitForTimeout(500)
+        } catch { /* */ }
+
+        // 3. Clicar CONFIRMAR
+        try {
+          const confirmarBtn = targetPage.locator('text=CONFIRMAR').first()
+          if (await confirmarBtn.count() > 0) {
+            await confirmarBtn.click()
+          } else {
+            await targetPage.evaluate(() => {
+              const els = Array.from(document.querySelectorAll('button, a, input[type=button]'))
+              const btn = els.find(e => /confirmar/i.test((e as HTMLElement).textContent ?? ''))
+              if (btn) (btn as HTMLElement).click()
+            })
+          }
+          console.log(`[SAW] openTokenPage: clicou CONFIRMAR`)
+        } catch { /* */ }
+
+        await page.waitForTimeout(5000)
+        await page.screenshot({ path: '/tmp/debug-opentoken-bioface-after-confirm.png' }).catch(() => {})
+
+        // Verificar se voltou para tela de token
+        const newText = await page.evaluate(() => document.body?.innerText ?? '')
+        const nowOnTokenPage = page.url().includes('MantemTokenDeAtendimento') ||
+          newText.includes('Selecione uma forma de envio') ||
+          newText.includes('informe um token')
+
+        if (!nowOnTokenPage) {
+          console.log(`[SAW] openTokenPage: apos pular BioFace, nao voltou para tela de token. URL: ${page.url().substring(0, 80)}`)
+        } else {
+          console.log(`[SAW] openTokenPage: BioFace pulado, agora na tela de token`)
+        }
+      }
+
+      // Atualizar texto (pode ter mudado apos clique no Check-in ou BioFace)
       const finalPageText = await page.evaluate(() => document.body?.innerText ?? '')
 
       // Extract available methods and phones
