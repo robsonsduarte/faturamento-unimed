@@ -1267,29 +1267,29 @@ class SawClient {
         }
 
         // Extrair telefones do select com value (numero real) + text (mascarado)
+        // Aguardar mais tempo apos clicar radio SMS (o select pode demorar a aparecer)
+        await page.waitForTimeout(1000)
+
         phones = await page.evaluate(() => {
           const result: { value: string; text: string }[] = []
-          const sel = document.querySelector('#tokenDeAtendimento\\.telefoneDeEnvio\\.numero, select[name*="telefoneDeEnvio"]') as HTMLSelectElement
-          if (sel) {
+
+          // Tentar todos os selects da pagina
+          const selects = document.querySelectorAll('select')
+          for (const sel of selects) {
             for (const opt of sel.options) {
-              if (opt.value && /\d{8,}/.test(opt.value)) {
-                result.push({ value: opt.value, text: opt.text?.trim() ?? opt.value })
+              const v = opt.value?.trim()
+              const t = opt.text?.trim()
+              // Telefone: value com 8+ digitos ou text com formato (XX)
+              if (v && (/\d{8,}/.test(v) || /\(\d{2}\)/.test(t ?? ''))) {
+                result.push({ value: v, text: t ?? v })
               }
             }
           }
-          // Fallback: qualquer select com telefones
-          if (result.length === 0) {
-            const selects = document.querySelectorAll('select')
-            for (const s of selects) {
-              for (const opt of (s as HTMLSelectElement).options) {
-                if (opt.value && /\d{8,}/.test(opt.value)) {
-                  result.push({ value: opt.value, text: opt.text?.trim() ?? opt.value })
-                }
-              }
-            }
-          }
+
           return result
         }) ?? []
+
+        console.log(`[SAW] openTokenPage: telefones extraidos: ${phones.length}`, phones.map((p) => p.text).join(', '))
 
         // Voltar para estado neutro (clicar radio Aplicativo se existir)
         if (hasSms && hasAplicativo) {
