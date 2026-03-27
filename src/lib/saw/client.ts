@@ -1273,22 +1273,21 @@ class SawClient {
         // Aguardar DOM renderizar apos clicar SMS (3s — testado e funciona)
         await page.waitForTimeout(3000)
 
-        // Extrair telefones usando getElementById (IDs com pontos)
-        phones = await page.evaluate(() => {
-          const result: { value: string; text: string }[] = []
+        // Extrair telefones (retorna JSON string para evitar bug de serialização do Playwright)
+        const phonesJson = await page.evaluate(() => {
           const sel = document.getElementById('tokenDeAtendimento.telefoneDeEnvio.numero') as HTMLSelectElement | null
-            ?? (document.querySelector('#telefonesCelularesBeneficiario select') as HTMLSelectElement | null)
-          if (sel) {
-            for (const opt of sel.options) {
-              const v = opt.value?.trim()
-              const t = opt.text?.trim()
-              if (v && v !== '' && !/escolha/i.test(t ?? '')) {
-                result.push({ value: v, text: t ?? v })
-              }
+          if (!sel) return '[]'
+          const result: { value: string; text: string }[] = []
+          for (const opt of sel.options) {
+            const v = opt.value?.trim()
+            const t = opt.text?.trim()
+            if (v && v !== '' && !/escolha/i.test(t ?? '')) {
+              result.push({ value: v, text: t ?? v })
             }
           }
-          return result
-        }) ?? []
+          return JSON.stringify(result)
+        }) as string
+        try { phones = JSON.parse(phonesJson || '[]') } catch { phones = [] }
 
         console.log(`[SAW] openTokenPage: telefones extraidos: ${phones.length}`, phones.map((p) => `${p.text}(${p.value})`).join(', '))
 
@@ -1637,29 +1636,26 @@ class SawClient {
 
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        const phones = await entry.page.evaluate(() => {
-          const result: { value: string; text: string }[] = []
-
-          // Usar getElementById (funciona com IDs que tem pontos)
+        const phonesJson = await entry.page.evaluate(() => {
           const sel = document.getElementById('tokenDeAtendimento.telefoneDeEnvio.numero') as HTMLSelectElement | null
-            ?? (document.querySelector('#telefonesCelularesBeneficiario select') as HTMLSelectElement | null)
-
-          if (sel) {
-            for (const opt of sel.options) {
-              const v = opt.value?.trim()
-              const t = opt.text?.trim()
-              if (v && v !== '' && !/escolha/i.test(t ?? '')) {
-                result.push({ value: v, text: t ?? v })
-              }
+          if (!sel) return '[]'
+          const result: { value: string; text: string }[] = []
+          for (const opt of sel.options) {
+            const v = opt.value?.trim()
+            const t = opt.text?.trim()
+            if (v && v !== '' && !/escolha/i.test(t ?? '')) {
+              result.push({ value: v, text: t ?? v })
             }
           }
+          return JSON.stringify(result)
+        }) as string
 
-          return result
-        }) ?? []
+        let phones: { value: string; text: string }[] = []
+        try { phones = JSON.parse(phonesJson || '[]') } catch { /* */ }
 
-        if (phones && phones.length > 0) {
-          console.log(`[SAW] getTokenPagePhones: ${phones.length} telefone(s) — ${phones.map((p: {text:string}) => p.text).join(', ')} (attempt ${attempt + 1})`)
-          return phones as { value: string; text: string }[]
+        if (phones.length > 0) {
+          console.log(`[SAW] getTokenPagePhones: ${phones.length} telefone(s) — ${phones.map((p) => p.text).join(', ')} (attempt ${attempt + 1})`)
+          return phones
         }
       } catch (err) {
         console.log(`[SAW] getTokenPagePhones: evaluate falhou (attempt ${attempt + 1}): ${err instanceof Error ? err.message : err}`)
