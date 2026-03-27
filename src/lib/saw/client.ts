@@ -1270,13 +1270,14 @@ class SawClient {
           console.log(`[SAW] openTokenPage: aguardando select de telefones...`)
         }
 
-        // Aguardar select aparecer
-        await page.waitForTimeout(1500)
+        // Aguardar DOM renderizar apos clicar SMS (3s — testado e funciona)
+        await page.waitForTimeout(3000)
 
         // Extrair telefones usando getElementById (IDs com pontos)
         phones = await page.evaluate(() => {
           const result: { value: string; text: string }[] = []
           const sel = document.getElementById('tokenDeAtendimento.telefoneDeEnvio.numero') as HTMLSelectElement | null
+            ?? (document.querySelector('#telefonesCelularesBeneficiario select') as HTMLSelectElement | null)
           if (sel) {
             for (const opt of sel.options) {
               const v = opt.value?.trim()
@@ -1654,11 +1655,11 @@ class SawClient {
           }
 
           return result
-        }) as { value: string; text: string }[]
+        }) ?? []
 
-        if (phones.length > 0) {
-          console.log(`[SAW] getTokenPagePhones: ${phones.length} telefone(s) — ${phones.map((p) => p.text).join(', ')} (attempt ${attempt + 1})`)
-          return phones
+        if (phones && phones.length > 0) {
+          console.log(`[SAW] getTokenPagePhones: ${phones.length} telefone(s) — ${phones.map((p: {text:string}) => p.text).join(', ')} (attempt ${attempt + 1})`)
+          return phones as { value: string; text: string }[]
         }
       } catch (err) {
         console.log(`[SAW] getTokenPagePhones: evaluate falhou (attempt ${attempt + 1}): ${err instanceof Error ? err.message : err}`)
