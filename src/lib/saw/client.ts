@@ -1156,7 +1156,7 @@ class SawClient {
     success: boolean
     sessionId?: string
     methods?: { aplicativo: boolean; email: boolean; sms: boolean }
-    phones?: string[]
+    phones?: { value: string; text: string }[]
     beneficiarioPhone?: string
     tokenAlreadyResolved?: boolean
     error?: string
@@ -1249,7 +1249,7 @@ class SawClient {
       const hasSms = /\bsms\b/i.test(textForMethods)
 
       // Clicar no radio SMS para revelar select de telefones, extrair, depois voltar
-      let phones: string[] = []
+      let phones: { value: string; text: string }[] = []
       try {
         if (hasSms) {
           // Clicar radio SMS para revelar select
@@ -1266,14 +1266,26 @@ class SawClient {
           await page.waitForTimeout(1500)
         }
 
-        // Extrair telefones do select
+        // Extrair telefones do select com value (numero real) + text (mascarado)
         phones = await page.evaluate(() => {
-          const result: string[] = []
-          const selects = document.querySelectorAll('select')
-          for (const sel of selects) {
+          const result: { value: string; text: string }[] = []
+          const sel = document.querySelector('#tokenDeAtendimento\\.telefoneDeEnvio\\.numero, select[name*="telefoneDeEnvio"]') as HTMLSelectElement
+          if (sel) {
             for (const opt of sel.options) {
-              const val = opt.text?.trim()
-              if (val && /\(\d{2}\)/.test(val)) result.push(val)
+              if (opt.value && /\d{8,}/.test(opt.value)) {
+                result.push({ value: opt.value, text: opt.text?.trim() ?? opt.value })
+              }
+            }
+          }
+          // Fallback: qualquer select com telefones
+          if (result.length === 0) {
+            const selects = document.querySelectorAll('select')
+            for (const s of selects) {
+              for (const opt of (s as HTMLSelectElement).options) {
+                if (opt.value && /\d{8,}/.test(opt.value)) {
+                  result.push({ value: opt.value, text: opt.text?.trim() ?? opt.value })
+                }
+              }
             }
           }
           return result
@@ -1383,7 +1395,7 @@ class SawClient {
         await page.waitForTimeout(1000)
         console.log(`[SAW] selectTokenMethod: selected Aplicativo`)
       } else if (method === 'sms') {
-        // Click SMS radio
+        // 1. Clicar radio SMS
         await page.evaluate(() => {
           const radios = document.querySelectorAll('input[type="radio"]')
           for (const radio of radios) {
@@ -1394,15 +1406,19 @@ class SawClient {
             }
           }
         })
-        await page.waitForTimeout(1000)
+        await page.waitForTimeout(1500)
 
-        // Select phone from dropdown
+        // 2. Selecionar telefone no select do SAW (usando value = numero real)
         if (phone) {
-          await page.evaluate((phoneVal: string) => {
-            const selects = document.querySelectorAll('select')
-            for (const sel of selects) {
+          console.log(`[SAW] selectTokenMethod: selecionando telefone ${phone} no SAW`)
+          await page.evaluate((phoneValue: string) => {
+            // Select especifico do SAW
+            const sel = document.querySelector('#tokenDeAtendimento\\.telefoneDeEnvio\\.numero') as HTMLSelectElement
+              ?? document.querySelector('select[name*="telefoneDeEnvio"]') as HTMLSelectElement
+            if (sel) {
+              // Tentar por value exato
               for (let i = 0; i < sel.options.length; i++) {
-                if (sel.options[i].text.includes(phoneVal) || sel.options[i].value.includes(phoneVal)) {
+                if (sel.options[i].value === phoneValue || sel.options[i].value.includes(phoneValue)) {
                   sel.selectedIndex = i
                   sel.dispatchEvent(new Event('change', { bubbles: true }))
                   break
@@ -1413,20 +1429,29 @@ class SawClient {
           await page.waitForTimeout(500)
         }
 
-        // Click "Enviar" button
+        // 3. Clicar botao "Enviar" do SAW (#botaoSMS ou enviarTokenDeAtendimento())
+        console.log(`[SAW] selectTokenMethod: clicando Enviar SMS no SAW`)
         await page.evaluate(() => {
-          const btns = Array.from(document.querySelectorAll('button, input[type="button"], input[type="submit"], a'))
-          const enviar = btns.find((b) => /enviar/i.test((b as HTMLElement).textContent ?? '') || /enviar/i.test((b as HTMLInputElement).value ?? ''))
-          if (enviar) (enviar as HTMLElement).click()
+          const btn = document.querySelector('#botaoSMS') as HTMLElement
+          if (btn) { btn.click(); return }
+          // Fallback: chamar funcao JS
+          if (typeof (window as unknown as Record<string, unknown>).enviarTokenDeAtendimento === 'function') {
+            ((window as unknown as Record<string, unknown>).enviarTokenDeAtendimento as () => void)()
+            return
+          }
+          // Fallback: qualquer botao Enviar
+          const btns = Array.from(document.querySelectorAll('button'))
+          const enviar = btns.find((b) => /enviar/i.test(b.textContent ?? ''))
+          if (enviar) enviar.click()
         })
-        await page.waitForTimeout(2000)
+        await page.waitForTimeout(3000)
 
-        // Verify SMS was sent
+        // 4. Verificar se SMS foi enviado
         const pageText = await page.evaluate(() => document.body?.innerText ?? '')
         if (pageText.includes('Token de Atendimento enviado com sucesso')) {
-          console.log(`[SAW] selectTokenMethod: SMS enviado com sucesso`)
+          console.log(`[SAW] selectTokenMethod: SMS enviado com sucesso pelo SAW`)
         } else {
-          console.log(`[SAW] selectTokenMethod: SMS pode nao ter sido enviado. Texto: ${pageText.substring(0, 200)}`)
+          console.log(`[SAW] selectTokenMethod: resposta SAW: ${pageText.substring(0, 200)}`)
         }
       }
 

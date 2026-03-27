@@ -45,7 +45,7 @@ export default function GuiaDetailPage({ params }: Props) {
   const [tokenMode, setTokenMode] = useState<'none' | 'biometria' | 'whatsapp'>('none')
   const [tokenSessionId, setTokenSessionId] = useState<string | null>(null)
   const [tokenMethods, setTokenMethods] = useState<{ aplicativo: boolean; sms: boolean } | null>(null)
-  const [tokenPhones, setTokenPhones] = useState<string[]>([])
+  const [tokenPhones, setTokenPhones] = useState<{ value: string; text: string }[]>([])
   const [selectedMethod, setSelectedMethod] = useState<'aplicativo' | 'sms' | null>(null)
   const [selectedPhone, setSelectedPhone] = useState<string>('')
   const [whatsappPhone, setWhatsappPhone] = useState('')
@@ -190,7 +190,7 @@ export default function GuiaDetailPage({ params }: Props) {
 
               setTokenSessionId(evt.sessionId as string)
               setTokenMethods(evt.methods as { aplicativo: boolean; sms: boolean })
-              setTokenPhones((evt.phones as string[]) ?? [])
+              setTokenPhones((evt.phones as { value: string; text: string }[]) ?? [])
 
               const phone = (evt.patientPhone as string) ?? (evt.phoneDisplay as string) ?? ''
 
@@ -866,16 +866,16 @@ export default function GuiaDetailPage({ params }: Props) {
                       {/* Telefone SMS (se SMS selecionado) */}
                       {selectedMethod === 'sms' && tokenPhones.length > 0 && (
                         <div className="space-y-2">
-                          <label className="text-xs font-medium" style={{ color: 'var(--color-text-muted)' }}>Telefone SAW:</label>
+                          <label className="text-xs font-medium" style={{ color: 'var(--color-text-muted)' }}>Telefone para SMS (SAW):</label>
                           <select
                             value={selectedPhone}
                             onChange={(e) => setSelectedPhone(e.target.value)}
                             className="w-full rounded-lg border px-3 py-2 text-sm"
                             style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
                           >
-                            <option value="">Selecione...</option>
+                            <option value="">Selecione o telefone...</option>
                             {tokenPhones.map((p) => (
-                              <option key={p} value={p}>{p}</option>
+                              <option key={p.value} value={p.value}>{p.text}</option>
                             ))}
                           </select>
                         </div>
