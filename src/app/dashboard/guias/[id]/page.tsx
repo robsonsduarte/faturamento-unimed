@@ -264,6 +264,8 @@ export default function GuiaDetailPage({ params }: Props) {
                 // SMS: mostrar telefones para selecao
                 const phones = (evt.phones as { value: string; text: string }[]) ?? []
                 setTokenPhones(phones)
+                const evtPhone = (evt.patientPhone as string) ?? ''
+                if (evtPhone) setWhatsappPhone(evtPhone)
                 setTokenStep('sms-select')
                 setTokenStatus('Selecione o telefone para envio do SMS')
               } else if (evt.method === 'aplicativo') {

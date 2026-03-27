@@ -110,23 +110,71 @@ export async function POST(request: NextRequest) {
         }
 
         if (body.method === 'sms') {
-          // 5a. SMS: extrair telefones e retornar para operador escolher
+          // 5a. SMS: extrair telefones AGORA (select deve estar visivel apos selectTokenMethod)
           send({ type: 'processing', message: 'Extraindo telefones...' })
 
-          // Aguardar select aparecer apos selecionar SMS
-          // Os telefones ja podem estar no result.phones da openTokenPage
-          // Mas como mudamos a logica, vamos extrair agora via screenshot/evaluate
-          // O selectTokenMethod ja clicou SMS, entao o select deve estar visivel
+          // Extrair telefones da page aberta (que agora tem SMS selecionado)
+          let smsPhones: { value: string; text: string }[] = []
+          try {
+            const entry = (getSawClient() as unknown as { tokenPages: Map<string, { page: { evaluate: (fn: () => unknown) => Promise<unknown> } }> }).tokenPages
+            const session = entry?.get(result.sessionId!)
+            if (session?.page) {
+              // Aguardar um pouco mais para o select aparecer
+              await new Promise((r) => setTimeout(r, 2000))
 
-          // Tentar extrair da page que esta aberta
-          // O sessionId contem a page reference
+              smsPhones = await session.page.evaluate(() => {
+                const phones: { value: string; text: string }[] = []
+                const selects = document.querySelectorAll('select')
+                for (const sel of selects) {
+                  for (const opt of sel.options) {
+                    const v = opt.value?.trim()
+                    const t = opt.text?.trim()
+                    if (v && v !== '' && !/escolha/i.test(t ?? '') && t !== '') {
+                      phones.push({ value: v, text: t ?? v })
+                    }
+                  }
+                }
+                return phones
+              }) as { value: string; text: string }[]
+
+              console.log(`[TOKEN-METODO] telefones extraidos apos SMS: ${smsPhones.length}`, smsPhones.map((p) => p.text).join(', '))
+            }
+          } catch (extractErr) {
+            console.error(`[TOKEN-METODO] erro ao extrair telefones:`, extractErr)
+          }
+
+          // Buscar telefone WhatsApp do CPro
+          let patientPhone = ''
+          try {
+            const { data: cproInteg } = await db.from('integracoes').select('config, ativo').eq('slug', 'cpro').single()
+            if (cproInteg?.ativo) {
+              const cfg = cproInteg.config as Record<string, string>
+              const cproUrl = `${cfg.api_url}/service/api/v1/executions/by-guide-number/${guia.guide_number}?company=${cfg.company ?? '1'}`
+              const cproBody = await new Promise<string>((resolve) => {
+                const parsed = new URL(cproUrl)
+                const req = https.request({
+                  hostname: parsed.hostname, port: parsed.port || 443,
+                  path: parsed.pathname + parsed.search, method: 'GET',
+                  headers: { 'X-API-Key': cfg.api_key, Host: 'consultoriopro.com.br', Accept: 'application/json' },
+                  rejectUnauthorized: false, timeout: 10000,
+                }, (res) => { let d = ''; res.on('data', (c: Buffer) => { d += c.toString() }); res.on('end', () => resolve(d)) })
+                req.on('error', () => resolve('')); req.on('timeout', () => { req.destroy(); resolve('') }); req.end()
+              })
+              if (cproBody) {
+                const mobile = JSON.parse(cproBody)?.data?.patient?.mobile as string ?? ''
+                if (mobile) { patientPhone = mobile.replace(/\D/g, ''); if (!patientPhone.startsWith('55')) patientPhone = `55${patientPhone}` }
+              }
+            }
+          } catch { /**/ }
+
           send({
             type: 'result',
             method: 'sms',
             sessionId: result.sessionId,
             guideNumber: guia.guide_number,
             paciente: guia.paciente,
-            phones: result.phones ?? [], // pode estar vazio se openTokenPage nao extraiu
+            phones: smsPhones,
+            patientPhone,
             needsPhoneSelection: true,
           })
         } else {
