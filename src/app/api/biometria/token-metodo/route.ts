@@ -102,15 +102,32 @@ export async function POST(request: NextRequest) {
           send({ type: 'error', message: result.error ?? 'Erro ao abrir token' }); controller.close(); return
         }
 
-        // 4. Selecionar metodo no SAW
-        send({ type: 'processing', message: `Selecionando ${body.method === 'sms' ? 'SMS' : 'Aplicativo'} no SAW...` })
-        const methodResult = await getSawClient().selectTokenMethod(result.sessionId!, body.method!)
-        if (!methodResult.success) {
-          send({ type: 'error', message: methodResult.error ?? 'Erro ao selecionar metodo' }); controller.close(); return
-        }
-
         if (body.method === 'sms') {
-          // 5a. SMS: extrair telefones via metodo publico (com retry/polling)
+          // 4a. SMS: NÃO chamar selectTokenMethod ainda (seria chamado pelo frontend depois)
+          // Apenas extrair telefones da page que openTokenPage já abriu
+          // openTokenPage já clicou radio SMS para revelar o select, extraiu, e voltou para Aplicativo
+          // Precisamos clicar SMS de novo e extrair
+
+          send({ type: 'processing', message: 'Selecionando SMS no SAW...' })
+
+          // Clicar radio SMS (sem clicar Enviar) usando evaluate direto na page
+          const entry = getSawClient().getTokenSession(result.sessionId!)
+          if (entry) {
+            await entry.page.evaluate(() => {
+              const radios = Array.from(document.querySelectorAll('input[type="radio"]'))
+              for (const radio of radios) {
+                const parent = radio.closest('td, div, label, fieldset')
+                if (parent && /\bsms\b/i.test(parent.textContent ?? '')) {
+                  (radio as HTMLInputElement).checked = true
+                  radio.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+                  radio.dispatchEvent(new Event('change', { bubbles: true }))
+                  break
+                }
+              }
+            })
+            await new Promise((r) => setTimeout(r, 2000))
+          }
+
           send({ type: 'processing', message: 'Extraindo telefones do SAW...' })
           const smsPhones = await getSawClient().getTokenPagePhones(result.sessionId!)
 
@@ -149,7 +166,13 @@ export async function POST(request: NextRequest) {
             needsPhoneSelection: true,
           })
         } else {
-          // 5b. App: buscar telefone CPro + enviar WhatsApp
+          // 5b. App: selecionar Aplicativo no SAW + buscar telefone CPro + enviar WhatsApp
+          send({ type: 'processing', message: 'Selecionando Aplicativo no SAW...' })
+          const methodResult = await getSawClient().selectTokenMethod(result.sessionId!, 'aplicativo')
+          if (!methodResult.success) {
+            send({ type: 'error', message: methodResult.error ?? 'Erro ao selecionar Aplicativo' }); controller.close(); return
+          }
+
           send({ type: 'processing', message: 'Buscando telefone do paciente...' })
 
           let patientPhone = ''

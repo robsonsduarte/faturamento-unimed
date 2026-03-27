@@ -1652,6 +1652,13 @@ class SawClient {
    * Extract phone numbers from an open token page (after SMS radio is selected).
    * Retries up to 3 times with 1s delay to handle slow SAW rendering.
    */
+  /**
+   * Get a token page session entry (for direct page access).
+   */
+  getTokenSession(sessionId: string): TokenPageEntry | undefined {
+    return this.tokenPages.get(sessionId)
+  }
+
   async getTokenPagePhones(sessionId: string): Promise<{ value: string; text: string }[]> {
     const entry = this.tokenPages.get(sessionId)
     if (!entry) return []
