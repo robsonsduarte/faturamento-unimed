@@ -49,7 +49,7 @@ export default function GuiaDetailPage({ params }: Props) {
   const [selectedMethod, setSelectedMethod] = useState<'aplicativo' | 'sms' | null>(null)
   const [selectedPhone, setSelectedPhone] = useState<string>('')
   const [whatsappPhone, setWhatsappPhone] = useState('')
-  const [tokenStep, setTokenStep] = useState<'choose' | 'method' | 'waiting' | 'done'>('choose')
+  const [tokenStep, setTokenStep] = useState<'choose' | 'method' | 'sms-select' | 'waiting' | 'waiting-manual' | 'done'>('choose')
   const [tokenLoading, setTokenLoading] = useState(false)
   const [tokenStatus, setTokenStatus] = useState<string>('')
   const [manualToken, setManualToken] = useState('')
@@ -216,30 +216,84 @@ export default function GuiaDetailPage({ params }: Props) {
     }
   }
 
-  async function handleSelecionarMetodo() {
-    if (!tokenSessionId || !selectedMethod) return
+  async function handleEscolherMetodo(method: 'aplicativo' | 'sms') {
+    if (!guia) return
+    setSelectedMethod(method)
     setTokenLoading(true)
-    setTokenStatus(selectedMethod === 'sms' ? 'Enviando SMS...' : 'Selecionando aplicativo...')
+    setTokenStatus(`Conectando ao SAW (${method === 'sms' ? 'SMS' : 'App'})...`)
+
     try {
-      const res = await fetch('/api/biometria/selecionar-metodo', {
+      const res = await fetch('/api/biometria/token-metodo', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sessionId: tokenSessionId,
-          method: selectedMethod,
-          phone: selectedMethod === 'sms' ? selectedPhone : undefined,
-        }),
+        body: JSON.stringify({ guia_id: guia.id, method }),
       })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error)
 
-      setTokenStatus(selectedMethod === 'sms'
-        ? 'SMS enviado! Aguardando token do paciente...'
-        : 'Aplicativo selecionado. Aguardando token do paciente...')
-      setTokenStep('waiting')
-      startCountdown()
+      const reader = res.body?.getReader()
+      if (!reader) throw new Error('Stream nao disponivel')
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n\n')
+        buffer = lines.pop() ?? ''
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue
+          try {
+            const evt = JSON.parse(line.slice(6)) as Record<string, unknown>
+            if (evt.type === 'processing' || evt.type === 'success') {
+              setTokenStatus(evt.message as string)
+            }
+            if (evt.type === 'error') throw new Error(evt.message as string)
+
+            if (evt.type === 'result') {
+              if (evt.tokenAlreadyResolved) {
+                setTokenStep('done')
+                setTokenStatus('Token ja validado!')
+                toast.success('Token ja validado. Guia atualizada.')
+                await refetch()
+                return
+              }
+
+              setTokenSessionId((evt.sessionId as string) ?? null)
+
+              if (evt.method === 'sms' && evt.needsPhoneSelection) {
+                // SMS: mostrar telefones para selecao
+                const phones = (evt.phones as { value: string; text: string }[]) ?? []
+                setTokenPhones(phones)
+                setTokenStep('sms-select')
+                setTokenStatus('Selecione o telefone para envio do SMS')
+              } else if (evt.method === 'aplicativo') {
+                // App: WhatsApp ja enviado
+                const phone = (evt.patientPhone as string) ?? ''
+                const reqId = (evt.requestId as string) ?? ''
+                if (evt.whatsappSent && reqId) {
+                  setWhatsappPhone(phone.replace(/^55(\d{2})(\d+)/, '($1) $2'))
+                  setTokenRequestId(reqId)
+                  setTokenStep('waiting')
+                  setTokenStatus(`Mensagem enviada. Aguardando token...`)
+                  startPolling(reqId)
+                  startCountdown()
+                  toast.success('WhatsApp enviado!')
+                } else {
+                  // Sem telefone — mostrar campo manual
+                  if (phone) setWhatsappPhone(phone)
+                  setTokenStep('waiting-manual')
+                  setTokenStatus('Informe o telefone e envie o WhatsApp')
+                }
+              }
+            }
+          } catch (parseErr) {
+            if (parseErr instanceof Error && parseErr.message !== 'Stream nao disponivel') throw parseErr
+          }
+        }
+      }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Erro ao selecionar metodo')
+      toast.error(err instanceof Error ? err.message : 'Erro')
+      setTokenStatus('')
     } finally {
       setTokenLoading(false)
     }
@@ -727,7 +781,7 @@ export default function GuiaDetailPage({ params }: Props) {
             {tokenMode === 'none' && !showCamera && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <button
-                  onClick={() => { setTokenMode('whatsapp'); handleIniciarToken() }}
+                  onClick={() => { setTokenMode('whatsapp'); setTokenStep('method'); setTokenStatus('Escolha o metodo de autenticacao') }}
                   disabled={tokenLoading}
                   className="flex items-center gap-3 rounded-lg border p-4 text-left transition-colors hover:border-[var(--color-primary)]"
                   style={{ borderColor: 'var(--color-border)', background: 'var(--color-surface)' }}
@@ -830,86 +884,129 @@ export default function GuiaDetailPage({ params }: Props) {
                   </div>
                 )}
 
-                {/* Step: Escolher metodo + telefone + enviar (tudo junto) */}
-                {tokenStep === 'method' && tokenMethods && (
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      {/* Metodo */}
-                      <div className="space-y-2">
-                        <label className="text-xs font-medium" style={{ color: 'var(--color-text-muted)' }}>Metodo:</label>
-                        <div className="flex gap-2">
-                          {tokenMethods.aplicativo && (
-                            <button
-                              onClick={() => setSelectedMethod('aplicativo')}
-                              className={cn(
-                                'flex-1 rounded-lg border px-3 py-2 text-sm transition-colors',
-                                selectedMethod === 'aplicativo' ? 'border-[var(--color-primary)] text-[var(--color-primary)]' : 'border-[var(--color-border)] text-[var(--color-text-muted)]'
-                              )}
-                            >
-                              <Smartphone className="w-4 h-4 inline mr-1" /> App
-                            </button>
-                          )}
-                          {tokenMethods.sms && (
-                            <button
-                              onClick={() => setSelectedMethod('sms')}
-                              className={cn(
-                                'flex-1 rounded-lg border px-3 py-2 text-sm transition-colors',
-                                selectedMethod === 'sms' ? 'border-[var(--color-primary)] text-[var(--color-primary)]' : 'border-[var(--color-border)] text-[var(--color-text-muted)]'
-                              )}
-                            >
-                              <MessageSquare className="w-4 h-4 inline mr-1" /> SMS
-                            </button>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Telefone SMS (se SMS selecionado) */}
-                      {selectedMethod === 'sms' && tokenPhones.length > 0 && (
-                        <div className="space-y-2">
-                          <label className="text-xs font-medium" style={{ color: 'var(--color-text-muted)' }}>Telefone para SMS (SAW):</label>
-                          <select
-                            value={selectedPhone}
-                            onChange={(e) => setSelectedPhone(e.target.value)}
-                            className="w-full rounded-lg border px-3 py-2 text-sm"
-                            style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
-                          >
-                            <option value="">Selecione o telefone...</option>
-                            {tokenPhones.map((p) => (
-                              <option key={p.value} value={p.value}>{p.text}</option>
-                            ))}
-                          </select>
-                        </div>
-                      )}
+                {/* Step: Escolher metodo (App ou SMS) */}
+                {tokenStep === 'method' && !tokenLoading && (
+                  <div className="space-y-3">
+                    <p className="text-xs font-medium" style={{ color: 'var(--color-text-muted)' }}>Metodo:</p>
+                    <div className="flex gap-3">
+                      <button
+                        onClick={() => handleEscolherMetodo('aplicativo')}
+                        disabled={tokenLoading}
+                        className="flex-1 rounded-lg border px-4 py-3 text-sm font-medium transition-colors hover:border-[var(--color-primary)]"
+                        style={{ borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+                      >
+                        <Smartphone className="w-4 h-4 inline mr-2" /> Aplicativo Unimed
+                      </button>
+                      <button
+                        onClick={() => handleEscolherMetodo('sms')}
+                        disabled={tokenLoading}
+                        className="flex-1 rounded-lg border px-4 py-3 text-sm font-medium transition-colors hover:border-[var(--color-primary)]"
+                        style={{ borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+                      >
+                        <MessageSquare className="w-4 h-4 inline mr-2" /> SMS
+                      </button>
                     </div>
+                  </div>
+                )}
 
-                    {/* WhatsApp do paciente + botao unico */}
-                    {selectedMethod && (
-                      <div className="flex gap-2 items-end">
-                        <div className="flex-1 space-y-1">
-                          <label className="text-xs font-medium" style={{ color: 'var(--color-text-muted)' }}>WhatsApp do paciente:</label>
-                          <input
-                            type="tel"
-                            placeholder="DDD + numero (ex: 73999913940)"
-                            value={whatsappPhone}
-                            onChange={(e) => setWhatsappPhone(e.target.value)}
-                            className="w-full rounded-lg border px-3 py-2 text-sm"
-                            style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
-                          />
-                        </div>
-                        <button
-                          onClick={async () => {
-                            await handleSelecionarMetodo()
-                            if (whatsappPhone) await handleEnviarWhatsApp()
-                          }}
-                          disabled={tokenLoading || !whatsappPhone || (selectedMethod === 'sms' && !selectedPhone)}
-                          className="inline-flex items-center gap-2 rounded-lg px-5 py-2 text-sm font-semibold text-white disabled:opacity-50 shrink-0"
-                          style={{ background: '#25d366' }}
+                {/* Step: SMS — selecionar telefone */}
+                {tokenStep === 'sms-select' && (
+                  <div className="space-y-3">
+                    {tokenPhones.length > 0 ? (
+                      <>
+                        <p className="text-xs font-medium" style={{ color: 'var(--color-text-muted)' }}>Selecione o telefone para SMS:</p>
+                        <select
+                          value={selectedPhone}
+                          onChange={(e) => setSelectedPhone(e.target.value)}
+                          className="w-full rounded-lg border px-3 py-2 text-sm"
+                          style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
                         >
-                          {tokenLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                          Enviar e Aguardar
-                        </button>
-                      </div>
+                          <option value="">Selecione...</option>
+                          {tokenPhones.map((p) => (
+                            <option key={p.value} value={p.value}>{p.text}</option>
+                          ))}
+                        </select>
+                      </>
+                    ) : (
+                      <p className="text-sm" style={{ color: 'var(--color-warning)' }}>Nenhum telefone encontrado no SAW para SMS.</p>
                     )}
+
+                    <div className="flex gap-2 items-end">
+                      <div className="flex-1 space-y-1">
+                        <label className="text-xs font-medium" style={{ color: 'var(--color-text-muted)' }}>WhatsApp do paciente:</label>
+                        <input
+                          type="tel"
+                          placeholder="DDD + numero"
+                          value={whatsappPhone}
+                          onChange={(e) => setWhatsappPhone(e.target.value)}
+                          className="w-full rounded-lg border px-3 py-2 text-sm"
+                          style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+                        />
+                      </div>
+                      <button
+                        onClick={async () => {
+                          if (!tokenSessionId || !selectedPhone) { toast.error('Selecione o telefone'); return }
+                          setTokenLoading(true)
+                          setTokenStatus('Enviando SMS no SAW...')
+                          try {
+                            // Selecionar telefone + clicar enviar no SAW
+                            await fetch('/api/biometria/selecionar-metodo', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ sessionId: tokenSessionId, method: 'sms', phone: selectedPhone }),
+                            })
+                            // Enviar WhatsApp
+                            if (whatsappPhone) {
+                              await handleEnviarWhatsApp()
+                            }
+                            setTokenStep('waiting')
+                            startCountdown()
+                          } catch (err) {
+                            toast.error(err instanceof Error ? err.message : 'Erro')
+                          } finally {
+                            setTokenLoading(false)
+                          }
+                        }}
+                        disabled={tokenLoading || !selectedPhone || !whatsappPhone}
+                        className="inline-flex items-center gap-2 rounded-lg px-5 py-2 text-sm font-semibold text-white disabled:opacity-50 shrink-0"
+                        style={{ background: '#25d366' }}
+                      >
+                        {tokenLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                        Enviar e Aguardar
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Step: App sem telefone — campo manual WhatsApp */}
+                {tokenStep === 'waiting-manual' && (
+                  <div className="space-y-3">
+                    <div className="flex gap-2 items-end">
+                      <div className="flex-1 space-y-1">
+                        <label className="text-xs font-medium" style={{ color: 'var(--color-text-muted)' }}>WhatsApp do paciente:</label>
+                        <input
+                          type="tel"
+                          placeholder="DDD + numero"
+                          value={whatsappPhone}
+                          onChange={(e) => setWhatsappPhone(e.target.value)}
+                          className="w-full rounded-lg border px-3 py-2 text-sm"
+                          style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+                        />
+                      </div>
+                      <button
+                        onClick={async () => {
+                          if (!whatsappPhone) return
+                          await handleEnviarWhatsApp()
+                          setTokenStep('waiting')
+                          startCountdown()
+                        }}
+                        disabled={!whatsappPhone || tokenLoading}
+                        className="inline-flex items-center gap-2 rounded-lg px-5 py-2 text-sm font-semibold text-white disabled:opacity-50 shrink-0"
+                        style={{ background: '#25d366' }}
+                      >
+                        <Send className="w-4 h-4" /> Enviar e Aguardar
+                      </button>
+                    </div>
                   </div>
                 )}
 
