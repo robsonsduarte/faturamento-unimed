@@ -1271,71 +1271,57 @@ class SawClient {
         const targetFrame = bioFrameHandle ? await bioFrameHandle.contentFrame() : null
         const targetPage = targetFrame ?? page
 
-        // 1. Clicar "PULAR CAPTURA"
+        // 1. Clicar "PULAR CAPTURA" via pular(false) no iframe BioFace
         try {
-          // Tentar via locator no frame/page
-          const pularBtn = targetPage.locator('text=PULAR CAPTURA').first()
-          if (await pularBtn.count() > 0) {
-            await pularBtn.click()
-          } else {
-            // Fallback: qualquer botao/div com "pular"
-            await targetPage.evaluate(() => {
-              const els = Array.from(document.querySelectorAll('button, a, div, span'))
-              const btn = els.find(e => /pular/i.test((e as HTMLElement).textContent ?? ''))
-              if (btn) (btn as HTMLElement).click()
-            })
-          }
-          console.log(`[SAW] openTokenPage: clicou PULAR CAPTURA`)
+          await targetPage.evaluate(() => {
+            // Chamar funcao JS pular(false) se existir
+            if (typeof (window as unknown as Record<string, unknown>).pular === 'function') {
+              ((window as unknown as Record<string, unknown>).pular as (v: boolean) => void)(false)
+            } else {
+              // Fallback: clicar no botao pelo ID
+              const btn = document.getElementById('id-botao-atendimento-sem-captura') as HTMLElement
+              if (btn) btn.click()
+            }
+          })
+          console.log(`[SAW] openTokenPage: chamou pular(false)`)
           await page.waitForTimeout(2000)
           await page.screenshot({ path: '/tmp/debug-opentoken-bioface-pular.png' }).catch(() => {})
-        } catch {
-          console.log(`[SAW] openTokenPage: nao encontrou botao PULAR CAPTURA`)
+        } catch (e) {
+          console.log(`[SAW] openTokenPage: erro ao pular: ${e instanceof Error ? e.message : e}`)
         }
 
-        // 2. Selecionar justificativa no dropdown
+        // 2. Selecionar justificativa no #idSelectMotivo
         try {
-          const justResult = await targetPage.evaluate((just) => {
-            const selects = document.querySelectorAll('select')
-            for (const sel of selects) {
-              for (let i = 0; i < sel.options.length; i++) {
-                const optText = sel.options[i].text.toLowerCase()
-                if (just === 'TEA' && optText.includes('tea')) {
-                  sel.selectedIndex = i
-                  sel.dispatchEvent(new Event('change', { bubbles: true }))
-                  return JSON.stringify({ ok: true, selected: sel.options[i].text })
-                }
-                if (just === 'recusou' && (optText.includes('recusou') || optText.includes('recusa'))) {
-                  sel.selectedIndex = i
-                  sel.dispatchEvent(new Event('change', { bubbles: true }))
-                  return JSON.stringify({ ok: true, selected: sel.options[i].text })
-                }
-              }
-              // Fallback: selecionar primeira opcao nao vazia
-              if (sel.options.length > 1) {
-                sel.selectedIndex = 1
-                sel.dispatchEvent(new Event('change', { bubbles: true }))
-                return JSON.stringify({ ok: true, selected: sel.options[1].text })
+          const selectValue = age < 14 ? '2' : '5' // 2=Atendimento TEA, 5=Paciente se recusou
+          await targetPage.evaluate((val) => {
+            const sel = document.getElementById('idSelectMotivo') as HTMLSelectElement
+            if (sel) {
+              sel.value = val
+              sel.dispatchEvent(new Event('change', { bubbles: true }))
+              // Chamar carregarDivSubMotivo() se existir (onchange do select)
+              if (typeof (window as unknown as Record<string, unknown>).carregarDivSubMotivo === 'function') {
+                ((window as unknown as Record<string, unknown>).carregarDivSubMotivo as () => void)()
               }
             }
-            return JSON.stringify({ ok: false })
-          }, justificativa)
-          console.log(`[SAW] openTokenPage: justificativa: ${justResult}`)
-          await page.waitForTimeout(500)
+            // Habilitar botao confirmar (pode estar disabled)
+            const btn = document.getElementById('id-botao-confirmar-pular') as HTMLButtonElement
+            if (btn) btn.disabled = false
+          }, selectValue)
+          console.log(`[SAW] openTokenPage: justificativa selecionada: ${selectValue === '2' ? 'TEA' : 'Recusou'} (idade=${age})`)
+          await page.waitForTimeout(1000)
         } catch { /* */ }
 
-        // 3. Clicar CONFIRMAR
+        // 3. Clicar CONFIRMAR via confirmPular()
         try {
-          const confirmarBtn = targetPage.locator('text=CONFIRMAR').first()
-          if (await confirmarBtn.count() > 0) {
-            await confirmarBtn.click()
-          } else {
-            await targetPage.evaluate(() => {
-              const els = Array.from(document.querySelectorAll('button, a, input[type=button]'))
-              const btn = els.find(e => /confirmar/i.test((e as HTMLElement).textContent ?? ''))
-              if (btn) (btn as HTMLElement).click()
-            })
-          }
-          console.log(`[SAW] openTokenPage: clicou CONFIRMAR`)
+          await targetPage.evaluate(() => {
+            if (typeof (window as unknown as Record<string, unknown>).confirmPular === 'function') {
+              ((window as unknown as Record<string, unknown>).confirmPular as () => void)()
+            } else {
+              const btn = document.getElementById('id-botao-confirmar-pular') as HTMLElement
+              if (btn) btn.click()
+            }
+          })
+          console.log(`[SAW] openTokenPage: chamou confirmPular()`)
         } catch { /* */ }
 
         await page.waitForTimeout(5000)
