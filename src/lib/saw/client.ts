@@ -1252,22 +1252,17 @@ class SawClient {
       let phones: { value: string; text: string }[] = []
       try {
         if (hasSms) {
-          // Clicar radio SMS via Playwright page.click() (simula clique real do mouse)
-          console.log(`[SAW] openTokenPage: clicando radio SMS via page.click()...`)
+          // Clicar radio SMS via locator.nth(2) (3o radio = SMS)
+          console.log(`[SAW] openTokenPage: clicando radio SMS via locator...`)
           let smsClicked = false
           try {
-            // Tentar clicar no 3o radio (App=1, Email=2, SMS=3)
-            const radios = await page.$$('input[type="radio"]')
-            if (radios.length >= 3) {
-              await radios[2].click()
-              smsClicked = true
-            } else {
-              // Fallback: clicar por texto "SMS"
-              await page.getByText('SMS', { exact: true }).click()
+            const radioCount = await page.locator('input[type="radio"]').count()
+            if (radioCount >= 3) {
+              await page.locator('input[type="radio"]').nth(2).click()
               smsClicked = true
             }
           } catch {
-            console.log(`[SAW] openTokenPage: falhou page.click no radio SMS`)
+            console.log(`[SAW] openTokenPage: falhou click no radio SMS`)
           }
           console.log(`[SAW] openTokenPage: radio SMS clicado: ${smsClicked}`)
           await page.waitForTimeout(2000)
@@ -1665,8 +1660,8 @@ class SawClient {
           console.log(`[SAW] getTokenPagePhones: ${phones.length} telefone(s) — ${phones.map((p) => p.text).join(', ')} (attempt ${attempt + 1})`)
           return phones
         }
-      } catch {
-        console.log(`[SAW] getTokenPagePhones: evaluate falhou (attempt ${attempt + 1})`)
+      } catch (err) {
+        console.log(`[SAW] getTokenPagePhones: evaluate falhou (attempt ${attempt + 1}): ${err instanceof Error ? err.message : err}`)
       }
 
       await new Promise((r) => setTimeout(r, 1500))

@@ -123,16 +123,16 @@ export async function POST(request: NextRequest) {
 
           send({ type: 'processing', message: 'Selecionando SMS no SAW...' })
 
-          // Clicar radio SMS via page.click() (simula clique real)
+          // Clicar radio SMS via locator.nth(2)
           const entry = getSawClient().getTokenSession(result.sessionId!)
           if (entry) {
             try {
-              const radios = await entry.page.$$('input[type="radio"]')
-              if (radios.length >= 3) {
-                await radios[2].click() // 3o radio = SMS
+              const radioCount = await entry.page.locator('input[type="radio"]').count()
+              if (radioCount >= 3) {
+                await entry.page.locator('input[type="radio"]').nth(2).click()
               }
             } catch { /* */ }
-            await new Promise((r) => setTimeout(r, 2500))
+            await new Promise((r) => setTimeout(r, 3000))
           }
 
           send({ type: 'processing', message: 'Extraindo telefones do SAW...' })
