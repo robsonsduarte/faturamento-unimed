@@ -110,38 +110,9 @@ export async function POST(request: NextRequest) {
         }
 
         if (body.method === 'sms') {
-          // 5a. SMS: extrair telefones AGORA (select deve estar visivel apos selectTokenMethod)
-          send({ type: 'processing', message: 'Extraindo telefones...' })
-
-          // Extrair telefones da page aberta (que agora tem SMS selecionado)
-          let smsPhones: { value: string; text: string }[] = []
-          try {
-            const entry = (getSawClient() as unknown as { tokenPages: Map<string, { page: { evaluate: (fn: () => unknown) => Promise<unknown> } }> }).tokenPages
-            const session = entry?.get(result.sessionId!)
-            if (session?.page) {
-              // Aguardar um pouco mais para o select aparecer
-              await new Promise((r) => setTimeout(r, 2000))
-
-              smsPhones = await session.page.evaluate(() => {
-                const phones: { value: string; text: string }[] = []
-                const selects = document.querySelectorAll('select')
-                for (const sel of selects) {
-                  for (const opt of sel.options) {
-                    const v = opt.value?.trim()
-                    const t = opt.text?.trim()
-                    if (v && v !== '' && !/escolha/i.test(t ?? '') && t !== '') {
-                      phones.push({ value: v, text: t ?? v })
-                    }
-                  }
-                }
-                return phones
-              }) as { value: string; text: string }[]
-
-              console.log(`[TOKEN-METODO] telefones extraidos apos SMS: ${smsPhones.length}`, smsPhones.map((p) => p.text).join(', '))
-            }
-          } catch (extractErr) {
-            console.error(`[TOKEN-METODO] erro ao extrair telefones:`, extractErr)
-          }
+          // 5a. SMS: extrair telefones via metodo publico (com retry/polling)
+          send({ type: 'processing', message: 'Extraindo telefones do SAW...' })
+          const smsPhones = await getSawClient().getTokenPagePhones(result.sessionId!)
 
           // Buscar telefone WhatsApp do CPro
           let patientPhone = ''

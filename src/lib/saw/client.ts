@@ -1648,6 +1648,47 @@ class SawClient {
   /**
    * Close a token session (cleanup).
    */
+  /**
+   * Extract phone numbers from an open token page (after SMS radio is selected).
+   * Retries up to 3 times with 1s delay to handle slow SAW rendering.
+   */
+  async getTokenPagePhones(sessionId: string): Promise<{ value: string; text: string }[]> {
+    const entry = this.tokenPages.get(sessionId)
+    if (!entry) return []
+
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const phones = await entry.page.evaluate(() => {
+          const result: { value: string; text: string }[] = []
+          const selects = document.querySelectorAll('select')
+          for (const sel of selects) {
+            for (const opt of sel.options) {
+              const v = opt.value?.trim()
+              const t = opt.text?.trim()
+              if (v && v !== '' && !/escolha/i.test(t ?? '') && t !== '') {
+                result.push({ value: v, text: t ?? v })
+              }
+            }
+          }
+          return result
+        }) as { value: string; text: string }[]
+
+        if (phones.length > 0) {
+          console.log(`[SAW] getTokenPagePhones: ${phones.length} telefone(s) encontrado(s) (attempt ${attempt + 1})`)
+          return phones
+        }
+      } catch {
+        console.log(`[SAW] getTokenPagePhones: evaluate falhou (attempt ${attempt + 1})`)
+      }
+
+      // Aguardar antes de retry
+      await new Promise((r) => setTimeout(r, 1500))
+    }
+
+    console.log(`[SAW] getTokenPagePhones: nenhum telefone encontrado apos 3 tentativas`)
+    return []
+  }
+
   async closeTokenSession(sessionId: string): Promise<void> {
     const entry = this.tokenPages.get(sessionId)
     if (entry) {
