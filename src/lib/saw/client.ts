@@ -1252,23 +1252,32 @@ class SawClient {
       let phones: { value: string; text: string }[] = []
       try {
         if (hasSms) {
-          // Clicar radio SMS para revelar select
-          await page.evaluate(() => {
-            const radios = document.querySelectorAll('input[type="radio"]')
-            for (const radio of radios) {
-              const parent = radio.closest('td, div, label')
-              if (parent && /sms/i.test(parent.textContent ?? '')) {
-                (radio as HTMLInputElement).click()
-                break
+          // Clicar radio SMS — usar locator com texto "SMS"
+          console.log(`[SAW] openTokenPage: clicando radio SMS...`)
+          try {
+            // Tentar clicar no label/texto "SMS" que contem o radio
+            await page.locator('text=SMS').first().click({ timeout: 5000 })
+          } catch {
+            // Fallback: clicar via evaluate
+            await page.evaluate(() => {
+              const radios = document.querySelectorAll('input[type="radio"]')
+              for (const radio of radios) {
+                const parent = radio.closest('td, div, label, fieldset')
+                if (parent && /\bsms\b/i.test(parent.textContent ?? '')) {
+                  (radio as HTMLInputElement).click();
+                  (radio as HTMLInputElement).dispatchEvent(new Event('change', { bubbles: true }))
+                  break
+                }
               }
-            }
-          })
-          await page.waitForTimeout(1500)
+            })
+          }
+          await page.waitForTimeout(2000)
+          await page.screenshot({ path: '/tmp/debug-opentoken-sms-clicked.png' }).catch(() => {})
+          console.log(`[SAW] openTokenPage: radio SMS clicado, aguardando select...`)
         }
 
-        // Extrair telefones do select com value (numero real) + text (mascarado)
-        // Aguardar mais tempo apos clicar radio SMS (o select pode demorar a aparecer)
-        await page.waitForTimeout(1000)
+        // Aguardar select aparecer
+        await page.waitForTimeout(1500)
 
         phones = await page.evaluate(() => {
           const result: { value: string; text: string }[] = []
