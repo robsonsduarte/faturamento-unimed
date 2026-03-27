@@ -1289,28 +1289,15 @@ class SawClient {
         // Aguardar select aparecer
         await page.waitForTimeout(1500)
 
-        const debugSelects = await page.evaluate(() => {
-          const info: string[] = []
-          const selects = document.querySelectorAll('select')
-          for (const sel of selects) {
-            info.push(`select[${sel.name || sel.id}]: ${sel.options.length} options`)
-            for (const opt of sel.options) {
-              info.push(`  value="${opt.value}" text="${opt.text?.trim()}"`)
-            }
-          }
-          return info
-        }).catch(() => [])
-        console.log(`[SAW] openTokenPage: DEBUG selects:\n${debugSelects.join('\n')}`)
-
+        // Extrair telefones usando getElementById (IDs com pontos)
         phones = await page.evaluate(() => {
           const result: { value: string; text: string }[] = []
-          const selects = document.querySelectorAll('select')
-          for (const sel of selects) {
+          const sel = document.getElementById('tokenDeAtendimento.telefoneDeEnvio.numero') as HTMLSelectElement | null
+          if (sel) {
             for (const opt of sel.options) {
               const v = opt.value?.trim()
               const t = opt.text?.trim()
-              // Incluir qualquer option que nao seja vazia e nao seja "Escolha"
-              if (v && v !== '' && !/escolha/i.test(t ?? '') && t !== '') {
+              if (v && v !== '' && !/escolha/i.test(t ?? '')) {
                 result.push({ value: v, text: t ?? v })
               }
             }
