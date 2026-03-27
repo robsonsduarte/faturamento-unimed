@@ -1289,26 +1289,36 @@ class SawClient {
         // Aguardar select aparecer
         await page.waitForTimeout(1500)
 
+        const debugSelects = await page.evaluate(() => {
+          const info: string[] = []
+          const selects = document.querySelectorAll('select')
+          for (const sel of selects) {
+            info.push(`select[${sel.name || sel.id}]: ${sel.options.length} options`)
+            for (const opt of sel.options) {
+              info.push(`  value="${opt.value}" text="${opt.text?.trim()}"`)
+            }
+          }
+          return info
+        }).catch(() => [])
+        console.log(`[SAW] openTokenPage: DEBUG selects:\n${debugSelects.join('\n')}`)
+
         phones = await page.evaluate(() => {
           const result: { value: string; text: string }[] = []
-
-          // Tentar todos os selects da pagina
           const selects = document.querySelectorAll('select')
           for (const sel of selects) {
             for (const opt of sel.options) {
               const v = opt.value?.trim()
               const t = opt.text?.trim()
-              // Telefone: value com 8+ digitos ou text com formato (XX)
-              if (v && (/\d{8,}/.test(v) || /\(\d{2}\)/.test(t ?? ''))) {
+              // Incluir qualquer option que nao seja vazia e nao seja "Escolha"
+              if (v && v !== '' && !/escolha/i.test(t ?? '') && t !== '') {
                 result.push({ value: v, text: t ?? v })
               }
             }
           }
-
           return result
         }) ?? []
 
-        console.log(`[SAW] openTokenPage: telefones extraidos: ${phones.length}`, phones.map((p) => p.text).join(', '))
+        console.log(`[SAW] openTokenPage: telefones extraidos: ${phones.length}`, phones.map((p) => `${p.text}(${p.value})`).join(', '))
 
         // Voltar para estado neutro (clicar radio Aplicativo se existir)
         if (hasSms && hasAplicativo) {
