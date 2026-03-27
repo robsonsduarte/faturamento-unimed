@@ -275,11 +275,31 @@ export default function GuiaDetailPage({ params }: Props) {
     setCobrarLoadingPendentes(true)
     setCobrarPendentes([])
     try {
-      // Buscar atendimentos do CPro
+      // 1. Reimportar guia primeiro (atualizar dados do SAW)
+      toast.info('Reimportando guia para dados atualizados...')
+      const importRes = await fetch('/api/guias/importar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ guide_numbers: [guia.guide_number] }),
+      })
+      // Consumir SSE da reimportacao (aguardar conclusao)
+      if (importRes.body) {
+        const reader = importRes.body.getReader()
+        while (true) {
+          const { done } = await reader.read()
+          if (done) break
+        }
+      }
+      await refetch()
+
+      // 2. Buscar atendimentos pendentes (CPro vs SAW atualizado)
       const res = await fetch(`/api/biometria/pendentes/${guia.guide_number}`)
       const data = await res.json()
-      if (data.pendentes) {
+      if (data.pendentes && data.pendentes.length > 0) {
         setCobrarPendentes(data.pendentes.map((p: { date: string; start: string; end: string }) => ({ ...p, checked: true })))
+      } else {
+        toast.info(`Nenhum atendimento pendente. ${data.realizados ?? 0} ja realizados no SAW.`)
+        setCobrarModalOpen(false)
       }
     } catch {
       toast.error('Erro ao buscar atendimentos pendentes')
