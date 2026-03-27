@@ -79,7 +79,7 @@ export async function POST(request: NextRequest) {
         }
 
         // Buscar foto do paciente
-        send('processing', 'Buscando foto do paciente...')
+        send('processing', '[1/9] Buscando foto do paciente...')
         const photoBase64 = await buscarFotoBase64(guia.numero_carteira)
 
         if (!photoBase64) {
@@ -88,10 +88,10 @@ export async function POST(request: NextRequest) {
           return
         }
 
-        send('success', `Foto encontrada para ${guia.paciente?.split(' ')[0] ?? 'paciente'}`)
+        send('success', `[1/9] Foto encontrada para ${guia.paciente?.split(' ')[0] ?? 'paciente'}`)
 
         // Buscar credenciais SAW do usuario
-        send('processing', 'Verificando sessao SAW...')
+        send('processing', '[2/9] Verificando sessao SAW...')
         const { data: sawCred } = await db
           .from('saw_credentials')
           .select('*')
@@ -144,14 +144,14 @@ export async function POST(request: NextRequest) {
         if (cookies) {
           const valid = await getSawClient().validateSession(user.id, cookies)
           if (!valid) {
-            send('info', 'Sessao expirou. Refazendo login...')
+            send('info', '[2/9] Sessao expirou. Refazendo login...')
             cookies = null
             await db.from('saw_sessions').update({ valida: false }).eq('user_id', user.id).eq('valida', true)
           }
         }
 
         if (!cookies) {
-          send('processing', 'Fazendo login no SAW...')
+          send('processing', '[2/9] Fazendo login no SAW...')
           const loginResult = await getSawClient().login(user.id, {
             login_url: loginUrl,
             usuario,
@@ -172,13 +172,13 @@ export async function POST(request: NextRequest) {
             expires_at: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
           })
 
-          send('success', 'Login SAW realizado.')
+          send('success', '[2/9] Login SAW realizado.')
         } else {
-          send('success', 'Sessao SAW ativa.')
+          send('success', '[2/9] Sessao SAW ativa.')
         }
 
         // Resolver token via Playwright
-        send('processing', `Resolvendo token da guia ${guia.guide_number}...`)
+        send('processing', `[3/9] Abrindo guia ${guia.guide_number}...`)
         const result = await getSawClient().resolveToken(
           user.id,
           cookies,
@@ -192,7 +192,7 @@ export async function POST(request: NextRequest) {
           return
         }
 
-        send('success', 'Token resolvido com sucesso! Biometria autenticada.')
+        send('success', '[9/9] Biometria autenticada com sucesso!')
 
         // Marcar guia
         await db
@@ -205,11 +205,11 @@ export async function POST(request: NextRequest) {
           .eq('id', guia.id)
 
         // Reimportar guia automaticamente
-        send('processing', 'Reimportando guia...')
+        send('processing', '[9/9] Reimportando guia...')
         const readResult = await getSawClient().readGuide(user.id, cookies, guia.guide_number)
 
         if (readResult.success) {
-          send('success', 'Guia reimportada. Status sera atualizado.')
+          send('success', '[9/9] Guia reimportada com sucesso!')
         } else {
           send('info', `Reimportacao falhou (${readResult.error}). Reimporte manualmente.`)
         }

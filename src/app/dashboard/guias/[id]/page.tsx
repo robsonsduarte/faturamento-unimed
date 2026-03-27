@@ -29,6 +29,11 @@ export default function GuiaDetailPage({ params }: Props) {
   const [logs, setLogs] = useState<ImportLog[]>([])
   const logsEndRef = useRef<HTMLDivElement>(null)
 
+  // Modal confirmacao
+  const [confirmModal, setConfirmModal] = useState<{ show: boolean; message: string; onConfirm: () => void }>({
+    show: false, message: '', onConfirm: () => {},
+  })
+
   // Biometria states
   const [showCamera, setShowCamera] = useState(false)
   const [bioPhoto, setBioPhoto] = useState<string | null>(null)
@@ -681,10 +686,16 @@ export default function GuiaDetailPage({ params }: Props) {
                         <button
                           onClick={() => {
                             if (!guia?.numero_carteira) return
-                            if (!window.confirm('Tem certeza que deseja excluir a foto de biometria deste paciente?')) return
-                            fetch(`/api/biometria/foto/${encodeURIComponent(guia.numero_carteira)}`, { method: 'DELETE' })
-                              .then(() => { setBioPhoto(null); toast.success('Foto excluida') })
-                              .catch(() => toast.error('Erro ao excluir foto'))
+                            setConfirmModal({
+                              show: true,
+                              message: 'Tem certeza que deseja excluir a foto de biometria deste paciente?',
+                              onConfirm: () => {
+                                fetch(`/api/biometria/foto/${encodeURIComponent(guia.numero_carteira ?? '')}`, { method: 'DELETE' })
+                                  .then(() => { setBioPhoto(null); toast.success('Foto excluida') })
+                                  .catch(() => toast.error('Erro ao excluir foto'))
+                                setConfirmModal({ show: false, message: '', onConfirm: () => {} })
+                              },
+                            })
                           }}
                           className="text-xs underline"
                           style={{ color: 'var(--color-danger)' }}
@@ -903,20 +914,34 @@ export default function GuiaDetailPage({ params }: Props) {
               </div>
             )}
 
-            {/* Logs (biometria) */}
+            {/* Pipeline de Biometria */}
             {(bioResolving || bioLogs.length > 0) && (
-              <div className="rounded-lg p-3 font-mono text-xs max-h-48 overflow-y-auto space-y-0.5" style={{ background: '#0a0a0a' }}>
-                {bioLogs.map((log, i) => (
-                  <div key={i} className={cn(
-                    log.type === 'success' && 'text-[#4ade80]',
-                    log.type === 'error' && 'text-[#f87171]',
-                    log.type === 'processing' && 'text-[#f0c040]',
-                    log.type === 'info' && 'text-[#a0a0a0]',
-                  )}>
-                    [{log.timestamp}] {log.message}
-                  </div>
-                ))}
-                {bioResolving && <div className="text-[#f0c040] animate-pulse">Processando...</div>}
+              <div className="rounded-lg border overflow-hidden" style={{ borderColor: 'var(--color-border)' }}>
+                <div className="px-4 py-2 border-b" style={{ borderColor: 'var(--color-border)', background: 'var(--color-surface)' }}>
+                  <p className="text-xs font-semibold" style={{ color: 'var(--color-text-muted)' }}>
+                    Pipeline de Biometria
+                    {bioResolving && <span className="ml-2 animate-pulse" style={{ color: 'var(--color-warning)' }}>em andamento...</span>}
+                  </p>
+                </div>
+                <div className="p-3 max-h-64 overflow-y-auto space-y-1" style={{ background: '#0a0a0a' }}>
+                  {bioLogs.map((log, i) => {
+                    const prefixMap = { success: '  ', error: '  ', processing: '  ', info: '  ' }
+                    const colorMap = { success: '#4ade80', error: '#f87171', processing: '#fbbf24', info: '#94a3b8' }
+                    return (
+                      <div key={i} className="flex items-start gap-2 font-mono text-xs leading-5">
+                        <span className="shrink-0 select-none" style={{ color: colorMap[log.type] }}>{prefixMap[log.type]}</span>
+                        <span className="shrink-0 select-none" style={{ color: '#6b7280' }}>{log.timestamp}</span>
+                        <span style={{ color: colorMap[log.type] }}>{log.message}</span>
+                      </div>
+                    )
+                  })}
+                  {bioResolving && bioLogs.length > 0 && (
+                    <div className="flex items-center gap-2 font-mono text-xs mt-1">
+                      <Loader2 className="w-3 h-3 animate-spin" style={{ color: '#fbbf24' }} />
+                      <span style={{ color: '#fbbf24' }}>Aguardando...</span>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>
@@ -964,6 +989,41 @@ export default function GuiaDetailPage({ params }: Props) {
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+      {/* Modal de Confirmacao */}
+      {confirmModal.show && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div
+            className="mx-4 w-full max-w-md rounded-xl border p-6 shadow-2xl space-y-4"
+            style={{ background: 'var(--color-card)', borderColor: 'var(--color-border)' }}
+          >
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full" style={{ background: 'rgba(239, 68, 68, 0.15)' }}>
+                <XCircle className="w-5 h-5" style={{ color: 'var(--color-danger)' }} />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold" style={{ color: 'var(--color-text)' }}>Confirmar acao</h3>
+                <p className="text-sm mt-1" style={{ color: 'var(--color-text-muted)' }}>{confirmModal.message}</p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setConfirmModal({ show: false, message: '', onConfirm: () => {} })}
+                className="rounded-lg border px-4 py-2 text-sm"
+                style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-muted)' }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={confirmModal.onConfirm}
+                className="rounded-lg px-4 py-2 text-sm font-semibold text-white"
+                style={{ background: 'var(--color-danger)' }}
+              >
+                Confirmar
+              </button>
+            </div>
           </div>
         </div>
       )}
