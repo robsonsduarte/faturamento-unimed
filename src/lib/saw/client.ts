@@ -1668,18 +1668,14 @@ class SawClient {
         const phones = await entry.page.evaluate(() => {
           const result: { value: string; text: string }[] = []
 
-          // Buscar o select ESPECIFICO de telefones do SAW
-          const sel = document.querySelector(
-            '#tokenDeAtendimento\\.telefoneDeEnvio\\.numero, ' +
-            'select[name="tokenDeAtendimento.telefoneDeEnvio.numero"], ' +
-            '#telefonesCelularesBeneficiario select'
-          ) as HTMLSelectElement | null
+          // Usar getElementById (funciona com IDs que tem pontos)
+          const sel = document.getElementById('tokenDeAtendimento.telefoneDeEnvio.numero') as HTMLSelectElement | null
+            ?? (document.querySelector('#telefonesCelularesBeneficiario select') as HTMLSelectElement | null)
 
           if (sel) {
             for (const opt of sel.options) {
               const v = opt.value?.trim()
               const t = opt.text?.trim()
-              // Ignorar "Escolha" e opcoes vazias — pegar apenas telefones
               if (v && v !== '' && !/escolha/i.test(t ?? '')) {
                 result.push({ value: v, text: t ?? v })
               }
