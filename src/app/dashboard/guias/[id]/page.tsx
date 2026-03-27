@@ -64,16 +64,20 @@ export default function GuiaDetailPage({ params }: Props) {
   const [cobrando, setCobrando] = useState(false)
   const [cobrarLogs, setCobrarLogs] = useState<ImportLog[]>([])
   const cobrarEndRef = useRef<HTMLDivElement>(null)
+  const [cobrarShowCamera, setCobrarShowCamera] = useState(false)
+  const [cobrarHasFoto, setCobrarHasFoto] = useState<boolean | null>(null) // null = loading
 
-  // Buscar foto existente quando guia TOKEN carrega
+  // Buscar foto existente quando guia TOKEN ou PENDENTE carrega
   useEffect(() => {
-    if (guia?.status === 'TOKEN' && guia.numero_carteira) {
+    if (!guia?.numero_carteira) return
+    if (guia.status === 'TOKEN' || guia.status === 'PENDENTE') {
       fetch(`/api/biometria/foto/${encodeURIComponent(guia.numero_carteira)}`)
         .then((r) => r.json())
         .then((data) => {
-          if (data.exists && data.url) setBioPhoto(data.url)
+          if (data.exists && data.url) { setBioPhoto(data.url); setCobrarHasFoto(true) }
+          else setCobrarHasFoto(false)
         })
-        .catch(() => {})
+        .catch(() => setCobrarHasFoto(false))
     }
   }, [guia?.status, guia?.numero_carteira])
 
@@ -1038,16 +1042,79 @@ export default function GuiaDetailPage({ params }: Props) {
                 Executar procedimentos pendentes no SAW com biometria
               </p>
             </div>
-            <button
-              onClick={handleCobrarAtendimentos}
-              disabled={cobrando}
-              className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
-              style={{ background: 'var(--color-secondary)' }}
-            >
-              {cobrando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-              {cobrando ? 'Cobrando...' : 'Cobrar Atendimentos'}
-            </button>
+            {cobrarHasFoto && (
+              <button
+                onClick={handleCobrarAtendimentos}
+                disabled={cobrando}
+                className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                style={{ background: 'var(--color-secondary)' }}
+              >
+                {cobrando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                {cobrando ? 'Cobrando...' : 'Cobrar Atendimentos'}
+              </button>
+            )}
           </div>
+
+          {/* Sem foto — capturar primeiro */}
+          {cobrarHasFoto === false && !cobrarShowCamera && !cobrando && (
+            <div className="p-5 space-y-3">
+              <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
+                Para cobrar, e necessario uma foto do paciente para autenticacao biometrica no SAW.
+              </p>
+              <button
+                onClick={() => setCobrarShowCamera(true)}
+                className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white"
+                style={{ background: 'var(--color-primary)' }}
+              >
+                <Camera className="w-4 h-4" />
+                Capturar Foto
+              </button>
+            </div>
+          )}
+
+          {/* Camera de captura */}
+          {cobrarShowCamera && (
+            <div className="p-5">
+              <CameraCapture
+                onCapture={async (base64) => {
+                  setCobrarShowCamera(false)
+                  if (!guia) return
+                  try {
+                    const res = await fetch('/api/biometria/capturar', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ guia_id: guia.id, photo_base64: base64 }),
+                    })
+                    const data = await res.json()
+                    if (!res.ok) throw new Error(data.error)
+                    setCobrarHasFoto(true)
+                    if (guia.numero_carteira) {
+                      const fotoRes = await fetch(`/api/biometria/foto/${encodeURIComponent(guia.numero_carteira)}`)
+                      const fotoData = await fotoRes.json()
+                      if (fotoData.exists && fotoData.url) setBioPhoto(fotoData.url)
+                    }
+                    toast.success('Foto salva! Agora pode cobrar.')
+                  } catch (err) {
+                    toast.error(err instanceof Error ? err.message : 'Erro ao salvar foto')
+                  }
+                }}
+                onCancel={() => setCobrarShowCamera(false)}
+              />
+            </div>
+          )}
+
+          {/* Foto existente — mini preview */}
+          {cobrarHasFoto && bioPhoto && !cobrando && cobrarLogs.length === 0 && (
+            <div className="px-5 pb-4 flex items-center gap-3">
+              <div className="shrink-0 w-16 h-9 overflow-hidden rounded border" style={{ borderColor: 'var(--color-border)' }}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={bioPhoto} alt="Foto" className="w-full h-full object-cover" />
+              </div>
+              <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                Foto do paciente disponivel para autenticacao biometrica.
+              </p>
+            </div>
+          )}
 
           {/* Pipeline de cobranca */}
           {(cobrando || cobrarLogs.length > 0) && (
