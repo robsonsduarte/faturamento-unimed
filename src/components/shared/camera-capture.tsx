@@ -195,23 +195,37 @@ export function CameraCapture({ onCapture, onCancel }: CameraCaptureProps) {
                   style={{ transform: 'scaleX(-1)' }}
                 />
 
-                {/* Moldura oval de guia facial */}
+                {/* Moldura busto (cabeca + ombros) como no TRIX */}
                 {cameraReady && (
                   <div className="absolute inset-0 pointer-events-none">
                     <svg width="100%" height="100%" viewBox="0 0 565 317" preserveAspectRatio="xMidYMid slice">
-                      {/* Mascara: escurece tudo exceto o oval */}
                       <defs>
-                        <mask id="face-mask">
+                        {/* Silhueta de busto: cabeca oval + ombros */}
+                        <clipPath id="bust-clip">
+                          {/* Cabeca */}
+                          <ellipse cx="282" cy="105" rx="65" ry="80" />
+                          {/* Pescoco */}
+                          <rect x="262" y="175" width="40" height="30" rx="5" />
+                          {/* Ombros */}
+                          <path d="M 282 200 Q 282 210, 220 230 Q 160 250, 130 280 L 130 320 L 434 320 L 434 280 Q 404 250, 344 230 Q 282 210, 282 200 Z" />
+                        </clipPath>
+                        <mask id="bust-mask">
                           <rect width="565" height="317" fill="white" />
-                          <ellipse cx="282" cy="148" rx="100" ry="130" fill="black" />
+                          {/* Cabeca */}
+                          <ellipse cx="282" cy="105" rx="65" ry="80" fill="black" />
+                          {/* Pescoco */}
+                          <rect x="262" y="175" width="40" height="30" rx="5" fill="black" />
+                          {/* Ombros */}
+                          <path d="M 282 200 Q 282 210, 220 230 Q 160 250, 130 280 L 130 320 L 434 320 L 434 280 Q 404 250, 344 230 Q 282 210, 282 200 Z" fill="black" />
                         </mask>
                       </defs>
-                      {/* Overlay escuro fora do oval */}
-                      <rect width="565" height="317" fill="rgba(0,0,0,0.3)" mask="url(#face-mask)" />
-                      {/* Borda do oval */}
-                      <ellipse cx="282" cy="148" rx="100" ry="130" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="2" />
+                      {/* Overlay escuro fora da silhueta */}
+                      <rect width="565" height="317" fill="rgba(0,0,0,0.25)" mask="url(#bust-mask)" />
+                      {/* Contorno da silhueta */}
+                      <ellipse cx="282" cy="105" rx="65" ry="80" fill="none" stroke="rgba(255,255,255,0.45)" strokeWidth="1.5" />
+                      <rect x="262" y="175" width="40" height="30" rx="5" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="1" />
+                      <path d="M 282 200 Q 282 210, 220 230 Q 160 250, 130 280 L 130 317 M 282 200 Q 282 210, 344 230 Q 404 250, 434 280 L 434 317" fill="none" stroke="rgba(255,255,255,0.35)" strokeWidth="1.5" />
                     </svg>
-                    {/* Texto guia */}
                     <div className="absolute bottom-3 left-0 right-0 text-center">
                       <span className="rounded-full px-3 py-1 text-xs font-medium text-white/80" style={{ background: 'rgba(0,0,0,0.5)' }}>
                         Posicione o rosto dentro da moldura
