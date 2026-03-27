@@ -2,6 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 
+// TRIX BioFace dimensions
+const CAPTURE_WIDTH = 565
+const CAPTURE_HEIGHT = 317
+
 interface CameraCaptureProps {
   onCapture: (base64: string) => void
   onCancel: () => void
@@ -22,7 +26,11 @@ export function CameraCapture({ onCapture, onCancel }: CameraCaptureProps) {
         return
       }
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user', width: { ideal: 800 }, height: { ideal: 800 } },
+        video: {
+          facingMode: 'user',
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+        },
         audio: false,
       })
       streamRef.current = stream
@@ -58,19 +66,29 @@ export function CameraCapture({ onCapture, onCancel }: CameraCaptureProps) {
     const canvas = canvasRef.current
     if (!video || !canvas) return
 
-    const size = Math.min(video.videoWidth, video.videoHeight, 800)
-    canvas.width = size
-    canvas.height = size
+    // Output: TRIX dimensions (565x317)
+    canvas.width = CAPTURE_WIDTH
+    canvas.height = CAPTURE_HEIGHT
 
     const ctx = canvas.getContext('2d')
     if (!ctx) return
 
-    // Centralizar e cortar quadrado
-    const sx = (video.videoWidth - size) / 2
-    const sy = (video.videoHeight - size) / 2
-    ctx.drawImage(video, sx, sy, size, size, 0, 0, size, size)
+    // Crop center of video to 16:9 aspect ratio
+    const videoAspect = video.videoWidth / video.videoHeight
+    const targetAspect = CAPTURE_WIDTH / CAPTURE_HEIGHT
 
-    const base64 = canvas.toDataURL('image/jpeg', 0.8)
+    let sx = 0, sy = 0, sw = video.videoWidth, sh = video.videoHeight
+    if (videoAspect > targetAspect) {
+      sw = video.videoHeight * targetAspect
+      sx = (video.videoWidth - sw) / 2
+    } else {
+      sh = video.videoWidth / targetAspect
+      sy = (video.videoHeight - sh) / 2
+    }
+
+    ctx.drawImage(video, sx, sy, sw, sh, 0, 0, CAPTURE_WIDTH, CAPTURE_HEIGHT)
+
+    const base64 = canvas.toDataURL('image/jpeg', 0.85)
     setPhoto(base64)
     stopCamera()
   }
@@ -84,7 +102,6 @@ export function CameraCapture({ onCapture, onCancel }: CameraCaptureProps) {
     if (photo) onCapture(photo)
   }
 
-  // Fallback: input file
   const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -95,15 +112,24 @@ export function CameraCapture({ onCapture, onCancel }: CameraCaptureProps) {
       img.onload = () => {
         const canvas = canvasRef.current
         if (!canvas) return
-        const size = Math.min(img.width, img.height, 800)
-        canvas.width = size
-        canvas.height = size
+        canvas.width = CAPTURE_WIDTH
+        canvas.height = CAPTURE_HEIGHT
         const ctx = canvas.getContext('2d')
         if (!ctx) return
-        const sx = (img.width - size) / 2
-        const sy = (img.height - size) / 2
-        ctx.drawImage(img, sx, sy, size, size, 0, 0, size, size)
-        const base64 = canvas.toDataURL('image/jpeg', 0.8)
+
+        const imgAspect = img.width / img.height
+        const targetAspect = CAPTURE_WIDTH / CAPTURE_HEIGHT
+        let sx = 0, sy = 0, sw = img.width, sh = img.height
+        if (imgAspect > targetAspect) {
+          sw = img.height * targetAspect
+          sx = (img.width - sw) / 2
+        } else {
+          sh = img.width / targetAspect
+          sy = (img.height - sh) / 2
+        }
+
+        ctx.drawImage(img, sx, sy, sw, sh, 0, 0, CAPTURE_WIDTH, CAPTURE_HEIGHT)
+        const base64 = canvas.toDataURL('image/jpeg', 0.85)
         setPhoto(base64)
         stopCamera()
       }
@@ -126,18 +152,18 @@ export function CameraCapture({ onCapture, onCancel }: CameraCaptureProps) {
                     Permissao de camera negada
                   </p>
                   <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-                    Clique no icone do cadeado na barra de endereco do navegador, permita o acesso a camera e recarregue a pagina. Ou use o botao abaixo para selecionar uma foto.
+                    Clique no icone do cadeado na barra de endereco, permita a camera e recarregue a pagina.
                   </p>
                 </div>
               )}
               {error === 'camera_unsupported' && (
                 <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
-                  Camera nao disponivel neste navegador. Use o botao abaixo para selecionar uma foto.
+                  Camera nao disponivel. Use o botao abaixo para selecionar uma foto.
                 </p>
               )}
               {error === 'camera_error' && (
                 <p className="text-sm" style={{ color: 'var(--color-danger)' }}>
-                  Erro ao acessar a camera. Use o botao abaixo para selecionar uma foto.
+                  Erro ao acessar a camera. Use o botao abaixo.
                 </p>
               )}
               <div className="flex gap-2">
@@ -155,36 +181,65 @@ export function CameraCapture({ onCapture, onCancel }: CameraCaptureProps) {
             </div>
           ) : (
             <div className="space-y-3">
+              {/* Video container com moldura oval */}
               <div
-                className="relative mx-auto overflow-hidden rounded-xl border"
-                style={{ borderColor: 'var(--color-border)', maxWidth: 400 }}
+                className="relative mx-auto overflow-hidden rounded-xl"
+                style={{ maxWidth: 560, aspectRatio: '565/317', background: '#000' }}
               >
                 <video
                   ref={videoRef}
                   autoPlay
                   playsInline
                   muted
-                  className="w-full"
+                  className="absolute inset-0 w-full h-full object-cover"
                   style={{ transform: 'scaleX(-1)' }}
                 />
+
+                {/* Moldura oval de guia facial */}
+                {cameraReady && (
+                  <div className="absolute inset-0 pointer-events-none">
+                    <svg width="100%" height="100%" viewBox="0 0 565 317" preserveAspectRatio="xMidYMid slice">
+                      {/* Mascara: escurece tudo exceto o oval */}
+                      <defs>
+                        <mask id="face-mask">
+                          <rect width="565" height="317" fill="white" />
+                          <ellipse cx="282" cy="148" rx="100" ry="130" fill="black" />
+                        </mask>
+                      </defs>
+                      {/* Overlay escuro fora do oval */}
+                      <rect width="565" height="317" fill="rgba(0,0,0,0.3)" mask="url(#face-mask)" />
+                      {/* Borda do oval */}
+                      <ellipse cx="282" cy="148" rx="100" ry="130" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="2" />
+                    </svg>
+                    {/* Texto guia */}
+                    <div className="absolute bottom-3 left-0 right-0 text-center">
+                      <span className="rounded-full px-3 py-1 text-xs font-medium text-white/80" style={{ background: 'rgba(0,0,0,0.5)' }}>
+                        Posicione o rosto dentro da moldura
+                      </span>
+                    </div>
+                  </div>
+                )}
+
                 {!cameraReady && (
                   <div className="absolute inset-0 flex items-center justify-center" style={{ background: 'var(--color-surface)' }}>
                     <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>Carregando camera...</p>
                   </div>
                 )}
               </div>
+
+              {/* Botoes */}
               <div className="flex justify-center gap-3">
                 <button
                   onClick={capture}
                   disabled={!cameraReady}
-                  className="inline-flex items-center gap-2 rounded-lg px-6 py-2.5 text-sm font-semibold text-white transition-opacity disabled:opacity-50"
+                  className="inline-flex items-center gap-2 rounded-full px-6 py-2.5 text-sm font-semibold text-white transition-opacity disabled:opacity-50"
                   style={{ background: 'var(--color-primary)' }}
                 >
-                  Capturar
+                  Capturar Foto
                 </button>
                 <button
                   onClick={onCancel}
-                  className="rounded-lg border px-4 py-2.5 text-sm"
+                  className="rounded-full border px-5 py-2.5 text-sm"
                   style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-muted)' }}
                 >
                   Cancelar
@@ -204,28 +259,31 @@ export function CameraCapture({ onCapture, onCancel }: CameraCaptureProps) {
 
       {photo && (
         <div className="space-y-3">
-          <div className="mx-auto overflow-hidden rounded-xl border" style={{ borderColor: 'var(--color-primary)', maxWidth: 400 }}>
+          <div
+            className="mx-auto overflow-hidden rounded-xl border"
+            style={{ borderColor: 'var(--color-primary)', maxWidth: 560, aspectRatio: '565/317' }}
+          >
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={photo} alt="Foto capturada" className="w-full" style={{ transform: 'scaleX(-1)' }} />
+            <img src={photo} alt="Foto capturada" className="w-full h-full object-cover" style={{ transform: 'scaleX(-1)' }} />
           </div>
           <div className="flex justify-center gap-3">
             <button
               onClick={confirm}
-              className="inline-flex items-center gap-2 rounded-lg px-6 py-2.5 text-sm font-semibold text-white"
+              className="inline-flex items-center gap-2 rounded-full px-6 py-2.5 text-sm font-semibold text-white"
               style={{ background: 'var(--color-primary)' }}
             >
               Confirmar
             </button>
             <button
               onClick={retake}
-              className="rounded-lg border px-4 py-2.5 text-sm"
+              className="rounded-full border px-5 py-2.5 text-sm"
               style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-muted)' }}
             >
               Refazer
             </button>
             <button
               onClick={onCancel}
-              className="rounded-lg border px-4 py-2.5 text-sm"
+              className="rounded-full border px-5 py-2.5 text-sm"
               style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-muted)' }}
             >
               Cancelar
