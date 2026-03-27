@@ -96,7 +96,7 @@ export async function POST(request: NextRequest) {
 
         if (!result.success) {
           if (result.tokenAlreadyResolved) {
-            send({ type: 'result', tokenAlreadyResolved: true })
+            send({ type: 'result', success: true, tokenAlreadyResolved: true })
             controller.close(); return
           }
           send({ type: 'error', message: result.error ?? 'Erro ao abrir token' }); controller.close(); return
