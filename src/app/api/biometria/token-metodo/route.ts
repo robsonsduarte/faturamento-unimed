@@ -90,9 +90,22 @@ export async function POST(request: NextRequest) {
           send({ type: 'success', message: 'Sessao SAW ativa.' })
         }
 
-        // 3. Abrir pagina de token
+        // 3. Abrir pagina de token (com retry se sessao expirou)
         send({ type: 'processing', message: 'Abrindo guia no SAW...' })
-        const result = await getSawClient().openTokenPage(user.id, cookies, guia.guide_number)
+        let result = await getSawClient().openTokenPage(user.id, cookies, guia.guide_number)
+
+        // Se sessao expirou, refazer login e tentar de novo
+        if (!result.success && result.error?.includes('expirou')) {
+          send({ type: 'processing', message: 'Sessao expirou. Refazendo login...' })
+          await db.from('saw_sessions').update({ valida: false }).eq('user_id', user.id).eq('valida', true)
+          const relogin = await getSawClient().login(user.id, { login_url: loginUrl, usuario, senha })
+          if (!relogin.success) { send({ type: 'error', message: `Re-login falhou: ${relogin.error}` }); controller.close(); return }
+          cookies = relogin.cookies
+          await db.from('saw_sessions').insert({ user_id: user.id, cookies, valida: true, expires_at: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString() })
+          send({ type: 'success', message: 'Re-login realizado.' })
+
+          result = await getSawClient().openTokenPage(user.id, cookies, guia.guide_number)
+        }
 
         if (!result.success) {
           if (result.tokenAlreadyResolved) {
