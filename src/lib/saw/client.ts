@@ -1660,28 +1660,36 @@ class SawClient {
       try {
         const phones = await entry.page.evaluate(() => {
           const result: { value: string; text: string }[] = []
-          const selects = document.querySelectorAll('select')
-          for (const sel of selects) {
+
+          // Buscar o select ESPECIFICO de telefones do SAW
+          const sel = document.querySelector(
+            '#tokenDeAtendimento\\.telefoneDeEnvio\\.numero, ' +
+            'select[name="tokenDeAtendimento.telefoneDeEnvio.numero"], ' +
+            '#telefonesCelularesBeneficiario select'
+          ) as HTMLSelectElement | null
+
+          if (sel) {
             for (const opt of sel.options) {
               const v = opt.value?.trim()
               const t = opt.text?.trim()
-              if (v && v !== '' && !/escolha/i.test(t ?? '') && t !== '') {
+              // Ignorar "Escolha" e opcoes vazias — pegar apenas telefones
+              if (v && v !== '' && !/escolha/i.test(t ?? '')) {
                 result.push({ value: v, text: t ?? v })
               }
             }
           }
+
           return result
         }) as { value: string; text: string }[]
 
         if (phones.length > 0) {
-          console.log(`[SAW] getTokenPagePhones: ${phones.length} telefone(s) encontrado(s) (attempt ${attempt + 1})`)
+          console.log(`[SAW] getTokenPagePhones: ${phones.length} telefone(s) — ${phones.map((p) => p.text).join(', ')} (attempt ${attempt + 1})`)
           return phones
         }
       } catch {
         console.log(`[SAW] getTokenPagePhones: evaluate falhou (attempt ${attempt + 1})`)
       }
 
-      // Aguardar antes de retry
       await new Promise((r) => setTimeout(r, 1500))
     }
 
