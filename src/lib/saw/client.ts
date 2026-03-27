@@ -910,6 +910,238 @@ class SawClient {
     })
   }
 
+  // ─── Executar procedimentos (cobrar atendimentos no SAW) ─────
+  async executarProcedimentos(
+    userId: string,
+    cookies: SawCookie[],
+    numeroGuia: string,
+    photoBase64: string,
+    procedimentos: Array<{
+      data: string       // DDMMYYYY
+      horaInicial: string // HHMM
+      horaFinal: string  // HHMM
+      quantidade: string
+      viaAcesso: string
+      tecnica: string
+      redAcresc: string
+    }>,
+    onProgress?: (step: string, msg: string) => void,
+  ): Promise<{
+    success: boolean
+    totalExecutado: number
+    totalEsperado: number
+    execucoes: Array<{ data: string; success: boolean; error?: string }>
+    error?: string
+  }> {
+    return this.withLock(userId, async () => {
+      let page: Page | null = null
+      const execucoes: Array<{ data: string; success: boolean; error?: string }> = []
+      let totalExecutado = 0
+
+      try {
+        const context = await this.getContext(userId, cookies)
+        page = await context.newPage()
+        page.setDefaultTimeout(30_000)
+
+        // Auto-accept dialogs
+        page.on('dialog', async (dialog) => {
+          console.log(`[SAW] cobrar: dialog: ${dialog.message().substring(0, 80)}`)
+          await dialog.accept()
+        })
+
+        const guiaUrl = `${SAW_BASE}/saw/tiss/SolicitacaoDeSPSADT40.do?method=consultarGuiaDeSPSADT&manterTISSSPSADT40DTO.tissSolicitacaoDeSPSADTDTO.numeroDaGuia=${encodeURIComponent(numeroGuia)}&manterTISSSPSADT40DTO.tissSolicitacaoDeSPSADTDTO.isConsultaNaGuia=true`
+
+        onProgress?.('1', `Navegando para guia ${numeroGuia}...`)
+        await page.goto(guiaUrl, { waitUntil: 'networkidle', timeout: 30_000 })
+        await page.waitForTimeout(2000)
+
+        // Verificar sessao
+        const hasLogin = await page.evaluate(() => {
+          const u = document.querySelector('input[id="login"]')
+          const p = document.querySelector('input[type="password"]')
+          return !!(u && p)
+        }).catch(() => false)
+
+        if (hasLogin) {
+          return { success: false, totalExecutado: 0, totalEsperado: procedimentos.length, execucoes, error: 'Sessao SAW expirou.' }
+        }
+
+        onProgress?.('1', `Guia aberta. ${procedimentos.length} procedimento(s) para cobrar.`)
+        await page.screenshot({ path: '/tmp/debug-cobrar-0-guia.png', fullPage: false }).catch(() => {})
+
+        for (let i = 0; i < procedimentos.length; i++) {
+          const proc = procedimentos[i]
+          const stepLabel = `${i + 1}/${procedimentos.length}`
+          onProgress?.(stepLabel, `Procedimento ${proc.data} — clicando "Realizar"...`)
+
+          try {
+            // Step A: Clicar "Realizar Procedimento" (2o img com title "Realizar")
+            const realizarBtns = await page.$$('img[title*="Realizar"]')
+            if (realizarBtns.length < 2) {
+              // Pode ja ter sido realizado ou nao tem mais botoes
+              onProgress?.(stepLabel, `Botao "Realizar" nao encontrado. Pode ja ter sido cobrado.`)
+              execucoes.push({ data: proc.data, success: false, error: 'Botao Realizar nao encontrado' })
+              continue
+            }
+
+            await realizarBtns[1].click()
+            await page.waitForTimeout(5000)
+            await page.screenshot({ path: `/tmp/debug-cobrar-${i + 1}-apos-realizar.png`, fullPage: false }).catch(() => {})
+
+            // Step B: Autenticar biometria no iframe BioFace
+            onProgress?.(stepLabel, `Autenticando biometria...`)
+
+            const bioFrameHandle = await page.$('iframe#iframeBioFacial, iframe[src*="bioface"]')
+            const bioFrame = bioFrameHandle ? await bioFrameHandle.contentFrame() : null
+
+            if (bioFrame) {
+              // Injetar foto
+              await bioFrame.evaluate((b64: string) => {
+                const results = document.getElementById('results')
+                if (results) {
+                  results.innerHTML = '<img id="id-imagem-resultado" width="565px" height="317px" src="data:image/jpeg;base64,' + b64 + '"/>'
+                }
+                const btn = document.getElementById('id-botao-autenticar')
+                if (btn) {
+                  btn.style.display = 'inline-block'
+                  btn.style.visibility = 'visible'
+                }
+              }, photoBase64)
+
+              await page.waitForTimeout(1000)
+
+              // Clicar autenticar
+              await bioFrame.evaluate(() => {
+                const btn = document.getElementById('id-botao-autenticar')
+                if (btn) btn.click()
+                // Fallback: funcao aut() se existir
+                if (typeof (window as unknown as Record<string, unknown>).aut === 'function') {
+                  ((window as unknown as Record<string, unknown>).aut as () => void)()
+                }
+              })
+
+              await page.waitForTimeout(5000)
+            } else {
+              onProgress?.(stepLabel, `Iframe BioFace nao encontrado. Tentando continuar...`)
+            }
+
+            // Step C: Aguardar formulario (nova pagina/popup)
+            onProgress?.(stepLabel, `Aguardando formulario de realizacao...`)
+            await page.waitForTimeout(3000)
+
+            // Procurar nova pagina aberta (popup de realizacao)
+            const pages = context.pages()
+            let formPage: Page | null = null
+
+            for (const p of pages) {
+              const pUrl = p.url()
+              if (pUrl.includes('abrirTelaDeRealizarProcedimento') || pUrl.includes('RealizarProcedimento')) {
+                formPage = p
+                break
+              }
+            }
+
+            // Fallback: verificar se o form abriu na mesma pagina
+            if (!formPage) {
+              const hasForm = await page.evaluate(() => !!document.getElementById('dataSolicitacaoProcedimento')).catch(() => false)
+              if (hasForm) formPage = page
+            }
+
+            if (!formPage) {
+              onProgress?.(stepLabel, `Formulario de realizacao nao abriu.`)
+              execucoes.push({ data: proc.data, success: false, error: 'Formulario nao abriu' })
+              await page.goto(guiaUrl, { waitUntil: 'networkidle', timeout: 30_000 }).catch(() => {})
+              await page.waitForTimeout(2000)
+              continue
+            }
+
+            // Step D: Preencher formulario
+            onProgress?.(stepLabel, `Preenchendo formulario...`)
+            await formPage.screenshot({ path: `/tmp/debug-cobrar-${i + 1}-form.png`, fullPage: false }).catch(() => {})
+
+            await formPage.evaluate((p) => {
+              // Limpar campos
+              const campos = ['dataSolicitacaoProcedimento', 'horarioInicial', 'horarioFinal', 'quantidadeSolicitada']
+              campos.forEach((id) => {
+                const el = document.getElementById(id) as HTMLInputElement
+                if (el) el.value = ''
+              })
+            }, null)
+
+            await formPage.type('#dataSolicitacaoProcedimento', proc.data, { delay: 50 })
+            await formPage.type('#horarioInicial', proc.horaInicial, { delay: 50 })
+            await formPage.type('#horarioFinal', proc.horaFinal, { delay: 50 })
+            await formPage.type('#quantidadeSolicitada', proc.quantidade || '1', { delay: 50 })
+
+            // Selects
+            await formPage.selectOption('#viaDeAcesso', proc.viaAcesso || '1').catch(() => {})
+            await formPage.evaluate((tecVal) => {
+              const sel = document.querySelector('select[name*="tecnicaUtilizada"]') as HTMLSelectElement
+              if (sel) { sel.value = tecVal; sel.dispatchEvent(new Event('change', { bubbles: true })) }
+            }, proc.tecnica || '1').catch(() => {})
+            await formPage.selectOption('#porcentagemReducaoAcrescimo', proc.redAcresc || '1.0').catch(() => {})
+
+            await formPage.screenshot({ path: `/tmp/debug-cobrar-${i + 1}-form-filled.png`, fullPage: false }).catch(() => {})
+
+            // Step E: Executar servico
+            onProgress?.(stepLabel, `Executando servico...`)
+            await formPage.evaluate(() => {
+              if (typeof (window as unknown as Record<string, unknown>).executarServico === 'function') {
+                ((window as unknown as Record<string, unknown>).executarServico as () => void)()
+              }
+            })
+
+            await page.waitForTimeout(3000)
+
+            // Step F: Recarregar pagina principal
+            onProgress?.(stepLabel, `Procedimento executado! Recarregando...`)
+            await page.goto(guiaUrl, { waitUntil: 'networkidle', timeout: 30_000 }).catch(() => {})
+            await page.waitForTimeout(2000)
+
+            // Fechar popup se abriu
+            if (formPage !== page) {
+              await formPage.close().catch(() => {})
+            }
+
+            execucoes.push({ data: proc.data, success: true })
+            totalExecutado++
+            onProgress?.(stepLabel, `Procedimento ${proc.data} cobrado com sucesso!`)
+
+          } catch (procErr) {
+            const msg = procErr instanceof Error ? procErr.message : 'Erro desconhecido'
+            onProgress?.(stepLabel, `Erro no procedimento ${proc.data}: ${msg}`)
+            execucoes.push({ data: proc.data, success: false, error: msg })
+
+            // Tentar voltar para a guia para continuar com o proximo
+            try {
+              await page.goto(guiaUrl, { waitUntil: 'networkidle', timeout: 30_000 })
+              await page.waitForTimeout(2000)
+            } catch { /* */ }
+          }
+        }
+
+        await page.screenshot({ path: '/tmp/debug-cobrar-final.png', fullPage: false }).catch(() => {})
+
+        return {
+          success: totalExecutado > 0,
+          totalExecutado,
+          totalEsperado: procedimentos.length,
+          execucoes,
+        }
+      } catch (err) {
+        return {
+          success: false,
+          totalExecutado,
+          totalEsperado: procedimentos.length,
+          execucoes,
+          error: err instanceof Error ? err.message : 'Erro ao executar procedimentos',
+        }
+      } finally {
+        if (page) await page.close().catch(() => {})
+      }
+    })
+  }
+
   // ─── Interactive token resolution (WhatsApp flow) ────────────
   /**
    * Opens the token page on SAW, extracts available methods/phones,

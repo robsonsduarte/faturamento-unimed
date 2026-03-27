@@ -57,8 +57,13 @@ export default function GuiaDetailPage({ params }: Props) {
   const [tokenError, setTokenError] = useState<string | null>(null)
   const [tokenRecebido, setTokenRecebido] = useState<string | null>(null)
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const [countdown, setCountdown] = useState<number>(0) // segundos restantes
+  const [countdown, setCountdown] = useState<number>(0)
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  // Cobrar atendimentos states
+  const [cobrando, setCobrando] = useState(false)
+  const [cobrarLogs, setCobrarLogs] = useState<ImportLog[]>([])
+  const cobrarEndRef = useRef<HTMLDivElement>(null)
 
   // Buscar foto existente quando guia TOKEN carrega
   useEffect(() => {
@@ -256,6 +261,41 @@ export default function GuiaDetailPage({ params }: Props) {
       if (countdownRef.current) clearInterval(countdownRef.current)
     }
   }, [])
+
+  async function handleCobrarAtendimentos() {
+    if (!guia) return
+    setCobrando(true)
+    setCobrarLogs([])
+    try {
+      const res = await fetch('/api/biometria/cobrar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ guia_id: guia.id }),
+      })
+      const reader = res.body?.getReader()
+      if (!reader) throw new Error('Stream nao disponivel')
+      const decoder = new TextDecoder()
+      let buffer = ''
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n\n')
+        buffer = lines.pop() ?? ''
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try { setCobrarLogs((prev) => [...prev, JSON.parse(line.slice(6)) as ImportLog]) } catch { /**/ }
+          }
+        }
+      }
+      await refetch()
+      toast.success('Cobranca concluida')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro na cobranca')
+    } finally {
+      setCobrando(false)
+    }
+  }
 
   function startCountdown() {
     if (countdownRef.current) clearInterval(countdownRef.current)
@@ -977,6 +1017,67 @@ export default function GuiaDetailPage({ params }: Props) {
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Cobrar Atendimentos — apenas para guias PENDENTE */}
+      {guia.status === 'PENDENTE' && (
+        <div
+          className="rounded-xl border overflow-hidden"
+          style={{ borderColor: 'var(--color-secondary)', background: 'var(--color-card)' }}
+        >
+          <div
+            className="flex items-center justify-between px-5 py-4 border-b"
+            style={{ borderColor: 'var(--color-secondary)', background: 'rgba(14, 165, 233, 0.06)' }}
+          >
+            <div>
+              <h2 className="text-sm font-semibold" style={{ color: 'var(--color-secondary)' }}>
+                Cobrar Atendimentos
+              </h2>
+              <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
+                Executar procedimentos pendentes no SAW com biometria
+              </p>
+            </div>
+            <button
+              onClick={handleCobrarAtendimentos}
+              disabled={cobrando}
+              className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              style={{ background: 'var(--color-secondary)' }}
+            >
+              {cobrando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+              {cobrando ? 'Cobrando...' : 'Cobrar Atendimentos'}
+            </button>
+          </div>
+
+          {/* Pipeline de cobranca */}
+          {(cobrando || cobrarLogs.length > 0) && (
+            <div className="border-t" style={{ borderColor: 'var(--color-border)' }}>
+              <div className="px-4 py-2" style={{ background: 'var(--color-surface)' }}>
+                <p className="text-xs font-semibold" style={{ color: 'var(--color-text-muted)' }}>
+                  Pipeline de Cobranca
+                  {cobrando && <span className="ml-2 animate-pulse" style={{ color: 'var(--color-secondary)' }}>em andamento...</span>}
+                </p>
+              </div>
+              <div className="p-3 max-h-64 overflow-y-auto space-y-1" style={{ background: '#0a0a0a' }}>
+                {cobrarLogs.map((log, i) => {
+                  const colorMap = { success: '#4ade80', error: '#f87171', processing: '#38bdf8', info: '#94a3b8' }
+                  return (
+                    <div key={i} className="flex items-start gap-2 font-mono text-xs leading-5">
+                      <span className="shrink-0 select-none" style={{ color: '#6b7280' }}>{log.timestamp}</span>
+                      <span style={{ color: colorMap[log.type] }}>{log.message}</span>
+                    </div>
+                  )
+                })}
+                {cobrando && cobrarLogs.length > 0 && (
+                  <div className="flex items-center gap-2 font-mono text-xs mt-1">
+                    <Loader2 className="w-3 h-3 animate-spin" style={{ color: '#38bdf8' }} />
+                    <span style={{ color: '#38bdf8' }}>Processando...</span>
+                  </div>
+                )}
+                <div ref={cobrarEndRef} />
+              </div>
+            </div>
+          )}
         </div>
       )}
 
