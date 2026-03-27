@@ -1252,34 +1252,23 @@ class SawClient {
       let phones: { value: string; text: string }[] = []
       try {
         if (hasSms) {
-          // Clicar radio SMS — precisa clicar no input radio diretamente
-          console.log(`[SAW] openTokenPage: clicando radio SMS...`)
-          const smsClicked = await page.evaluate(() => {
-            // Encontrar todos os radios e clicar no que esta perto do texto "SMS"
-            const radios = Array.from(document.querySelectorAll('input[type="radio"]'))
-            for (const radio of radios) {
-              // Verificar o parent/container do radio
-              const container = radio.closest('td, div, label, fieldset, tr')
-              if (container && /\bsms\b/i.test(container.textContent ?? '')) {
-                // Clicar no radio diretamente
-                (radio as HTMLInputElement).checked = true
-                radio.dispatchEvent(new Event('click', { bubbles: true }))
-                radio.dispatchEvent(new Event('change', { bubbles: true }))
-                // Tentar tambem o onclick nativo se existir
-                // Trigger onclick handler if exists
-                try { radio.dispatchEvent(new MouseEvent('click', { bubbles: true })) } catch { /* */ }
-                return true
-              }
-            }
-            // Fallback: clicar no 3o radio (geralmente SMS e o 3o: App, Email, SMS)
+          // Clicar radio SMS via Playwright page.click() (simula clique real do mouse)
+          console.log(`[SAW] openTokenPage: clicando radio SMS via page.click()...`)
+          let smsClicked = false
+          try {
+            // Tentar clicar no 3o radio (App=1, Email=2, SMS=3)
+            const radios = await page.$$('input[type="radio"]')
             if (radios.length >= 3) {
-              (radios[2] as HTMLInputElement).checked = true
-              radios[2].dispatchEvent(new Event('click', { bubbles: true }))
-              radios[2].dispatchEvent(new Event('change', { bubbles: true }))
-              return true
+              await radios[2].click()
+              smsClicked = true
+            } else {
+              // Fallback: clicar por texto "SMS"
+              await page.getByText('SMS', { exact: true }).click()
+              smsClicked = true
             }
-            return false
-          })
+          } catch {
+            console.log(`[SAW] openTokenPage: falhou page.click no radio SMS`)
+          }
           console.log(`[SAW] openTokenPage: radio SMS clicado: ${smsClicked}`)
           await page.waitForTimeout(2000)
           await page.screenshot({ path: '/tmp/debug-opentoken-sms-clicked.png' }).catch(() => {})

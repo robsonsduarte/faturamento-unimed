@@ -123,22 +123,16 @@ export async function POST(request: NextRequest) {
 
           send({ type: 'processing', message: 'Selecionando SMS no SAW...' })
 
-          // Clicar radio SMS (sem clicar Enviar) usando evaluate direto na page
+          // Clicar radio SMS via page.click() (simula clique real)
           const entry = getSawClient().getTokenSession(result.sessionId!)
           if (entry) {
-            await entry.page.evaluate(() => {
-              const radios = Array.from(document.querySelectorAll('input[type="radio"]'))
-              for (const radio of radios) {
-                const parent = radio.closest('td, div, label, fieldset')
-                if (parent && /\bsms\b/i.test(parent.textContent ?? '')) {
-                  (radio as HTMLInputElement).checked = true
-                  radio.dispatchEvent(new MouseEvent('click', { bubbles: true }))
-                  radio.dispatchEvent(new Event('change', { bubbles: true }))
-                  break
-                }
+            try {
+              const radios = await entry.page.$$('input[type="radio"]')
+              if (radios.length >= 3) {
+                await radios[2].click() // 3o radio = SMS
               }
-            })
-            await new Promise((r) => setTimeout(r, 2000))
+            } catch { /* */ }
+            await new Promise((r) => setTimeout(r, 2500))
           }
 
           send({ type: 'processing', message: 'Extraindo telefones do SAW...' })
