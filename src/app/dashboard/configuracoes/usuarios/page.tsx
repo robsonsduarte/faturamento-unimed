@@ -180,7 +180,7 @@ function EditUserModal({
   const [sawUsuario, setSawUsuario] = useState('')
   const [sawSenha, setSawSenha] = useState('')
   const [showSawSenha, setShowSawSenha] = useState(false)
-  const [sawLoginUrl, setSawLoginUrl] = useState('https://saw.trixti.com.br/saw/Logar.do?method=abrirSAW')
+  const sawLoginUrl = 'https://saw.trixti.com.br/saw/Logar.do?method=abrirSAW'
   const [loading, setLoading] = useState(false)
   const [loadingData, setLoadingData] = useState(true)
 
@@ -191,7 +191,7 @@ function EditUserModal({
       .then((data) => {
         if (data.sawCredentials) {
           setSawUsuario(data.sawCredentials.usuario ?? '')
-          setSawLoginUrl(data.sawCredentials.login_url ?? 'https://saw.trixti.com.br/saw/Logar.do?method=abrirSAW')
+          // login_url vem da config global de integracoes
         }
       })
       .catch(() => {})
@@ -326,14 +326,6 @@ function EditUserModal({
                 </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--color-text-muted)' }}>URL de Login SAW</label>
-                <input
-                  value={sawLoginUrl}
-                  onChange={(e) => setSawLoginUrl(e.target.value)}
-                  className={cn(INPUT_CLASS, 'text-xs')}
-                />
-              </div>
             </div>
           </div>
         )}
