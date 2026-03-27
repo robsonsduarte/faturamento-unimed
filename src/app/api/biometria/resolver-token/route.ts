@@ -177,13 +177,17 @@ export async function POST(request: NextRequest) {
           send('success', '[2/9] Sessao SAW ativa.')
         }
 
-        // Resolver token via Playwright
+        // Resolver token via Playwright (com progresso SSE)
         send('processing', `[3/9] Abrindo guia ${guia.guide_number}...`)
         const result = await getSawClient().resolveToken(
           user.id,
           cookies,
           guia.guide_number,
-          photoBase64
+          photoBase64,
+          (step, msg) => {
+            const isError = msg.toLowerCase().includes('erro') || msg.toLowerCase().includes('falha') || msg.toLowerCase().includes('nao encontrad')
+            send(isError ? 'error' : 'processing', `[${step}] ${msg.trim()}`)
+          }
         )
 
         if (!result.success) {

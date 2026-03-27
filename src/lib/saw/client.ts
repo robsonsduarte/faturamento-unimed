@@ -691,7 +691,8 @@ class SawClient {
     userId: string,
     cookies: SawCookie[],
     numeroGuia: string,
-    photoBase64: string
+    photoBase64: string,
+    onProgress?: (step: string, message: string) => void,
   ): Promise<{ success: boolean; error?: string; fallbackToToken?: boolean }> {
     return this.withLock(userId, async () => {
       let page: Page | null = null
@@ -704,7 +705,7 @@ class SawClient {
 
         const guiaUrl = `${SAW_BASE}/saw/tiss/SolicitacaoDeSPSADT40.do?method=consultarGuiaDeSPSADT&manterTISSSPSADT40DTO.tissSolicitacaoDeSPSADTDTO.numeroDaGuia=${encodeURIComponent(numeroGuia)}&manterTISSSPSADT40DTO.tissSolicitacaoDeSPSADTDTO.isConsultaNaGuia=true`
 
-        console.log(`[SAW] [3/9] Navegando para guia ${numeroGuia}`)
+        onProgress?.("3/9", ` Navegando para guia ${numeroGuia}`)
         await page.goto(guiaUrl, { waitUntil: 'networkidle', timeout: 30_000 })
         await page.waitForTimeout(2000)
 
@@ -719,12 +720,12 @@ class SawClient {
         // === STEP 1: Verificar se biometria ja autenticada ===
         const alreadyAuth = await page.$('img[src*="biometriaAutenticadaface"]')
         if (alreadyAuth) {
-          console.log(`[SAW] [3/9] Biometria ja autenticada!`)
+          onProgress?.("3/9", ` Biometria ja autenticada!`)
           return { success: true }
         }
 
         // === STEP 2: Clicar check-in e extrair URL BioFace ===
-        console.log(`[SAW] [4/9] Clicando check-in para gerar URL BioFace...`)
+        onProgress?.("4/9", ` Clicando check-in para gerar URL BioFace...`)
 
         // Clicar usando a funcao JS do SAW ou o link
         await page.evaluate(() => {
@@ -755,25 +756,25 @@ class SawClient {
           return { success: false, error: `URL BioFace nao encontrada. URL atual: ${newUrl.substring(0, 80)}` }
         }
 
-        console.log(`[SAW] [4/9] BioFace URL extraida: ${biofaceUrl.substring(0, 100)}`)
+        onProgress?.("4/9", ` BioFace URL extraida: ${biofaceUrl.substring(0, 100)}`)
 
         // === STEP 3: Abrir BioFace em pagina separada (tecnica do workflow n8n) ===
         biofacePage = await context.newPage()
         biofacePage.setDefaultTimeout(30_000)
 
-        console.log(`[SAW] [5/9] Abrindo BioFace em pagina separada...`)
+        onProgress?.("5/9", ` Abrindo BioFace em pagina separada...`)
         await biofacePage.goto(biofaceUrl, { waitUntil: 'networkidle', timeout: 30_000 })
         await biofacePage.waitForTimeout(3000)
         await biofacePage.screenshot({ path: '/tmp/debug-resolvetoken-2-bioface-open.png', fullPage: false }).catch(() => {})
 
         // === STEP 4: Clicar "Capturar Foto" via mouse.click com boundingBox ===
-        console.log(`[SAW] [6/9] STEP 6 — clicando Capturar Foto...`)
+        onProgress?.("6/9", ` STEP 6 — clicando Capturar Foto...`)
         const btnCapturar = await biofacePage.$('#id-botao-capturar')
         if (btnCapturar) {
           const box = await btnCapturar.boundingBox()
           if (box) {
             await biofacePage.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
-            console.log(`[SAW] [6/9] Capturar Foto clicado via mouse.click`)
+            onProgress?.("6/9", ` Capturar Foto clicado via mouse.click`)
           }
         } else {
           // Fallback: clicar por texto
@@ -787,7 +788,7 @@ class SawClient {
         await biofacePage.screenshot({ path: '/tmp/debug-resolvetoken-3-after-capture.png', fullPage: false }).catch(() => {})
 
         // === STEP 5: Injetar foto no DOM (tecnica exata do workflow n8n) ===
-        console.log(`[SAW] [7/9] STEP 7 — injetando foto...`)
+        onProgress?.("7/9", ` STEP 7 — injetando foto...`)
         const injected = await biofacePage.evaluate((b64: string) => {
           const results = document.getElementById('results')
           if (results) {
@@ -803,10 +804,10 @@ class SawClient {
 
         await biofacePage.waitForTimeout(1000)
         await biofacePage.screenshot({ path: '/tmp/debug-resolvetoken-4-after-inject.png', fullPage: false }).catch(() => {})
-        console.log(`[SAW] [7/9] Foto injetada com sucesso`)
+        onProgress?.("7/9", ` Foto injetada com sucesso`)
 
         // === STEP 6: Mostrar e clicar "Autenticar Foto" via mouse.down/up ===
-        console.log(`[SAW] [8/9] STEP 8 — clicando Autenticar...`)
+        onProgress?.("8/9", ` STEP 8 — clicando Autenticar...`)
 
         // Force display do botao
         await biofacePage.evaluate(() => {
@@ -831,7 +832,7 @@ class SawClient {
             await biofacePage.waitForTimeout(100)
             await biofacePage.mouse.up()
             authClicked = true
-            console.log(`[SAW] [8/9] Autenticar clicado via mouse.down/up`)
+            onProgress?.("8/9", ` Autenticar clicado via mouse.down/up`)
           }
         }
 
@@ -854,7 +855,7 @@ class SawClient {
         }
 
         // === STEP 7: Aguardar TRIX processar (12s como no workflow) ===
-        console.log(`[SAW] [8/9] Aguardando TRIX processar (12s)...`)
+        onProgress?.("8/9", ` Aguardando TRIX processar (12s)...`)
         await biofacePage.waitForTimeout(12_000)
         await biofacePage.screenshot({ path: '/tmp/debug-resolvetoken-5-after-auth.png', fullPage: false }).catch(() => {})
 
@@ -863,7 +864,7 @@ class SawClient {
         biofacePage = null
 
         // === STEP 8: Validar resultado no SAW (navegar de volta a guia) ===
-        console.log(`[SAW] [9/9] Validando resultado no SAW...`)
+        onProgress?.("9/9", ` Validando resultado no SAW...`)
         await page.goto(guiaUrl, { waitUntil: 'networkidle', timeout: 30_000 })
         await page.waitForTimeout(3000)
         await page.screenshot({ path: '/tmp/debug-resolvetoken-6-validation.png', fullPage: false }).catch(() => {})
@@ -879,7 +880,7 @@ class SawClient {
         console.log(`[SAW] resolveToken: validacao — icone=${validacao.iconeVisivel}, btnCheckin=${validacao.btnVisivel}`)
 
         if (validacao.iconeVisivel && !validacao.btnVisivel) {
-          console.log(`[SAW] [9/9] SUCESSO — biometria confirmada no SAW!`)
+          onProgress?.("9/9", ` SUCESSO — biometria confirmada no SAW!`)
           return { success: true }
         }
 
