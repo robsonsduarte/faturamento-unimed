@@ -5,6 +5,13 @@ import { rateLimit } from '@/lib/rate-limit'
 import { getSawClient } from '@/lib/saw/client'
 import type { SawCookie } from '@/lib/saw/client'
 import type { SawCredentials } from '@/lib/types'
+import https from 'https'
+import { appendFileSync } from 'fs'
+
+function routeLog(msg: string) {
+  const line = `[${new Date().toISOString()}] [iniciar-token] ${msg}\n`
+  try { appendFileSync('/tmp/saw-debug.log', line) } catch { /* */ }
+}
 
 function getServiceClient() {
   return createAdminClient(
@@ -15,14 +22,20 @@ function getServiceClient() {
 
 /**
  * POST /api/biometria/iniciar-token
- * SSE streaming — opens SAW token page and streams progress.
- * Final event contains sessionId, methods, phones.
+ * SSE streaming — validates session, opens SAW token page, selects method and completes the flow.
+ * Body: { guia_id: string, method: 'aplicativo' | 'sms' }
+ *
+ * SMS result:  { type: 'result', method: 'sms', sessionId, phones, patientPhone, needsPhoneSelection: true }
+ * App result:  { type: 'result', method: 'aplicativo', sessionId, whatsappSent, requestId, patientPhone }
+ * Resolved:    { type: 'result', success: true, tokenAlreadyResolved: true }
  */
 export async function POST(request: NextRequest) {
+  routeLog('POST chamado')
   const limited = rateLimit(request, 'biometria-iniciar', 10, 60_000)
-  if (limited) return limited
+  if (limited) { routeLog('rate limited'); return limited }
 
   const auth = await requireAuth()
+  routeLog(`auth result: ${isAuthError(auth) ? 'ERROR' : 'OK user=' + (auth as { user: { id: string } }).user?.id?.substring(0, 8)}`)
   if (isAuthError(auth)) {
     return new Response(JSON.stringify({ error: 'Nao autenticado' }), {
       status: 401,
@@ -31,9 +44,13 @@ export async function POST(request: NextRequest) {
   }
   const { user } = auth
 
-  const body = await request.json().catch(() => ({})) as { guia_id?: string }
-  if (!body.guia_id) {
-    return new Response(JSON.stringify({ error: 'guia_id obrigatorio' }), {
+  const body = await request.json().catch(() => ({})) as {
+    guia_id?: string
+    method?: 'aplicativo' | 'sms'
+  }
+
+  if (!body.guia_id || !body.method) {
+    return new Response(JSON.stringify({ error: 'guia_id e method obrigatorios' }), {
       status: 400,
       headers: { 'Content-Type': 'application/json' },
     })
@@ -56,6 +73,7 @@ export async function POST(request: NextRequest) {
       const db = getServiceClient()
 
       try {
+        // 1. Buscar guia
         send({ type: 'processing', message: 'Buscando dados da guia...' })
 
         const { data: guia } = await db
@@ -70,7 +88,51 @@ export async function POST(request: NextRequest) {
           return
         }
 
-        // Buscar credenciais SAW
+        // 2. Buscar data de nascimento e telefone do CPro (uma unica chamada)
+        let dataNascimento: string | undefined
+        let patientPhone = ''
+
+        try {
+          const { data: cproInteg } = await db.from('integracoes').select('config, ativo').eq('slug', 'cpro').single()
+          if (cproInteg?.ativo) {
+            const cfg = cproInteg.config as Record<string, string>
+            const cproUrl = `${cfg.api_url}/service/api/v1/executions/by-guide-number/${guia.guide_number}?company=${cfg.company ?? '1'}`
+            const cproBody = await new Promise<string>((resolve) => {
+              const parsed = new URL(cproUrl)
+              const req = https.request({
+                hostname: parsed.hostname,
+                port: parsed.port || 443,
+                path: parsed.pathname + parsed.search,
+                method: 'GET',
+                headers: { 'X-API-Key': cfg.api_key, Host: 'consultoriopro.com.br', Accept: 'application/json' },
+                rejectUnauthorized: false,
+                timeout: 10000,
+              }, (res) => {
+                let d = ''
+                res.on('data', (c: Buffer) => { d += c.toString() })
+                res.on('end', () => resolve(d))
+              })
+              req.on('error', () => resolve(''))
+              req.on('timeout', () => { req.destroy(); resolve('') })
+              req.end()
+            })
+            if (cproBody) {
+              const cproJson = JSON.parse(cproBody)
+              dataNascimento = cproJson?.data?.patient?.born_at ?? undefined
+              const mobile = cproJson?.data?.patient?.mobile as string ?? ''
+              if (mobile) {
+                patientPhone = mobile.replace(/\D/g, '')
+                if (!patientPhone.startsWith('55')) patientPhone = `55${patientPhone}`
+              }
+            }
+          }
+        } catch {
+          // CPro falhou — continua sem born_at e sem telefone
+        }
+
+        routeLog(`cpro: dataNascimento=${dataNascimento} patientPhone=${patientPhone}`)
+
+        // 3. Buscar credenciais SAW
         send({ type: 'processing', message: 'Verificando credenciais SAW...' })
 
         const { data: sawCred } = await db
@@ -96,7 +158,7 @@ export async function POST(request: NextRequest) {
           loginUrl = cfg.login_url; usuario = cfg.usuario; senha = cfg.senha
         }
 
-        // Buscar sessao
+        // 4. Validar / obter sessao SAW
         const { data: session } = await db
           .from('saw_sessions')
           .select('cookies')
@@ -127,26 +189,29 @@ export async function POST(request: NextRequest) {
           send({ type: 'success', message: 'Sessao SAW ativa.' })
         }
 
-        // Abrir pagina de token
+        // 5. Abrir pagina de token (openTokenPage lida com BioFace via dataNascimento)
         send({ type: 'processing', message: 'Abrindo guia no SAW...' })
-        let result = await getSawClient().openTokenPage(user.id, cookies, guia.guide_number)
+        routeLog(`chamando openTokenPage guia=${guia.guide_number} method=${body.method}`)
+        let result = await getSawClient().openTokenPage(user.id, cookies, guia.guide_number, dataNascimento)
+        routeLog(`openTokenPage result: success=${result.success} tokenAlreadyResolved=${result.tokenAlreadyResolved} sessionId=${result.sessionId} error=${result.error}`)
 
         // Retry se sessao expirou
         if (!result.success && result.error?.includes('expirou')) {
           send({ type: 'processing', message: 'Sessao expirou. Refazendo login...' })
           await db.from('saw_sessions').update({ valida: false }).eq('user_id', user.id).eq('valida', true)
-          const loginResult = await getSawClient().login(user.id, { login_url: loginUrl, usuario, senha })
-          if (!loginResult.success) {
-            send({ type: 'error', message: `Re-login falhou: ${loginResult.error}` })
+          const relogin = await getSawClient().login(user.id, { login_url: loginUrl, usuario, senha })
+          if (!relogin.success) {
+            send({ type: 'error', message: `Re-login falhou: ${relogin.error}` })
             controller.close()
             return
           }
-          cookies = loginResult.cookies
+          cookies = relogin.cookies
           await db.from('saw_sessions').insert({
             user_id: user.id, cookies, valida: true,
             expires_at: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
           })
-          result = await getSawClient().openTokenPage(user.id, cookies, guia.guide_number)
+          send({ type: 'success', message: 'Re-login realizado.' })
+          result = await getSawClient().openTokenPage(user.id, cookies, guia.guide_number, dataNascimento)
         }
 
         if (!result.success) {
@@ -155,7 +220,7 @@ export async function POST(request: NextRequest) {
           return
         }
 
-        // Token ja resolvido? Reimportar direto
+        // 6. Token ja resolvido (BioFace ou outra via) — atualizar guia e finalizar
         if (result.tokenAlreadyResolved) {
           send({ type: 'success', message: 'Token ja validado! Reimportando guia...' })
 
@@ -179,68 +244,94 @@ export async function POST(request: NextRequest) {
 
         send({ type: 'success', message: 'Pagina de token aberta no SAW.' })
 
-        // Buscar telefone do paciente no CPro
-        send({ type: 'processing', message: 'Buscando telefone do paciente...' })
+        // 7. Ramificar pelo metodo escolhido
+        if (body.method === 'sms') {
+          // SMS: clicar radio SMS, aguardar, extrair telefones — envio ocorre depois via selecionar-metodo
+          send({ type: 'processing', message: 'Selecionando SMS no SAW...' })
+          await getSawClient().selectTokenMethod(result.sessionId!, 'sms')
+          await new Promise((r) => setTimeout(r, 2000))
 
-        let patientPhone = ''
-        try {
-          const { data: cproInteg } = await db.from('integracoes').select('config, ativo').eq('slug', 'cpro').single()
-          if (cproInteg?.ativo) {
-            const cproCfg = cproInteg.config as Record<string, string>
-            const cproUrl = `${cproCfg.api_url}/service/api/v1/executions/by-guide-number/${guia.guide_number}?company=${cproCfg.company ?? '1'}`
+          send({ type: 'processing', message: 'Extraindo telefones do SAW...' })
+          const phones = await getSawClient().getTokenPagePhones(result.sessionId!)
+          routeLog(`sms phones extraidos: ${JSON.stringify(phones)}`)
 
-            const https = await import('https')
-            const cproRes = await new Promise<string>((resolve) => {
-              const parsed = new URL(cproUrl)
-              const req = https.request({
-                hostname: parsed.hostname,
-                port: parsed.port || 443,
-                path: parsed.pathname + parsed.search,
-                method: 'GET',
-                headers: { 'X-API-Key': cproCfg.api_key, Host: 'consultoriopro.com.br', Accept: 'application/json' },
-                rejectUnauthorized: false,
-                timeout: 10000,
-              }, (res) => {
-                let body = ''
-                res.on('data', (c: Buffer) => { body += c.toString() })
-                res.on('end', () => resolve(body))
-              })
-              req.on('error', () => resolve(''))
-              req.on('timeout', () => { req.destroy(); resolve('') })
-              req.end()
-            })
+          send({
+            type: 'result',
+            method: 'sms',
+            sessionId: result.sessionId,
+            phones,
+            patientPhone,
+            needsPhoneSelection: true,
+          })
+        } else {
+          // APP: selecionar Aplicativo, enviar WhatsApp, criar token_request
+          send({ type: 'processing', message: 'Selecionando Aplicativo no SAW...' })
+          const methodResult = await getSawClient().selectTokenMethod(result.sessionId!, 'aplicativo')
+          if (!methodResult.success) {
+            send({ type: 'error', message: methodResult.error ?? 'Erro ao selecionar Aplicativo' })
+            controller.close()
+            return
+          }
 
-            if (cproRes) {
-              const cproJson = JSON.parse(cproRes)
-              const mobile = cproJson?.data?.patient?.mobile as string ?? ''
-              if (mobile) {
-                patientPhone = mobile.replace(/\D/g, '')
-                if (!patientPhone.startsWith('55')) patientPhone = `55${patientPhone}`
+          let whatsappSent = false
+          let requestId = ''
+
+          if (patientPhone) {
+            send({ type: 'processing', message: `Enviando WhatsApp para ${patientPhone.replace(/^55(\d{2})(\d+)/, '($1) $2')}...` })
+
+            const evolutionUrl = process.env.EVOLUTION_API_URL ?? ''
+            const evolutionKey = process.env.EVOLUTION_API_KEY ?? ''
+            const instanceName = process.env.EVOLUTION_INSTANCE ?? 'Espaço Dedicare'
+
+            if (evolutionKey) {
+              const msg = [
+                `Ola! Precisamos do *token de atendimento* para a guia do paciente *${guia.paciente ?? ''}*.`,
+                '', 'Por favor:', '1. Abra o *aplicativo da Unimed*', '2. Acesse a *carteira digital*',
+                '3. Copie o *token de 6 digitos*', '4. *Responda esta mensagem* com o token',
+                '', 'O token expira em *4 minutos e 30 segundos*.', '', '_Clinica Dedicare - Faturamento_',
+              ].join('\n')
+
+              try {
+                const wRes = await fetch(`${evolutionUrl}/message/sendText/${encodeURIComponent(instanceName)}`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json', apikey: evolutionKey },
+                  body: JSON.stringify({ number: `${patientPhone}@s.whatsapp.net`, text: msg }),
+                })
+                whatsappSent = wRes.ok
+                routeLog(`whatsapp enviado: ok=${whatsappSent}`)
+              } catch { /* */ }
+
+              if (whatsappSent) {
+                try {
+                  const { data: tokenReq } = await db.from('token_requests').insert({
+                    guia_id: guia.id,
+                    guide_number: guia.guide_number,
+                    paciente_nome: guia.paciente ?? '',
+                    phone_whatsapp: patientPhone,
+                    method: 'aplicativo',
+                    session_id: result.sessionId!,
+                    status: 'waiting',
+                    expires_at: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+                    created_by: user.id,
+                  }).select('id').single()
+                  requestId = tokenReq?.id ?? ''
+                  routeLog(`token_request criado: id=${requestId}`)
+                } catch { /* */ }
               }
             }
           }
-        } catch {
-          // CPro falhou — continua sem telefone
-        }
 
-        // Retornar resultado com telefone (operador escolhe metodo na UI)
-        const phoneDisplay = patientPhone ? patientPhone.replace(/^55(\d{2})(\d+)/, '($1) $2') : ''
-        if (patientPhone) {
-          send({ type: 'success', message: `Telefone encontrado: ${phoneDisplay}` })
+          send({
+            type: 'result',
+            method: 'aplicativo',
+            sessionId: result.sessionId,
+            whatsappSent,
+            requestId,
+            patientPhone,
+          })
         }
-
-        send({
-          type: 'result',
-          success: true,
-          sessionId: result.sessionId,
-          guideNumber: guia.guide_number,
-          paciente: guia.paciente,
-          methods: result.methods,
-          phones: result.phones,
-          patientPhone,
-          phoneDisplay,
-        })
       } catch (err) {
+        routeLog(`erro: ${err instanceof Error ? err.message : String(err)}`)
         send({ type: 'error', message: err instanceof Error ? err.message : 'Erro interno' })
       } finally {
         clearTimeout(timeout)

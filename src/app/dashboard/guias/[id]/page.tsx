@@ -49,7 +49,7 @@ export default function GuiaDetailPage({ params }: Props) {
   const [selectedMethod, setSelectedMethod] = useState<'aplicativo' | 'sms' | null>(null)
   const [selectedPhone, setSelectedPhone] = useState<string>('')
   const [whatsappPhone, setWhatsappPhone] = useState('')
-  const [tokenStep, setTokenStep] = useState<'choose' | 'method' | 'sms-select' | 'waiting' | 'waiting-manual' | 'done'>('choose')
+  const [tokenStep, setTokenStep] = useState<'choose' | 'processing' | 'sms-select' | 'waiting' | 'waiting-manual' | 'done'>('choose')
   const [tokenLoading, setTokenLoading] = useState(false)
   const [tokenStatus, setTokenStatus] = useState<string>('')
   const [manualToken, setManualToken] = useState('')
@@ -145,15 +145,17 @@ export default function GuiaDetailPage({ params }: Props) {
   }
 
   // WhatsApp token flow
-  async function handleIniciarToken() {
+  async function handleIniciarToken(method: 'aplicativo' | 'sms') {
     if (!guia) return
+    setSelectedMethod(method)
     setTokenLoading(true)
     setTokenStatus('Conectando ao SAW...')
+    setTokenStep('processing')
     try {
       const res = await fetch('/api/biometria/iniciar-token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ guia_id: guia.id }),
+        body: JSON.stringify({ guia_id: guia.id, method }),
       })
 
       const reader = res.body?.getReader()
@@ -178,7 +180,7 @@ export default function GuiaDetailPage({ params }: Props) {
             if (evt.type === 'error') {
               throw new Error(evt.message as string)
             }
-            if (evt.type === 'result' && evt.success) {
+            if (evt.type === 'result') {
               // Token ja resolvido — so reimportou
               if (evt.tokenAlreadyResolved) {
                 setTokenStep('done')
@@ -193,12 +195,34 @@ export default function GuiaDetailPage({ params }: Props) {
               setTokenPhones((evt.phones as { value: string; text: string }[]) ?? [])
 
               const phone = (evt.patientPhone as string) ?? (evt.phoneDisplay as string) ?? ''
-
-              // Sempre mostrar tela de metodo para o operador escolher App/SMS
               if (phone) setWhatsappPhone(phone)
               if (!evt.methods) setTokenMethods({ aplicativo: true, sms: true })
-              setTokenStep('method')
-              setTokenStatus('Escolha o metodo de autenticacao')
+
+              if (method === 'sms') {
+                // SMS: ir para selecao de telefone
+                if ((evt.phones as { value: string; text: string }[] | undefined)?.length) {
+                  setTokenStep('sms-select')
+                  setTokenStatus('Selecione o telefone para envio do SMS')
+                } else {
+                  toast.error('Nenhum telefone encontrado no SAW para SMS. Tente novamente.')
+                  setTokenStep('choose')
+                  setTokenStatus('')
+                }
+              } else {
+                // App: selecionar no SAW + enviar WhatsApp
+                if (evt.whatsappSent && evt.requestId) {
+                  setTokenRequestId(evt.requestId as string)
+                  setTokenStep('waiting')
+                  setTokenStatus('Mensagem enviada. Aguardando token...')
+                  startPolling(evt.requestId as string)
+                  startCountdown()
+                  toast.success('WhatsApp enviado!')
+                } else {
+                  // Sem telefone ou envio falhou — campo manual
+                  setTokenStep('waiting-manual')
+                  setTokenStatus('Informe o telefone e envie o WhatsApp')
+                }
+              }
             }
           } catch (parseErr) {
             if (parseErr instanceof Error && parseErr.message !== 'Stream nao disponivel') {
@@ -211,91 +235,6 @@ export default function GuiaDetailPage({ params }: Props) {
       toast.error(err instanceof Error ? err.message : 'Erro ao abrir token')
       setTokenStatus('')
       setTokenMode('none')
-    } finally {
-      setTokenLoading(false)
-    }
-  }
-
-  async function handleEscolherMetodo(method: 'aplicativo' | 'sms') {
-    if (!guia) return
-    setSelectedMethod(method)
-    setTokenLoading(true)
-    setTokenStatus(`Conectando ao SAW (${method === 'sms' ? 'SMS' : 'App'})...`)
-
-    try {
-      const res = await fetch('/api/biometria/token-metodo', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ guia_id: guia.id, method }),
-      })
-
-      const reader = res.body?.getReader()
-      if (!reader) throw new Error('Stream nao disponivel')
-      const decoder = new TextDecoder()
-      let buffer = ''
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n\n')
-        buffer = lines.pop() ?? ''
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue
-          try {
-            const evt = JSON.parse(line.slice(6)) as Record<string, unknown>
-            if (evt.type === 'processing' || evt.type === 'success') {
-              setTokenStatus(evt.message as string)
-            }
-            if (evt.type === 'error') throw new Error(evt.message as string)
-
-            if (evt.type === 'result') {
-              if (evt.tokenAlreadyResolved) {
-                setTokenStep('done')
-                setTokenStatus('Token ja validado!')
-                toast.success('Token ja validado. Guia atualizada.')
-                await refetch()
-                return
-              }
-
-              setTokenSessionId((evt.sessionId as string) ?? null)
-
-              if (evt.method === 'sms' && evt.needsPhoneSelection) {
-                // SMS: mostrar telefones para selecao
-                const phones = (evt.phones as { value: string; text: string }[]) ?? []
-                setTokenPhones(phones)
-                const evtPhone = (evt.patientPhone as string) ?? ''
-                if (evtPhone) setWhatsappPhone(evtPhone)
-                setTokenStep('sms-select')
-                setTokenStatus('Selecione o telefone para envio do SMS')
-              } else if (evt.method === 'aplicativo') {
-                // App: WhatsApp ja enviado
-                const phone = (evt.patientPhone as string) ?? ''
-                const reqId = (evt.requestId as string) ?? ''
-                if (evt.whatsappSent && reqId) {
-                  setWhatsappPhone(phone.replace(/^55(\d{2})(\d+)/, '($1) $2'))
-                  setTokenRequestId(reqId)
-                  setTokenStep('waiting')
-                  setTokenStatus(`Mensagem enviada. Aguardando token...`)
-                  startPolling(reqId)
-                  startCountdown()
-                  toast.success('WhatsApp enviado!')
-                } else {
-                  // Sem telefone — mostrar campo manual
-                  if (phone) setWhatsappPhone(phone)
-                  setTokenStep('waiting-manual')
-                  setTokenStatus('Informe o telefone e envie o WhatsApp')
-                }
-              }
-            }
-          } catch (parseErr) {
-            if (parseErr instanceof Error && parseErr.message !== 'Stream nao disponivel') throw parseErr
-          }
-        }
-      }
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Erro')
-      setTokenStatus('')
     } finally {
       setTokenLoading(false)
     }
@@ -783,7 +722,7 @@ export default function GuiaDetailPage({ params }: Props) {
             {tokenMode === 'none' && !showCamera && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <button
-                  onClick={() => { setTokenMode('whatsapp'); setTokenStep('method'); setTokenStatus('Escolha o metodo de autenticacao') }}
+                  onClick={() => { setTokenMode('whatsapp'); setTokenStep('choose') }}
                   disabled={tokenLoading}
                   className="flex items-center gap-3 rounded-lg border p-4 text-left transition-colors hover:border-[var(--color-primary)]"
                   style={{ borderColor: 'var(--color-border)', background: 'var(--color-surface)' }}
@@ -887,12 +826,12 @@ export default function GuiaDetailPage({ params }: Props) {
                 )}
 
                 {/* Step: Escolher metodo (App ou SMS) */}
-                {tokenStep === 'method' && !tokenLoading && (
+                {tokenStep === 'choose' && (
                   <div className="space-y-3">
                     <p className="text-xs font-medium" style={{ color: 'var(--color-text-muted)' }}>Metodo:</p>
                     <div className="flex gap-3">
                       <button
-                        onClick={() => handleEscolherMetodo('aplicativo')}
+                        onClick={() => handleIniciarToken('aplicativo')}
                         disabled={tokenLoading}
                         className="flex-1 rounded-lg border px-4 py-3 text-sm font-medium transition-colors hover:border-[var(--color-primary)]"
                         style={{ borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
@@ -900,7 +839,7 @@ export default function GuiaDetailPage({ params }: Props) {
                         <Smartphone className="w-4 h-4 inline mr-2" /> Aplicativo Unimed
                       </button>
                       <button
-                        onClick={() => handleEscolherMetodo('sms')}
+                        onClick={() => handleIniciarToken('sms')}
                         disabled={tokenLoading}
                         className="flex-1 rounded-lg border px-4 py-3 text-sm font-medium transition-colors hover:border-[var(--color-primary)]"
                         style={{ borderColor: 'var(--color-border)', color: 'var(--color-text)' }}

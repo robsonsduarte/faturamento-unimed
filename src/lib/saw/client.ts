@@ -1,5 +1,13 @@
 import { chromium } from 'playwright'
 import type { Browser, BrowserContext, Page, Cookie } from 'playwright'
+import { appendFileSync } from 'fs'
+
+function sawLog(msg: string) {
+  const ts = new Date().toISOString()
+  const line = `[${ts}] ${msg}\n`
+  console.log(`[SAW] ${msg}`)
+  try { appendFileSync('/tmp/saw-debug.log', line) } catch { /* */ }
+}
 
 export type SawCookie = Cookie
 
@@ -49,7 +57,7 @@ class SawClient {
 
     const wsUrl = process.env.PLAYWRIGHT_WS_URL
     if (wsUrl) {
-      console.log(`[SAW] Connecting to remote browser at ${wsUrl}`)
+      sawLog(`Connecting to remote browser at ${wsUrl}`)
       this.browser = await chromium.connect(wsUrl)
     } else {
       console.log('[SAW] Launching local Chromium (headless)')
@@ -124,7 +132,7 @@ class SawClient {
     clearTimeout(entry.cleanupTimer)
     this.contexts.delete(userId)
     try { await entry.context.close() } catch { /* already closed */ }
-    console.log(`[SAW] Context destroyed for user ${userId.slice(0, 8)}...`)
+    sawLog(`Context destroyed for user ${userId.slice(0, 8)}...`)
   }
 
   // ─── Per-user mutex ─────────────────────────────────────────
@@ -301,7 +309,7 @@ class SawClient {
           currentUrl.includes('TokenDeAtendimento') ||
           pageText.includes('informe um token para continuar o atendimento')
         if (isTokenPage) {
-          console.log(`[SAW] Guia ${numeroGuia}: redirecionada para tela de token biometrico`)
+          sawLog(`Guia ${numeroGuia}: redirecionada para tela de token biometrico`)
           return {
             success: true,
             data: {
@@ -648,7 +656,7 @@ class SawClient {
           console.error(`[SAW] ALERTA: Guia ${numeroGuia} — ${procRealizados} procedimentos reportados mas 0 extraidos`)
         }
 
-        console.log(`[SAW] Guia ${numeroGuia}: ${procRealizados} realizados, ${procDetalhes.length} detalhes extraidos`)
+        sawLog(`Guia ${numeroGuia}: ${procRealizados} realizados, ${procDetalhes.length} detalhes extraidos`)
 
         // Download XML while still on the guide page
         let xmlContent: string | null = null
@@ -663,13 +671,13 @@ class SawClient {
             }, xmlUrl)
 
             if (xmlContent && (xmlContent.includes('ctmSpSadtGuia') || xmlContent.includes('mensagemTISS'))) {
-              console.log(`[SAW] XML da guia ${numeroGuia} baixado: ${xmlContent.length} bytes`)
+              sawLog(`XML da guia ${numeroGuia} baixado: ${xmlContent.length} bytes`)
             } else {
-              console.log(`[SAW] XML da guia ${numeroGuia}: conteudo invalido (${xmlContent?.length ?? 0} bytes)`)
+              sawLog(`XML da guia ${numeroGuia}: conteudo invalido (${xmlContent?.length ?? 0} bytes)`)
               xmlContent = null
             }
           } catch (xmlErr) {
-            console.log(`[SAW] XML da guia ${numeroGuia}: erro ao baixar (${xmlErr instanceof Error ? xmlErr.message : 'erro'})`)
+            sawLog(`XML da guia ${numeroGuia}: erro ao baixar (${xmlErr instanceof Error ? xmlErr.message : 'erro'})`)
             xmlContent = null
           }
         }
@@ -713,7 +721,7 @@ class SawClient {
 
         // Se redirecionou para tela de token numerico, biometria nao esta disponivel
         if (currentUrl.includes('MantemTokenDeAtendimento') || currentUrl.includes('TokenDeAtendimento')) {
-          console.log(`[SAW] resolveToken: guia requer token numerico, nao biometria facial`)
+          sawLog(`resolveToken: guia requer token numerico, nao biometria facial`)
           return { success: false, fallbackToToken: true, error: 'Guia requer token numerico (App/SMS), nao biometria facial.' }
         }
 
@@ -877,7 +885,7 @@ class SawClient {
           return { iconeVisivel, btnVisivel, texto: document.body?.innerText?.substring(0, 300) ?? '' }
         })
 
-        console.log(`[SAW] resolveToken: validacao — icone=${validacao.iconeVisivel}, btnCheckin=${validacao.btnVisivel}`)
+        sawLog(`resolveToken: validacao — icone=${validacao.iconeVisivel}, btnCheckin=${validacao.btnVisivel}`)
 
         if (validacao.iconeVisivel && !validacao.btnVisivel) {
           onProgress?.("9/9", ` SUCESSO — biometria confirmada no SAW!`)
@@ -886,7 +894,7 @@ class SawClient {
 
         // Verificar se caiu na tela de token (fallback do SAW apos falha biometrica)
         if (page.url().includes('MantemTokenDeAtendimento') || validacao.texto.includes('Selecione uma forma de envio')) {
-          console.log(`[SAW] resolveToken: biometria falhou, SAW ofereceu token numerico como fallback`)
+          sawLog(`resolveToken: biometria falhou, SAW ofereceu token numerico como fallback`)
           return { success: false, fallbackToToken: true, error: 'Biometria nao aceita pelo TRIX. Use token numerico.' }
         }
 
@@ -896,7 +904,7 @@ class SawClient {
         }
 
         // Inconclusivo — assumir sucesso
-        console.log(`[SAW] resolveToken: resultado inconclusivo, assumindo sucesso`)
+        sawLog(`resolveToken: resultado inconclusivo, assumindo sucesso`)
         return { success: true }
       } catch (err) {
         return {
@@ -945,7 +953,7 @@ class SawClient {
 
         // Auto-accept dialogs
         page.on('dialog', async (dialog) => {
-          console.log(`[SAW] cobrar: dialog: ${dialog.message().substring(0, 80)}`)
+          sawLog(`cobrar: dialog: ${dialog.message().substring(0, 80)}`)
           await dialog.accept()
         })
 
@@ -1157,19 +1165,17 @@ class SawClient {
     success: boolean
     sessionId?: string
     methods?: { aplicativo: boolean; email: boolean; sms: boolean }
-    phones?: { value: string; text: string }[]
-    beneficiarioPhone?: string
     tokenAlreadyResolved?: boolean
     error?: string
   }> {
     const context = await this.getContext(userId, cookies)
-    const page = await context.newPage()
+    let page = await context.newPage()
     page.setDefaultTimeout(30_000)
 
     try {
       const guiaUrl = `${SAW_BASE}/saw/tiss/SolicitacaoDeSPSADT40.do?method=consultarGuiaDeSPSADT&manterTISSSPSADT40DTO.tissSolicitacaoDeSPSADTDTO.numeroDaGuia=${encodeURIComponent(numeroGuia)}&manterTISSSPSADT40DTO.tissSolicitacaoDeSPSADTDTO.isConsultaNaGuia=true`
 
-      console.log(`[SAW] openTokenPage: navegando para guia ${numeroGuia}`)
+      sawLog(`openTokenPage: navegando para guia ${numeroGuia}`)
       await page.goto(guiaUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 })
       // Wait for page to settle (SAW may do JS redirects)
       await page.waitForTimeout(3000)
@@ -1190,7 +1196,7 @@ class SawClient {
       const currentUrl = page.url()
       const pageText = await page.evaluate(() => document.body?.innerText ?? '')
 
-      console.log(`[SAW] openTokenPage: URL=${currentUrl.substring(0, 80)}, texto=${pageText.substring(0, 100)}`)
+      sawLog(`openTokenPage: URL=${currentUrl.substring(0, 80)}, texto=${pageText.substring(0, 100)}`)
 
       const isTokenMethodPage = currentUrl.includes('MantemTokenDeAtendimento') ||
         currentUrl.includes('TokenDeAtendimento') ||
@@ -1209,7 +1215,7 @@ class SawClient {
           return { hasTokenValidado, hasCheckIn, hasCheckInMsg }
         }).catch(() => ({ hasTokenValidado: false, hasCheckIn: false, hasCheckInMsg: false }))
 
-        console.log(`[SAW] openTokenPage: guia aberta — tokenValidado=${icons.hasTokenValidado}, checkIn=${icons.hasCheckIn}`)
+        sawLog(`openTokenPage: guia aberta — tokenValidado=${icons.hasTokenValidado}, checkIn=${icons.hasCheckIn}`)
 
         if (icons.hasTokenValidado && !icons.hasCheckIn && !icons.hasCheckInMsg) {
           await page.close().catch(() => {})
@@ -1217,210 +1223,133 @@ class SawClient {
             success: true,
             sessionId: undefined,
             methods: undefined,
-            phones: undefined,
-            beneficiarioPhone: undefined,
             tokenAlreadyResolved: true,
           }
         }
 
         if (icons.hasCheckIn || icons.hasCheckInMsg) {
-          console.log(`[SAW] openTokenPage: clicando Check-in...`)
+          // ─── Check-in via gravarDadosGuiaBiometriaFacial() ───
+          sawLog(`openTokenPage: chamando gravarDadosGuiaBiometriaFacial()...`)
           await page.evaluate(() => {
-            const links = Array.from(document.querySelectorAll('a, div[class*="link"], div[class*="caixa"]'))
-            const el = links.find((l) => /Check-?in/i.test((l as HTMLElement).textContent ?? ''))
-            if (el) (el as HTMLElement).click()
-          }).catch(() => {})
-          await page.waitForTimeout(3000)
+            if (typeof (window as unknown as Record<string, unknown>).gravarDadosGuiaBiometriaFacial === 'function') {
+              ((window as unknown as Record<string, unknown>).gravarDadosGuiaBiometriaFacial as () => void)()
+            }
+          })
+
+          // Esperar iframe BioFace receber src OU redirect para token page
+          sawLog(`openTokenPage: aguardando BioFace iframe ou redirect...`)
+          let bioFaceUrl = ''
+          for (let attempt = 0; attempt < 15; attempt++) {
+            await page.waitForTimeout(2000)
+            // Verificar se iframe BioFace recebeu src
+            bioFaceUrl = await page.evaluate(() => {
+              const iframe = document.getElementById('iframeBioFacial') as HTMLIFrameElement
+              return iframe?.src ?? ''
+            })
+            if (bioFaceUrl && bioFaceUrl.includes('bioface')) {
+              sawLog(`openTokenPage: BioFace URL obtida (attempt ${attempt + 1}): ${bioFaceUrl.substring(0, 100)}`)
+              break
+            }
+            // Verificar se foi direto para token page (guia sem BioFace)
+            if (page.url().includes('MantemTokenDeAtendimento')) {
+              sawLog(`openTokenPage: check-in redirecionou direto para token page`)
+              break
+            }
+          }
+
+          if (bioFaceUrl && bioFaceUrl.includes('bioface')) {
+            // ═══ FLUXO A: BioFace — abrir em pagina separada, pular, confirmar ═══
+            sawLog(`openTokenPage: ROTA BioFace`)
+            let age = 99
+            if (dataNascimento && dataNascimento !== '0000-00-00') {
+              const born = new Date(dataNascimento)
+              const today = new Date()
+              age = today.getFullYear() - born.getFullYear()
+              if (today.getMonth() < born.getMonth() || (today.getMonth() === born.getMonth() && today.getDate() < born.getDate())) age--
+            }
+            sawLog(`openTokenPage: idade=${age}, justificativa=${age <= 14 ? 'TEA' : 'Recusou'}`)
+
+            const bioPage = await context.newPage()
+            bioPage.setDefaultTimeout(30_000)
+            await bioPage.goto(bioFaceUrl, { waitUntil: 'domcontentloaded', timeout: 30_000 })
+            await bioPage.waitForTimeout(3000)
+
+            // Pular captura
+            sawLog(`openTokenPage: [A1] pular(false)...`)
+            await bioPage.evaluate(() => {
+              if (typeof (window as unknown as Record<string, unknown>).pular === 'function') {
+                ((window as unknown as Record<string, unknown>).pular as (v: boolean) => void)(false)
+              } else {
+                const btn = document.getElementById('id-botao-atendimento-sem-captura') as HTMLElement
+                if (btn) btn.click()
+              }
+            })
+            await bioPage.waitForTimeout(2000)
+
+            // Selecionar justificativa
+            const selectValue = age <= 14 ? '2' : '5'
+            sawLog(`openTokenPage: [A2] justificativa=${selectValue === '2' ? 'TEA' : 'Recusou'}...`)
+            await bioPage.evaluate((val) => {
+              const sel = document.getElementById('idSelectMotivo') as HTMLSelectElement
+              if (sel) {
+                sel.value = val
+                sel.dispatchEvent(new Event('change', { bubbles: true }))
+                if (typeof (window as unknown as Record<string, unknown>).carregarDivSubMotivo === 'function') {
+                  ((window as unknown as Record<string, unknown>).carregarDivSubMotivo as () => void)()
+                }
+              }
+              const btn = document.getElementById('id-botao-confirmar-pular') as HTMLButtonElement
+              if (btn) btn.disabled = false
+            }, selectValue)
+            await bioPage.waitForTimeout(1000)
+
+            // Confirmar
+            sawLog(`openTokenPage: [A3] confirmPular()...`)
+            await bioPage.evaluate(() => {
+              if (typeof (window as unknown as Record<string, unknown>).confirmPular === 'function') {
+                ((window as unknown as Record<string, unknown>).confirmPular as () => void)()
+              } else {
+                const btn = document.getElementById('id-botao-confirmar-pular') as HTMLElement
+                if (btn) btn.click()
+              }
+            })
+            await bioPage.waitForTimeout(3000)
+            await bioPage.close().catch(() => {})
+
+            // Fechar pagina da guia e reabrir (SAW nao redireciona automaticamente)
+            sawLog(`openTokenPage: [A4] Reabrindo guia apos BioFace...`)
+            await page.close().catch(() => {})
+            // eslint-disable-next-line no-param-reassign
+            page = await context.newPage()
+            page.setDefaultTimeout(30_000)
+            await page.goto(guiaUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 })
+            await page.waitForTimeout(3000)
+            sawLog(`openTokenPage: URL apos reabrir: ${page.url().substring(0, 80)}`)
+          } else if (!page.url().includes('MantemTokenDeAtendimento')) {
+            sawLog(`openTokenPage: check-in nao gerou BioFace nem token page`)
+            await page.close().catch(() => {})
+            return { success: false, error: 'Check-in realizado mas SAW nao redirecionou. Tente novamente.' }
+          }
         } else {
           await page.close().catch(() => {})
           return { success: false, error: 'Guia abriu sem Check-in ou Token. Reimporte a guia.' }
         }
       } else if (!isTokenMethodPage) {
-        // Verificar se e pagina BioFace (pode aparecer direto)
-        const isBioFace = pageText.includes('PULAR CAPTURA') || pageText.includes('Capturar Foto') ||
-          pageText.includes('BIOFACE') || currentUrl.includes('bioface')
-
-        if (!isBioFace) {
-          await page.close().catch(() => {})
-          return { success: false, error: `Pagina inesperada: ${currentUrl.substring(0, 100)}` }
-        }
+        await page.close().catch(() => {})
+        return { success: false, error: `Pagina inesperada: ${currentUrl.substring(0, 100)}` }
       }
-
-      // ─── ROUTER: BioFace ou Token direto? ───────────────────
-      // Verificar se existe iframe BioFace com src (guia exige biometria facial)
-      const bioFrameEl = await page.$('iframe#iframeBioFacial')
-      const bioFaceSrc = bioFrameEl ? (await bioFrameEl.getAttribute('src') ?? '') : ''
-      const hasBioFace = bioFaceSrc.includes('bioface')
-
-      if (hasBioFace) {
-        // ═══ CAMINHO A: BioFace → pular → recarregar → Token ═══
-        console.log(`[SAW] openTokenPage: ROTA BioFace — abrindo URL BioFace em pagina separada...`)
-
-        // Calcular idade para justificativa
-        let age = 99
-        if (dataNascimento) {
-          const born = new Date(dataNascimento)
-          const today = new Date()
-          age = today.getFullYear() - born.getFullYear()
-          if (today.getMonth() < born.getMonth() || (today.getMonth() === born.getMonth() && today.getDate() < born.getDate())) age--
-        }
-        console.log(`[SAW] openTokenPage: idade=${age}, justificativa=${age < 14 ? 'TEA' : 'Recusou'}`)
-
-        // Abrir URL BioFace em pagina separada (como no teste que funcionou)
-        const bioPage = await context.newPage()
-        bioPage.setDefaultTimeout(30_000)
-        await bioPage.goto(bioFaceSrc, { waitUntil: 'domcontentloaded', timeout: 30_000 })
-        await bioPage.waitForTimeout(3000)
-
-        // 1. Pular captura
-        console.log(`[SAW] openTokenPage: [A1] pular(false)...`)
-        await bioPage.evaluate(() => {
-          if (typeof (window as unknown as Record<string, unknown>).pular === 'function') {
-            ((window as unknown as Record<string, unknown>).pular as (v: boolean) => void)(false)
-          } else {
-            const btn = document.getElementById('id-botao-atendimento-sem-captura') as HTMLElement
-            if (btn) btn.click()
-          }
-        })
-        await bioPage.waitForTimeout(2000)
-
-        // 2. Selecionar justificativa
-        const selectValue = age < 14 ? '2' : '5'
-        console.log(`[SAW] openTokenPage: [A2] justificativa=${selectValue === '2' ? 'TEA' : 'Recusou'}...`)
-        await bioPage.evaluate((val) => {
-          const sel = document.getElementById('idSelectMotivo') as HTMLSelectElement
-          if (sel) {
-            sel.value = val
-            sel.dispatchEvent(new Event('change', { bubbles: true }))
-            if (typeof (window as unknown as Record<string, unknown>).carregarDivSubMotivo === 'function') {
-              ((window as unknown as Record<string, unknown>).carregarDivSubMotivo as () => void)()
-            }
-          }
-          const btn = document.getElementById('id-botao-confirmar-pular') as HTMLButtonElement
-          if (btn) btn.disabled = false
-        }, selectValue)
-        await bioPage.waitForTimeout(1000)
-
-        // 3. Confirmar
-        console.log(`[SAW] openTokenPage: [A3] confirmPular()...`)
-        await bioPage.evaluate(() => {
-          if (typeof (window as unknown as Record<string, unknown>).confirmPular === 'function') {
-            ((window as unknown as Record<string, unknown>).confirmPular as () => void)()
-          } else {
-            const btn = document.getElementById('id-botao-confirmar-pular') as HTMLElement
-            if (btn) btn.click()
-          }
-        })
-        await bioPage.waitForTimeout(3000)
-        await bioPage.close().catch(() => {})
-
-        // 4. Recarregar guia — agora deve abrir na tela de token
-        console.log(`[SAW] openTokenPage: [A4] Recarregando guia...`)
-        await page.goto(guiaUrl, { waitUntil: 'domcontentloaded', timeout: 30_000 })
-        await page.waitForTimeout(3000)
-        await page.screenshot({ path: '/tmp/debug-opentoken-after-bioface.png' }).catch(() => {})
-
-        const afterUrl = page.url()
-        if (afterUrl.includes('MantemTokenDeAtendimento')) {
-          console.log(`[SAW] openTokenPage: BioFace pulado! Agora na tela de token.`)
-        } else {
-          console.log(`[SAW] openTokenPage: apos BioFace, URL: ${afterUrl.substring(0, 80)}`)
-        }
-      }
-      // ═══ CAMINHO B: Token direto (ou apos BioFace skip) ═══
+      // ═══ CAMINHO B: Token direto (ou apos Check-in + BioFace) ═══
 
       // Atualizar texto (pode ter mudado)
       const finalPageText = await page.evaluate(() => document.body?.innerText ?? '')
 
-      // Extract available methods and phones
+      // Extract available methods
       const textForMethods = finalPageText || pageText
       const hasAplicativo = /aplicativo/i.test(textForMethods)
       const hasEmail = /\bemail\b/i.test(textForMethods)
       const hasSms = /\bsms\b/i.test(textForMethods)
 
-      // Clicar no radio SMS para revelar select de telefones, extrair, depois voltar
-      let phones: { value: string; text: string }[] = []
-      try {
-        if (hasSms) {
-          // Clicar radio SMS via locator.nth(2) (3o radio = SMS)
-          console.log(`[SAW] openTokenPage: clicando radio SMS via locator...`)
-          let smsClicked = false
-          try {
-            const radioCount = await page.locator('input[type="radio"]').count()
-            if (radioCount >= 3) {
-              await page.locator('input[type="radio"]').nth(2).click()
-              smsClicked = true
-            }
-          } catch {
-            console.log(`[SAW] openTokenPage: falhou click no radio SMS`)
-          }
-          console.log(`[SAW] openTokenPage: radio SMS clicado: ${smsClicked}`)
-          await page.waitForTimeout(2000)
-          await page.screenshot({ path: '/tmp/debug-opentoken-sms-clicked.png' }).catch(() => {})
-          console.log(`[SAW] openTokenPage: aguardando select de telefones...`)
-        }
-
-        // Aguardar DOM renderizar apos clicar SMS (3s — testado e funciona)
-        await page.waitForTimeout(3000)
-
-        // Extrair telefones (retorna JSON string para evitar bug de serialização do Playwright)
-        const phonesJson = await page.evaluate(() => {
-          const sel = document.getElementById('tokenDeAtendimento.telefoneDeEnvio.numero') as HTMLSelectElement | null
-          if (!sel) return '[]'
-          const result: { value: string; text: string }[] = []
-          for (const opt of sel.options) {
-            const v = opt.value?.trim()
-            const t = opt.text?.trim()
-            if (v && v !== '' && !/escolha/i.test(t ?? '')) {
-              result.push({ value: v, text: t ?? v })
-            }
-          }
-          return JSON.stringify(result)
-        }) as string
-        try { phones = JSON.parse(phonesJson || '[]') } catch { phones = [] }
-
-        console.log(`[SAW] openTokenPage: telefones extraidos: ${phones.length}`, phones.map((p) => `${p.text}(${p.value})`).join(', '))
-
-        // Voltar para estado neutro (clicar radio Aplicativo se existir)
-        if (hasSms && hasAplicativo) {
-          await page.evaluate(() => {
-            const radios = document.querySelectorAll('input[type="radio"]')
-            for (const radio of radios) {
-              const parent = radio.closest('td, div, label')
-              if (parent && /aplicativo/i.test(parent.textContent ?? '')) {
-                (radio as HTMLInputElement).click()
-                break
-              }
-            }
-          }).catch(() => {})
-        }
-      } catch {
-        phones = []
-      }
-
-      // Extrair telefone do beneficiario da pagina
-      let beneficiarioPhone = ''
-      try {
-        beneficiarioPhone = await page.evaluate(() => {
-          // Procurar em inputs hidden
-          const telInput = document.querySelector('input[name*="telefone"], input[name*="celular"], input[id*="telefone"]') as HTMLInputElement
-          if (telInput?.value) {
-            const digits = telInput.value.replace(/\D/g, '')
-            if (digits.length >= 8) return digits
-          }
-          // Procurar no texto da pagina
-          const text = document.body?.innerText ?? ''
-          const phoneMatch = text.match(/(?:celular|telefone|fone)[:\s]*[\(\d\s\-\*]+/i)
-          if (phoneMatch) {
-            // Extrair ultimos 4 digitos visiveis (SAW mascara com *****)
-            const partial = phoneMatch[0].replace(/\D/g, '')
-            if (partial.length >= 4) return partial
-          }
-          return ''
-        }) ?? ''
-      } catch { /* */ }
-
-      const info = { hasAplicativo, hasEmail, hasSms, phones, beneficiarioPhone }
+      const info = { hasAplicativo, hasEmail, hasSms }
 
       // Store page reference with a session ID
       const sessionId = `token-${userId}-${numeroGuia}-${Date.now()}`
@@ -1432,11 +1361,11 @@ class SawClient {
         if (entry) {
           entry.page.close().catch(() => {})
           this.tokenPages.delete(sessionId)
-          console.log(`[SAW] openTokenPage: session ${sessionId} expired and cleaned up`)
+          sawLog(`openTokenPage: session ${sessionId} expired and cleaned up`)
         }
       }, 10 * 60 * 1000)
 
-      console.log(`[SAW] openTokenPage: token page open for guia ${numeroGuia} (session=${sessionId}, methods: app=${info.hasAplicativo} email=${info.hasEmail} sms=${info.hasSms}, phones=${info.phones.length})`)
+      sawLog(`openTokenPage: token page open for guia ${numeroGuia} (session=${sessionId}, methods: app=${info.hasAplicativo} email=${info.hasEmail} sms=${info.hasSms})`)
 
       return {
         success: true,
@@ -1446,8 +1375,6 @@ class SawClient {
           email: info.hasEmail,
           sms: info.hasSms,
         },
-        phones: info.phones,
-        beneficiarioPhone: info.beneficiarioPhone,
       }
     } catch (err) {
       await page.close().catch(() => {})
@@ -1483,7 +1410,7 @@ class SawClient {
           }
         })
         await page.waitForTimeout(1000)
-        console.log(`[SAW] selectTokenMethod: selected Aplicativo`)
+        sawLog(`selectTokenMethod: selected Aplicativo`)
       } else if (method === 'sms') {
         // 1. Clicar radio SMS
         await page.evaluate(() => {
@@ -1500,10 +1427,10 @@ class SawClient {
 
         // 2. Selecionar telefone no select do SAW (usando value = numero real)
         if (phone) {
-          console.log(`[SAW] selectTokenMethod: selecionando telefone ${phone} no SAW`)
+          sawLog(`selectTokenMethod: selecionando telefone ${phone} no SAW`)
           await page.evaluate((phoneValue: string) => {
-            // Select especifico do SAW
-            const sel = document.querySelector('#tokenDeAtendimento\\.telefoneDeEnvio\\.numero') as HTMLSelectElement
+            // getElementById funciona com dots no ID (querySelector falha)
+            const sel = document.getElementById('tokenDeAtendimento.telefoneDeEnvio.numero') as HTMLSelectElement
               ?? document.querySelector('select[name*="telefoneDeEnvio"]') as HTMLSelectElement
             if (sel) {
               // Tentar por value exato
@@ -1520,9 +1447,9 @@ class SawClient {
         }
 
         // 3. Clicar botao "Enviar" do SAW (#botaoSMS ou enviarTokenDeAtendimento())
-        console.log(`[SAW] selectTokenMethod: clicando Enviar SMS no SAW`)
+        sawLog(`selectTokenMethod: clicando Enviar SMS no SAW`)
         await page.evaluate(() => {
-          const btn = document.querySelector('#botaoSMS') as HTMLElement
+          const btn = document.getElementById('botaoSMS') as HTMLElement
           if (btn) { btn.click(); return }
           // Fallback: chamar funcao JS
           if (typeof (window as unknown as Record<string, unknown>).enviarTokenDeAtendimento === 'function') {
@@ -1539,9 +1466,9 @@ class SawClient {
         // 4. Verificar se SMS foi enviado
         const pageText = await page.evaluate(() => document.body?.innerText ?? '')
         if (pageText.includes('Token de Atendimento enviado com sucesso')) {
-          console.log(`[SAW] selectTokenMethod: SMS enviado com sucesso pelo SAW`)
+          sawLog(`selectTokenMethod: SMS enviado com sucesso pelo SAW`)
         } else {
-          console.log(`[SAW] selectTokenMethod: resposta SAW: ${pageText.substring(0, 200)}`)
+          sawLog(`selectTokenMethod: resposta SAW: ${pageText.substring(0, 200)}`)
         }
       }
 
@@ -1580,7 +1507,7 @@ class SawClient {
     }
 
     try {
-      console.log(`[SAW] submitToken: preenchendo token ${digits} na guia ${numeroGuia}`)
+      sawLog(`submitToken: preenchendo token ${digits} na guia ${numeroGuia}`)
 
       // Debug: log what inputs exist on the page
       const debugInfo = await page.evaluate(() => {
@@ -1597,8 +1524,8 @@ class SawClient {
         return { total: allInputs.length, inputs: info.slice(0, 20), bodyText: (document.body?.innerText ?? '').substring(0, 300) }
       }).catch(() => ({ total: 0, inputs: [], bodyText: 'evaluate failed' }))
 
-      console.log(`[SAW] submitToken: DEBUG — ${debugInfo.total} inputs na pagina. Body: ${debugInfo.bodyText.substring(0, 150)}`)
-      console.log(`[SAW] submitToken: DEBUG inputs:`, JSON.stringify(debugInfo.inputs.slice(0, 10)))
+      sawLog(`submitToken: DEBUG — ${debugInfo.total} inputs na pagina. Body: ${debugInfo.bodyText.substring(0, 150)}`)
+      sawLog(`submitToken: DEBUG inputs: ${JSON.stringify(debugInfo.inputs.slice(0, 10))}`)
 
       // Fill the 6 input fields — try multiple strategies
       const filled = await page.evaluate((d: string) => {
@@ -1651,7 +1578,7 @@ class SawClient {
         return { success: false, error: 'Campos de token nao encontrados na pagina do SAW. Tente reiniciar o processo.' }
       }
 
-      console.log(`[SAW] submitToken: preencheu ${filled.count} campos, clicando Validar`)
+      sawLog(`submitToken: preencheu ${filled.count} campos, clicando Validar`)
       await page.waitForTimeout(500)
 
       // Click "Validar"
@@ -1678,7 +1605,7 @@ class SawClient {
         // Sucesso — cleanup
         this.tokenPages.delete(sessionId)
         await page.close().catch(() => {})
-        console.log(`[SAW] submitToken: token validado com sucesso para guia ${numeroGuia}`)
+        sawLog(`submitToken: token validado com sucesso para guia ${numeroGuia}`)
         return { success: true }
       }
 
@@ -1696,7 +1623,7 @@ class SawClient {
       // Cleanup e considerar sucesso (SAW nem sempre mostra mensagem)
       this.tokenPages.delete(sessionId)
       await page.close().catch(() => {})
-      console.log(`[SAW] submitToken: resultado inconclusivo para guia ${numeroGuia}, assumindo sucesso`)
+      sawLog(`submitToken: resultado inconclusivo para guia ${numeroGuia}, assumindo sucesso`)
       return { success: true }
     } catch (err) {
       // Nao fechar page em caso de erro — pode ser transitorio
@@ -1744,17 +1671,17 @@ class SawClient {
         try { phones = JSON.parse(phonesJson || '[]') } catch { /* */ }
 
         if (phones.length > 0) {
-          console.log(`[SAW] getTokenPagePhones: ${phones.length} telefone(s) — ${phones.map((p) => p.text).join(', ')} (attempt ${attempt + 1})`)
+          sawLog(`getTokenPagePhones: ${phones.length} telefone(s) — ${phones.map((p) => p.text).join(', ')} (attempt ${attempt + 1})`)
           return phones
         }
       } catch (err) {
-        console.log(`[SAW] getTokenPagePhones: evaluate falhou (attempt ${attempt + 1}): ${err instanceof Error ? err.message : err}`)
+        sawLog(`getTokenPagePhones: evaluate falhou (attempt ${attempt + 1}): ${err instanceof Error ? err.message : err}`)
       }
 
       await new Promise((r) => setTimeout(r, 1500))
     }
 
-    console.log(`[SAW] getTokenPagePhones: nenhum telefone encontrado apos 3 tentativas`)
+    sawLog(`getTokenPagePhones: nenhum telefone encontrado apos 3 tentativas`)
     return []
   }
 
@@ -1768,14 +1695,14 @@ class SawClient {
 
   // ─── Force reconnect for a specific user ────────────────────
   async forceReconnect(userId: string): Promise<void> {
-    console.log(`[SAW] Force reconnecting for user ${userId.slice(0, 8)}...`)
+    sawLog(`Force reconnecting for user ${userId.slice(0, 8)}...`)
     await this.destroyContext(userId)
     // If browser is dead, next getContext() will relaunch it
     if (this.browser && !this.browser.isConnected()) {
       this.browser = null
       this.contexts.clear()
     }
-    console.log(`[SAW] Reconnected for user ${userId.slice(0, 8)}`)
+    sawLog(`Reconnected for user ${userId.slice(0, 8)}`)
   }
 
   async close(): Promise<void> {
