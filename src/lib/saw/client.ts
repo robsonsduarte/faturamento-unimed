@@ -1334,7 +1334,21 @@ class SawClient {
           newText.includes('informe um token')
 
         if (!nowOnTokenPage) {
-          console.log(`[SAW] openTokenPage: apos pular BioFace, nao voltou para tela de token. URL: ${page.url().substring(0, 80)}`)
+          // SAW nao redireciona automaticamente — recarregar guia
+          console.log(`[SAW] openTokenPage: BioFace pulado. Recarregando guia...`)
+          await page.goto(guiaUrl, { waitUntil: 'domcontentloaded', timeout: 30_000 })
+          await page.waitForTimeout(3000)
+
+          const reloadUrl = page.url()
+          const reloadText = await page.evaluate(() => document.body?.innerText ?? '')
+          const isNowToken = reloadUrl.includes('MantemTokenDeAtendimento') ||
+            reloadText.includes('Selecione uma forma de envio')
+
+          if (isNowToken) {
+            console.log(`[SAW] openTokenPage: BioFace pulado com sucesso! Agora na tela de token.`)
+          } else {
+            console.log(`[SAW] openTokenPage: apos reload, URL: ${reloadUrl.substring(0, 80)}`)
+          }
         } else {
           console.log(`[SAW] openTokenPage: BioFace pulado, agora na tela de token`)
         }
