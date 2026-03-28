@@ -1246,16 +1246,17 @@ class SawClient {
         }
       }
 
-      // Se BioFace esta visivel (dentro da guia ou como redirect), pular captura
-      const hasBioFace = await page.evaluate(() => {
-        const text = document.body?.innerText ?? ''
-        return text.includes('PULAR CAPTURA') || text.includes('Capturar Foto') || text.includes('BIOFACE')
-      }).catch(() => false)
+      // ─── ROUTER: BioFace ou Token direto? ───────────────────
+      // Verificar se existe iframe BioFace com src (guia exige biometria facial)
+      const bioFrameEl = await page.$('iframe#iframeBioFacial')
+      const bioFaceSrc = bioFrameEl ? (await bioFrameEl.getAttribute('src') ?? '') : ''
+      const hasBioFace = bioFaceSrc.includes('bioface')
 
       if (hasBioFace) {
-        console.log(`[SAW] openTokenPage: BioFace detectado — pulando captura...`)
+        // ═══ CAMINHO A: BioFace → pular → recarregar → Token ═══
+        console.log(`[SAW] openTokenPage: ROTA BioFace — abrindo URL BioFace em pagina separada...`)
 
-        // Calcular idade para escolher justificativa
+        // Calcular idade para justificativa
         let age = 99
         if (dataNascimento) {
           const born = new Date(dataNascimento)
@@ -1263,98 +1264,72 @@ class SawClient {
           age = today.getFullYear() - born.getFullYear()
           if (today.getMonth() < born.getMonth() || (today.getMonth() === born.getMonth() && today.getDate() < born.getDate())) age--
         }
-        const justificativa = age < 14 ? 'TEA' : 'recusou'
-        console.log(`[SAW] openTokenPage: idade=${age}, justificativa=${justificativa}`)
+        console.log(`[SAW] openTokenPage: idade=${age}, justificativa=${age < 14 ? 'TEA' : 'Recusou'}`)
 
-        // Procurar iframe BioFace ou botao na pagina principal
-        const bioFrameHandle = await page.$('iframe#iframeBioFacial, iframe[src*="bioface"]')
-        const targetFrame = bioFrameHandle ? await bioFrameHandle.contentFrame() : null
-        const targetPage = targetFrame ?? page
+        // Abrir URL BioFace em pagina separada (como no teste que funcionou)
+        const bioPage = await context.newPage()
+        bioPage.setDefaultTimeout(30_000)
+        await bioPage.goto(bioFaceSrc, { waitUntil: 'domcontentloaded', timeout: 30_000 })
+        await bioPage.waitForTimeout(3000)
 
-        // 1. Clicar "PULAR CAPTURA" via pular(false) no iframe BioFace
-        try {
-          await targetPage.evaluate(() => {
-            // Chamar funcao JS pular(false) se existir
-            if (typeof (window as unknown as Record<string, unknown>).pular === 'function') {
-              ((window as unknown as Record<string, unknown>).pular as (v: boolean) => void)(false)
-            } else {
-              // Fallback: clicar no botao pelo ID
-              const btn = document.getElementById('id-botao-atendimento-sem-captura') as HTMLElement
-              if (btn) btn.click()
-            }
-          })
-          console.log(`[SAW] openTokenPage: chamou pular(false)`)
-          await page.waitForTimeout(2000)
-          await page.screenshot({ path: '/tmp/debug-opentoken-bioface-pular.png' }).catch(() => {})
-        } catch (e) {
-          console.log(`[SAW] openTokenPage: erro ao pular: ${e instanceof Error ? e.message : e}`)
-        }
-
-        // 2. Selecionar justificativa no #idSelectMotivo
-        try {
-          const selectValue = age < 14 ? '2' : '5' // 2=Atendimento TEA, 5=Paciente se recusou
-          await targetPage.evaluate((val) => {
-            const sel = document.getElementById('idSelectMotivo') as HTMLSelectElement
-            if (sel) {
-              sel.value = val
-              sel.dispatchEvent(new Event('change', { bubbles: true }))
-              // Chamar carregarDivSubMotivo() se existir (onchange do select)
-              if (typeof (window as unknown as Record<string, unknown>).carregarDivSubMotivo === 'function') {
-                ((window as unknown as Record<string, unknown>).carregarDivSubMotivo as () => void)()
-              }
-            }
-            // Habilitar botao confirmar (pode estar disabled)
-            const btn = document.getElementById('id-botao-confirmar-pular') as HTMLButtonElement
-            if (btn) btn.disabled = false
-          }, selectValue)
-          console.log(`[SAW] openTokenPage: justificativa selecionada: ${selectValue === '2' ? 'TEA' : 'Recusou'} (idade=${age})`)
-          await page.waitForTimeout(1000)
-        } catch { /* */ }
-
-        // 3. Clicar CONFIRMAR via confirmPular()
-        try {
-          await targetPage.evaluate(() => {
-            if (typeof (window as unknown as Record<string, unknown>).confirmPular === 'function') {
-              ((window as unknown as Record<string, unknown>).confirmPular as () => void)()
-            } else {
-              const btn = document.getElementById('id-botao-confirmar-pular') as HTMLElement
-              if (btn) btn.click()
-            }
-          })
-          console.log(`[SAW] openTokenPage: chamou confirmPular()`)
-        } catch { /* */ }
-
-        await page.waitForTimeout(5000)
-        await page.screenshot({ path: '/tmp/debug-opentoken-bioface-after-confirm.png' }).catch(() => {})
-
-        // Verificar se voltou para tela de token
-        const newText = await page.evaluate(() => document.body?.innerText ?? '')
-        const nowOnTokenPage = page.url().includes('MantemTokenDeAtendimento') ||
-          newText.includes('Selecione uma forma de envio') ||
-          newText.includes('informe um token')
-
-        if (!nowOnTokenPage) {
-          // SAW nao redireciona automaticamente — recarregar guia
-          console.log(`[SAW] openTokenPage: BioFace pulado. Recarregando guia...`)
-          await page.goto(guiaUrl, { waitUntil: 'domcontentloaded', timeout: 30_000 })
-          await page.waitForTimeout(3000)
-
-          const reloadUrl = page.url()
-          const reloadText = await page.evaluate(() => document.body?.innerText ?? '')
-          const isNowToken = reloadUrl.includes('MantemTokenDeAtendimento') ||
-            reloadText.includes('Selecione uma forma de envio')
-
-          if (isNowToken) {
-            console.log(`[SAW] openTokenPage: BioFace pulado com sucesso! Agora na tela de token.`)
+        // 1. Pular captura
+        console.log(`[SAW] openTokenPage: [A1] pular(false)...`)
+        await bioPage.evaluate(() => {
+          if (typeof (window as unknown as Record<string, unknown>).pular === 'function') {
+            ((window as unknown as Record<string, unknown>).pular as (v: boolean) => void)(false)
           } else {
-            console.log(`[SAW] openTokenPage: apos reload, URL: ${reloadUrl.substring(0, 80)}`)
+            const btn = document.getElementById('id-botao-atendimento-sem-captura') as HTMLElement
+            if (btn) btn.click()
           }
+        })
+        await bioPage.waitForTimeout(2000)
+
+        // 2. Selecionar justificativa
+        const selectValue = age < 14 ? '2' : '5'
+        console.log(`[SAW] openTokenPage: [A2] justificativa=${selectValue === '2' ? 'TEA' : 'Recusou'}...`)
+        await bioPage.evaluate((val) => {
+          const sel = document.getElementById('idSelectMotivo') as HTMLSelectElement
+          if (sel) {
+            sel.value = val
+            sel.dispatchEvent(new Event('change', { bubbles: true }))
+            if (typeof (window as unknown as Record<string, unknown>).carregarDivSubMotivo === 'function') {
+              ((window as unknown as Record<string, unknown>).carregarDivSubMotivo as () => void)()
+            }
+          }
+          const btn = document.getElementById('id-botao-confirmar-pular') as HTMLButtonElement
+          if (btn) btn.disabled = false
+        }, selectValue)
+        await bioPage.waitForTimeout(1000)
+
+        // 3. Confirmar
+        console.log(`[SAW] openTokenPage: [A3] confirmPular()...`)
+        await bioPage.evaluate(() => {
+          if (typeof (window as unknown as Record<string, unknown>).confirmPular === 'function') {
+            ((window as unknown as Record<string, unknown>).confirmPular as () => void)()
+          } else {
+            const btn = document.getElementById('id-botao-confirmar-pular') as HTMLElement
+            if (btn) btn.click()
+          }
+        })
+        await bioPage.waitForTimeout(3000)
+        await bioPage.close().catch(() => {})
+
+        // 4. Recarregar guia — agora deve abrir na tela de token
+        console.log(`[SAW] openTokenPage: [A4] Recarregando guia...`)
+        await page.goto(guiaUrl, { waitUntil: 'domcontentloaded', timeout: 30_000 })
+        await page.waitForTimeout(3000)
+        await page.screenshot({ path: '/tmp/debug-opentoken-after-bioface.png' }).catch(() => {})
+
+        const afterUrl = page.url()
+        if (afterUrl.includes('MantemTokenDeAtendimento')) {
+          console.log(`[SAW] openTokenPage: BioFace pulado! Agora na tela de token.`)
         } else {
-          console.log(`[SAW] openTokenPage: BioFace pulado, agora na tela de token`)
+          console.log(`[SAW] openTokenPage: apos BioFace, URL: ${afterUrl.substring(0, 80)}`)
         }
       }
+      // ═══ CAMINHO B: Token direto (ou apos BioFace skip) ═══
 
-      // Atualizar texto (pode ter mudado apos clique no Check-in ou BioFace)
+      // Atualizar texto (pode ter mudado)
       const finalPageText = await page.evaluate(() => document.body?.innerText ?? '')
 
       // Extract available methods and phones
