@@ -44,14 +44,14 @@ await page.goto("https://saw.trixti.com.br/saw/tiss/SolicitacaoDeSPSADT40.do?met
 await page.waitForTimeout(5000);
 
 // 2. CARTEIRA
-console.log("[2] Carteira 865-0024077730007...");
+console.log("[2] Carteira 865-0003945958103...");
 const unimedField = page.locator('input[name*="beneficiario.unimed.codigo"]').first();
 await unimedField.fill("865");
 await unimedField.press("Tab");
 await page.waitForTimeout(1000);
 
 const cartField = page.locator('input[name*="beneficiario.codigo"]').first();
-await cartField.fill("0024077730007");
+await cartField.fill("0003945958103");
 await page.waitForTimeout(500);
 
 // Hook: interceptar presenca → setar presente=true → chamar biometria
@@ -151,6 +151,7 @@ if (hasBio) {
 }
 
 // 3. CARATER
+await page.screenshot({ path: "/tmp/step-2-carteira.png", fullPage: true });
 console.log("[3] Carater Eletiva...");
 await page.evaluate(() => {
   const s = document.querySelector('select[name*="caraterDeSolicitacao"]');
@@ -184,6 +185,7 @@ await page.evaluate(() => {
 });
 const desc = await page.evaluate(() => document.querySelector('input[name*="procedimentosSolicitados[0].descricao"]')?.value ?? "");
 console.log("[5] Descricao:", desc);
+await page.screenshot({ path: "/tmp/step-5-procedimento.png", fullPage: true });
 
 // 6. TIPO/REGIME
 console.log("[6] Tipo/Regime...");
@@ -196,7 +198,7 @@ await page.evaluate(() => {
 });
 await page.evaluate(() => {
   const el = document.querySelector('textarea[name*="indicacaoClinica"], input[name*="indicacaoClinica"]');
-  if (el) el.value = "sessao de psicopedagogia";
+  if (el) el.value = "F900 -- Disturbios da atividade e da atencao.";
 });
 await page.evaluate(() => {
   const el = document.querySelector('input[name*="dataDeSolicitacao"]');
@@ -211,17 +213,17 @@ await page.evaluate(() => {
   set('input[name*="contratadoSolicitante.nome"]', "DEDICARE SERVICOS DE FONOAUDIOLOGIA PSICOLOGIA E NUTRICAO");
 });
 const profField = page.locator('input[name*="profissionalSolicitante.nome"]');
-await profField.fill("Mailanne Batista Dantas");
+await profField.fill("Ana Clara de Almeida Ramos");
 await page.waitForTimeout(500);
 await page.click("body");
 await page.waitForTimeout(500);
 await page.evaluate(() => {
   const set = (s, v) => { const el = document.querySelector(s); if (el) { el.readOnly = false; el.value = v; el.dispatchEvent(new Event("change", { bubbles: true })); } };
   set('select[name*="profissionalSolicitante.conselhoProfissional"]', "08");
-  set('input[name*="profissionalSolicitante.crm"]', "21877");
+  set('input[name*="profissionalSolicitante.crm"]', "27180");
   set('select[name*="profissionalSolicitante.ufDoCrm"]', "29");
   const cbo = document.querySelector('select[name*="profissionalSolicitante.cbos"]');
-  if (cbo) { for (const o of cbo.options) { if (/psicopedagog/i.test(o.text)) { cbo.value = o.value; break; } } cbo.dispatchEvent(new Event("change", { bubbles: true })); }
+  if (cbo) { for (const o of cbo.options) { if (/psic[oó]logo.*cl[ií]nico/i.test(o.text)) { cbo.value = o.value; break; } } cbo.dispatchEvent(new Event("change", { bubbles: true })); }
 });
 
 // 8. CONTATO
@@ -234,6 +236,8 @@ await page.evaluate(() => {
   const tel = document.querySelector('input[name*="numeroTelefoneContatoBeneficiario"]');
   if (tel) tel.value = "999999999";
 });
+
+await page.screenshot({ path: "/tmp/step-8-pre-gravar.png", fullPage: true });
 
 // 9. GRAVAR — capturar navegacao
 console.log("[9] Gravando...");
@@ -269,13 +273,13 @@ try {
     const set = (s, v) => { const el = document.querySelector(s); if (el) { el.readOnly = false; el.value = v; el.dispatchEvent(new Event("change", { bubbles: true })); } };
     set('input[name*="contratadoSolicitante.codigo"]', "97498504");
     set('input[name*="contratadoSolicitante.nome"]', "DEDICARE SERVICOS DE FONOAUDIOLOGIA PSICOLOGIA E NUTRICAO");
-    set('input[name*="profissionalSolicitante.nome"]', "Mailanne Batista Dantas");
-    set('input[name*="profissionalSolicitante.crm"]', "21877");
+    set('input[name*="profissionalSolicitante.nome"]', "Ana Clara de Almeida Ramos");
+    set('input[name*="profissionalSolicitante.crm"]', "27180");
     set('select[name*="profissionalSolicitante.ufDoCrm"]', "29");
     set('select[name*="profissionalSolicitante.conselhoProfissional"]', "08");
     set('select[name*="indicacaoDeAcidente"]', "9");
     const cbo = document.querySelector('select[name*="profissionalSolicitante.cbos"]');
-    if (cbo) { for (const o of cbo.options) { if (/psicopedagog/i.test(o.text)) { cbo.value = o.value; break; } } cbo.dispatchEvent(new Event("change", { bubbles: true })); }
+    if (cbo) { for (const o of cbo.options) { if (/psic[oó]logo.*cl[ií]nico/i.test(o.text)) { cbo.value = o.value; break; } } cbo.dispatchEvent(new Event("change", { bubbles: true })); }
   });
   await page.waitForTimeout(1000);
   await page.evaluate(() => { if (typeof window.gravarGuia === "function") window.gravarGuia(); });
@@ -284,6 +288,8 @@ try {
   } catch { /* */ }
 }
 await page.waitForTimeout(3000);
+
+await page.screenshot({ path: "/tmp/step-9-pos-gravar.png", fullPage: true }).catch(() => {});
 
 // 10. RESULTADO
 const postUrl = page.url();
@@ -318,5 +324,71 @@ if (!guideNumber) {
 
 console.log("[10] NUMERO DA GUIA:", guideNumber || "(nao encontrado)");
 await page.screenshot({ path: "/tmp/test-guide-final.png", fullPage: true });
+
+// 11. IMPORTAR GUIA PARA O SISTEMA (readGuide via SAW client)
+if (guideNumber && !guideNumber.startsWith("chave:") && !guideNumber.startsWith("prestador:")) {
+  console.log(`[11] Importando guia ${guideNumber} para o sistema...`);
+
+  // Pegar cookies do contexto atual para usar no readGuide
+  const cookies = await context.cookies();
+
+  // Importar guia usando a API do sistema (readGuide via SAW client)
+  console.log(`[11] Importando guia ${guideNumber} via API do sistema...`);
+
+  // Chamar API de importacao diretamente no servidor
+  try {
+    const importRes = await fetch("http://localhost:3000/api/guias/importar", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ guide_numbers: [guideNumber] }),
+    });
+    // SSE stream — ler eventos
+    const text = await importRes.text();
+    const events = text.split("\n").filter(l => l.startsWith("data:")).map(l => {
+      try { return JSON.parse(l.slice(5)); } catch { return null; }
+    }).filter(Boolean);
+    events.forEach(e => console.log(`  [IMPORT] ${e.type}: ${e.message}`));
+    const success = events.some(e => e.type === "success" && /importad/i.test(e.message));
+    console.log("[11] Importacao:", success ? "OK" : "FALHOU (pode precisar de auth)");
+  } catch (e) {
+    console.log("[11] Fetch erro:", e.message);
+  }
+
+  // Fallback: se API nao funcionou (auth), importar direto via readGuide no SAW
+  // Verificar se guia existe no DB
+  const { data: existingGuia } = await db.from("guias").select("id").eq("guide_number", guideNumber).single();
+  if (!existingGuia) {
+    console.log("[11b] Guia nao no DB, importando via SAW direto...");
+    const guiaUrl = `https://saw.trixti.com.br/saw/tiss/SolicitacaoDeSPSADT40.do?method=consultarGuiaDeSPSADT&manterTISSSPSADT40DTO.tissSolicitacaoDeSPSADTDTO.numeroDaGuia=${guideNumber}&manterTISSSPSADT40DTO.tissSolicitacaoDeSPSADTDTO.isConsultaNaGuia=true`;
+    const readPage = await context.newPage();
+    await readPage.goto(guiaUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
+    await readPage.waitForTimeout(5000);
+
+    const guiaData = await readPage.evaluate(() => {
+      const get = (n) => document.querySelector(`input[name*="${n}"]`)?.value?.trim() ?? "";
+      return {
+        prestador: get("numeroDaGuia"), paciente: get("beneficiario.nome") || get("beneficiario.nomeAbreviado"),
+        carteira: get("beneficiario.codigo"), unimed: get("beneficiario.unimed.codigo"),
+        senha: get("senha"), dataAuth: get("dataDaAutorizacao"), dataVal: get("dataDeValidadeDaSenha"),
+      };
+    });
+    const parseDate = (d) => { const m = d?.match(/^(\d{2})\/(\d{2})\/(\d{4})/); return m ? `${m[3]}-${m[2]}-${m[1]}` : null; };
+
+    const { data: ins, error: err } = await db.from("guias").upsert({
+      guide_number: guideNumber, guide_number_prestador: guiaData.prestador || null,
+      paciente: guiaData.paciente, numero_carteira: `${guiaData.unimed}${guiaData.carteira}`,
+      senha: guiaData.senha || null, data_autorizacao: parseDate(guiaData.dataAuth),
+      data_validade_senha: parseDate(guiaData.dataVal), status: "PENDENTE", tipo_guia: "Local", user_id: userId,
+    }, { onConflict: "guide_number" }).select("id").single();
+
+    console.log("[11b]", err ? `ERRO: ${err.message}` : `Importada! ID: ${ins?.id}`);
+    await readPage.close();
+  } else {
+    console.log("[11] Guia ja existe no DB! ID:", existingGuia.id);
+  }
+} else {
+  console.log("[11] Numero da guia nao capturado, importacao pulada");
+}
+
 await browser.close();
 console.log("DONE");
