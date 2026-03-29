@@ -20,9 +20,14 @@ export function computeGuideStatus(
   dataAutorizacao: string | null,
   sawStatus?: string | null
 ): GuideStatus {
-  // 0. CANCELADA — guia cancelada no SAW (prioridade maxima)
+  // 0a. CANCELADA — guia cancelada no SAW (prioridade maxima)
   if (sawStatus && sawStatus.toUpperCase().includes('CANCELADA')) {
     return 'CANCELADA'
+  }
+
+  // 0b. NEGADA — guia negada pela operadora no SAW
+  if (sawStatus && sawStatus.toUpperCase().includes('NEGADA')) {
+    return 'NEGADA'
   }
 
   // 1. TOKEN — paciente precisa fazer check-in biometrico

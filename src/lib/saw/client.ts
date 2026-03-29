@@ -1319,7 +1319,7 @@ class SawClient {
             // Fechar pagina da guia e reabrir (SAW nao redireciona automaticamente)
             sawLog(`openTokenPage: [A4] Reabrindo guia apos BioFace...`)
             await page.close().catch(() => {})
-            // eslint-disable-next-line no-param-reassign
+             
             page = await context.newPage()
             page.setDefaultTimeout(30_000)
             await page.goto(guiaUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 })
@@ -1693,7 +1693,499 @@ class SawClient {
     }
   }
 
-  // ─── Force reconnect for a specific user ────────────────────
+  // ─── Create guide (SP/SADT 4.0) ─────────────────────────────
+  async createGuide(
+    userId: string,
+    cookies: SawCookie[],
+    data: {
+      carteira: string
+      profissional: {
+        nome: string
+        conselho: string
+        numeroConselho: string
+        uf: string
+        cbo: string
+      }
+      procedimentoCodigo: string
+      quantidade: number
+      indicacaoClinica: string
+    },
+    onProgress?: (step: string, message: string) => void,
+  ): Promise<{ success: boolean; guideNumber?: string; paciente?: string; error?: string }> {
+    return this.withLock(userId, async () => {
+      let page: Page | null = null
+      let nomeBeneficiario = ''
+
+      try {
+        const context = await this.getContext(userId, cookies)
+        page = await context.newPage()
+        page.setDefaultTimeout(30_000)
+
+        sawLog(`createGuide: iniciando para carteira ${data.carteira}`)
+
+        // ─── Step 1: Dialog handler ──────────────────────────────
+        page.on('dialog', async (dialog) => {
+          const msg = dialog.message()
+          sawLog(`createGuide: dialog [${dialog.type()}]: ${msg.substring(0, 120)}`)
+          if (/profissional.*n[aã]o encontrado/i.test(msg)) {
+            sawLog('createGuide: dialog "Profissional nao encontrado" — aceitando')
+          }
+          await dialog.accept()
+        })
+
+        // ─── Step 2: Navigate to form ────────────────────────────
+        onProgress?.('1', 'Abrindo formulario de nova guia...')
+        await page.goto(
+          `${SAW_BASE}/saw/tiss/SolicitacaoDeSPSADT40.do?method=abrirTelaDeSolicitacaoDeSPSADT`,
+          { waitUntil: 'networkidle', timeout: 60_000 },
+        )
+
+        // ─── Step 3: Wait for form ───────────────────────────────
+        await page.waitForFunction(
+          () => !!document.getElementById('tissSolicitacaoDeSPSADT40Form'),
+          { timeout: 30_000 },
+        )
+        sawLog('createGuide: formulario carregado')
+
+        // ─── Step 4: Fill unimed "0865" + carteira ────────────────
+        onProgress?.('2', `Preenchendo carteira ${data.carteira}...`)
+        const unimedField = page.locator('input[name*="beneficiario.unimed.codigo"]').first()
+        await unimedField.fill('0865')
+        await unimedField.press('Tab')
+        await page.waitForTimeout(1000)
+
+        const cartField = page.locator('input[name*="beneficiario.codigo"]').first()
+        await cartField.fill(data.carteira)
+        await page.waitForTimeout(500)
+
+        // ─── Step 5: CRITICAL HOOK — override presenca + trigger AJAX ────
+        await page.evaluate(() => {
+          ;(window as unknown as Record<string, unknown>).abrirProcessoBeneficiarioPresente = function () {
+            ;(window as unknown as Record<string, unknown>).beneficiarioPresente = true
+            const win = window as unknown as Record<string, unknown>
+            if (typeof win.abrirTelaBiometria === 'function') {
+              (win.abrirTelaBiometria as () => void)()
+            }
+          }
+          ;(window as unknown as Record<string, unknown>).operadoraPossuiTamanhoCodigoBenefVariavel = true
+          const acaoBtn = document.getElementById('acao')
+          if (acaoBtn) acaoBtn.click()
+        })
+        sawLog('createGuide: AJAX disparado, aguardando 10s...')
+        onProgress?.('2', 'Consultando beneficiario no SAW (aguardando AJAX)...')
+        await page.waitForTimeout(10_000)
+
+        nomeBeneficiario = await page.evaluate(() => {
+          return (
+            (document.querySelector('input[name="manterTISSSPSADT40DTO.tissSolicitacaoDeSPSADTDTO.beneficiario.nome"]') as HTMLInputElement | null)?.value ||
+            (document.querySelector('input[name*="beneficiario.nomeAbreviado"]') as HTMLInputElement | null)?.value ||
+            ''
+          )
+        })
+        sawLog(`createGuide: beneficiario="${nomeBeneficiario}"`)
+
+        // ─── Step 6: Handle biometria modal ─────────────────────
+        onProgress?.('3', 'Processando biometria...')
+        let hasBio = await page.evaluate(() => {
+          const divs = document.querySelectorAll('div')
+          for (const d of divs) {
+            if (d.offsetHeight > 0 && /Pular Autentica/i.test(d.textContent ?? '')) return true
+          }
+          return false
+        })
+
+        if (!hasBio) {
+          sawLog('createGuide: modal biometria nao visivel, forcando exibicao...')
+          await page.evaluate(() => {
+            const allDivs = document.querySelectorAll('div')
+            for (const d of allDivs) {
+              if (/Pular Autentica/i.test(d.innerHTML) && d.innerHTML.length < 5000) {
+                ;(d as HTMLElement).style.display = 'block'
+                ;(d as HTMLElement).style.visibility = 'visible'
+                ;(d as HTMLElement).style.position = 'fixed'
+                ;(d as HTMLElement).style.top = '50px'
+                ;(d as HTMLElement).style.left = '50px'
+                ;(d as HTMLElement).style.zIndex = '99999'
+                return
+              }
+            }
+            const motivo = document.getElementById('codigoDoMotivoDeUtilizacaoDaBiometria') as HTMLSelectElement | null
+            if (motivo) motivo.value = '5'
+            const win = window as unknown as Record<string, unknown>
+            if (typeof win.pularBiometria === 'function') (win.pularBiometria as () => void)()
+            if (typeof win.pularAutenticacao === 'function') (win.pularAutenticacao as () => void)()
+          })
+          await page.waitForTimeout(3000)
+          hasBio = await page.evaluate(() => {
+            const divs = document.querySelectorAll('div')
+            for (const d of divs) {
+              if (d.offsetHeight > 0 && /Pular Autentica/i.test(d.textContent ?? '')) return true
+            }
+            return false
+          })
+        }
+
+        if (hasBio) {
+          sawLog('createGuide: modal biometria visivel — selecionando Pre-autorizacao + Pular')
+          await page.evaluate(() => {
+            const selects = document.querySelectorAll('select')
+            for (const sel of selects) {
+              for (const opt of sel.options) {
+                if (/pr[eé].?autoriz/i.test(opt.text)) {
+                  sel.value = opt.value
+                  sel.dispatchEvent(new Event('change', { bubbles: true }))
+                  break
+                }
+              }
+            }
+          })
+          await page.waitForTimeout(1000)
+          await page.evaluate(() => {
+            const btns = Array.from(document.querySelectorAll('button, input[type="button"]'))
+            const pularBtn = btns.find((b) => /pular/i.test((b as HTMLElement).textContent ?? (b as HTMLInputElement).value ?? ''))
+            if (pularBtn) (pularBtn as HTMLElement).click()
+          })
+          await page.waitForTimeout(5000)
+          sawLog('createGuide: biometria pulada OK')
+        } else {
+          sawLog('createGuide: modal nao apareceu — setando campos hidden diretamente')
+          await page.evaluate(() => {
+            const motivo = document.querySelector('input[name*="codigoDoMotivoDeUtilizacaoDaBiometria"]') as HTMLInputElement | null
+            if (motivo) motivo.value = '5'
+            const auth = document.querySelector('input[name*="biometriaBeneficiarioAutenticada"]') as HTMLInputElement | null
+            if (auth) auth.value = 'true'
+            const posterior = document.querySelector('input[name*="autenticacaoPosteriorViaTokenDeAtendimento"]') as HTMLInputElement | null
+            if (posterior) posterior.value = 'true'
+          })
+          sawLog('createGuide: campos hidden setados')
+        }
+
+        // ─── Step 7: Fill carater = "1" (Eletiva) ───────────────
+        onProgress?.('4', 'Preenchendo dados clinicos...')
+        await page.evaluate(() => {
+          const s = document.querySelector('select[name*="caraterDeSolicitacao"]') as HTMLSelectElement | null
+          if (s) { s.value = '1'; s.dispatchEvent(new Event('change', { bubbles: true })) }
+        })
+
+        // ─── Step 8: Fill executante = "97498504" ───────────────
+        await page.evaluate(() => {
+          const s = document.querySelector('select[name*="contratadoExecutante.codigo"]') as HTMLSelectElement | null
+          if (s) { s.value = '97498504'; s.dispatchEvent(new Event('change', { bubbles: true })) }
+        })
+        await page.waitForTimeout(1000)
+
+        // ─── Step 9: Fill procedimento (AFTER executante, field is readonly) ─────
+        onProgress?.('5', `Preenchendo procedimento ${data.procedimentoCodigo}...`)
+        await page.evaluate(() => {
+          const t = document.querySelector('select[name*="procedimentosSolicitados[0].tipoTabela"]') as HTMLSelectElement | null
+          if (t) { t.value = '22'; t.dispatchEvent(new Event('change', { bubbles: true })) }
+        })
+        await page.waitForTimeout(500)
+
+        await page.evaluate((codigo: string) => {
+          const el = document.querySelector('input[name="procedimentosSolicitados[0].codigo"]') as HTMLInputElement | null
+          if (el) {
+            el.readOnly = false
+            el.value = codigo
+            el.readOnly = true
+          }
+          const win = window as unknown as Record<string, unknown>
+          if (typeof win.capturarProcedimentoSolicitadoEValidar0 === 'function') {
+            (win.capturarProcedimentoSolicitadoEValidar0 as () => void)()
+          }
+        }, data.procedimentoCodigo)
+        await page.waitForTimeout(5000)
+
+        await page.evaluate((qtd: number) => {
+          const el = document.querySelector('input[name="procedimentosSolicitados[0].quantidade"]') as HTMLInputElement | null
+          if (el) { el.value = String(qtd); el.dispatchEvent(new Event('change', { bubbles: true })) }
+        }, data.quantidade)
+
+        const procDesc = await page.evaluate(() => {
+          return (document.querySelector('input[name*="procedimentosSolicitados[0].descricao"]') as HTMLInputElement | null)?.value ?? ''
+        })
+        sawLog(`createGuide: procedimento descricao="${procDesc}"`)
+
+        // ─── Step 10: Fill tipo/regime (AFTER procedimento) ─────
+        onProgress?.('6', 'Preenchendo tipo/regime/indicacao...')
+        await page.evaluate(() => {
+          const set = (n: string, v: string) => {
+            const s = document.querySelector(`select[name*="${n}"]`) as HTMLSelectElement | null
+            if (s) { s.value = v; s.dispatchEvent(new Event('change', { bubbles: true })) }
+          }
+          set('tipoDeAtendimento', '03')
+          set('regimeDeAtendimento', '01')
+          set('tipoDeConsulta', '2')
+          // IMPORTANT: field name is indicacaoDeAcidente (NOT indicadorDeAcidente)
+          set('indicacaoDeAcidente', '9')
+        })
+
+        // ─── Step 11: Fill indicacao clinica + data solicitacao ──
+        await page.evaluate((indicacao: string) => {
+          const el = document.querySelector('textarea[name*="indicacaoClinica"], input[name*="indicacaoClinica"]') as HTMLInputElement | HTMLTextAreaElement | null
+          if (el) el.value = indicacao
+        }, data.indicacaoClinica)
+
+        const hoje = new Date()
+        const dd = String(hoje.getDate()).padStart(2, '0')
+        const mm = String(hoje.getMonth() + 1).padStart(2, '0')
+        const yyyy = hoje.getFullYear()
+        const dataHoje = `${dd}/${mm}/${yyyy}`
+        await page.evaluate((dt: string) => {
+          const el = document.querySelector('input[name*="dataDeSolicitacao"]') as HTMLInputElement | null
+          if (el) el.value = dt
+        }, dataHoje)
+
+        // ─── Step 12: Fill contratado solicitante ────────────────
+        onProgress?.('7', 'Preenchendo profissional solicitante...')
+        await page.evaluate(() => {
+          const set = (s: string, v: string) => {
+            const el = document.querySelector(s) as HTMLInputElement | null
+            if (el) { el.readOnly = false; el.value = v }
+          }
+          set('input[name*="contratadoSolicitante.codigo"]', '97498504')
+          set('input[name*="contratadoSolicitante.nome"]', 'DEDICARE SERVICOS DE FONOAUDIOLOGIA PSICOLOGIA E NUTRICAO')
+        })
+
+        // ─── Step 13: Fill profissional ──────────────────────────
+        const profField = page.locator('input[name*="profissionalSolicitante.nome"]')
+        await profField.fill(data.profissional.nome)
+        await page.waitForTimeout(500)
+        await page.click('body')
+        await page.waitForTimeout(500)
+
+        // Mapear código conselho CPro → SAW (CPro usa IDs internos, SAW usa códigos TISS)
+        const conselhoMap: Record<string, string> = {
+          '9': '08',   // CRP (Psicologia)
+          '08': '08',  // CRP já no formato SAW
+          '6': '06',   // CRM (Medicina)
+          '06': '06',  // CRM já no formato SAW
+          '7': '07',   // CREFONO (Fonoaudiologia)
+          '07': '07',  // CREFONO já no formato SAW
+          '5': '04',   // CRN (Nutrição)
+          '04': '04',  // CRN já no formato SAW
+        }
+        const conselhoSaw = conselhoMap[data.profissional.conselho] ?? data.profissional.conselho
+
+        await page.evaluate(
+          (prof: { conselho: string; numeroConselho: string; uf: string; cbo: string }) => {
+            const set = (s: string, v: string) => {
+              const el = document.querySelector(s) as HTMLInputElement | HTMLSelectElement | null
+              if (el) {
+                ;(el as HTMLInputElement).readOnly = false
+                el.value = v
+                el.dispatchEvent(new Event('change', { bubbles: true }))
+              }
+            }
+            set('select[name*="profissionalSolicitante.conselhoProfissional"]', prof.conselho)
+            set('input[name*="profissionalSolicitante.crm"]', prof.numeroConselho)
+            // UF for BA = "29" (NOT "05")
+            set('select[name*="profissionalSolicitante.ufDoCrm"]', prof.uf)
+
+            const cboSelect = document.querySelector('select[name*="profissionalSolicitante.cbos"]') as HTMLSelectElement | null
+            if (cboSelect) {
+              let found = false
+              // Tentar por value (código numérico ex: "251510")
+              for (const opt of cboSelect.options) {
+                if (opt.value === prof.cbo) { cboSelect.value = opt.value; found = true; break }
+              }
+              // Tentar por texto (ex: "psicólogo clínico")
+              if (!found) {
+                const cboRegex = new RegExp(prof.cbo, 'i')
+                for (const opt of cboSelect.options) {
+                  if (cboRegex.test(opt.text) || cboRegex.test(opt.value)) { cboSelect.value = opt.value; found = true; break }
+                }
+              }
+              // Fallback: mapear codigos numericos conhecidos para texto
+              if (!found) {
+                const cboMap: Record<string, string> = {
+                  '251510': 'psicólogo', '251505': 'psicólogo', '223810': 'fonoaudiólogo',
+                  '223710': 'nutricionista', '226310': 'arteterapeuta', '251605': 'assistente social',
+                }
+                const mapped = cboMap[prof.cbo]
+                if (mapped) {
+                  const mapRegex = new RegExp(mapped, 'i')
+                  for (const opt of cboSelect.options) {
+                    if (mapRegex.test(opt.text)) { cboSelect.value = opt.value; found = true; break }
+                  }
+                }
+              }
+              if (found) cboSelect.dispatchEvent(new Event('change', { bubbles: true }))
+            }
+          },
+          { ...data.profissional, conselho: conselhoSaw },
+        )
+
+        // ─── Step 14: Fill contato ───────────────────────────────
+        onProgress?.('8', 'Preenchendo contato...')
+        await page.evaluate(() => {
+          const email = document.querySelector('input[name="emailContatoBeneficiario"]') as HTMLInputElement | null
+          if (email && (!email.value || email.value.includes('sememail'))) email.value = 'paciente@email.com'
+          const ddd = document.querySelector('select[name*="numeroDDDTelefoneContatoBeneficiario"]') as HTMLSelectElement | null
+          if (ddd) { ddd.value = '73'; ddd.dispatchEvent(new Event('change', { bubbles: true })) }
+          const tel = document.querySelector('input[name*="numeroTelefoneContatoBeneficiario"]') as HTMLInputElement | null
+          if (tel) tel.value = '999999999'
+        })
+
+        // ─── Step 15: Response interceptor before gravarGuia ────
+        onProgress?.('9', 'Gravando guia no SAW...')
+        let guideNumber = ''
+
+        page.on('response', async (response) => {
+          const url = response.url()
+          if (url.includes('SolicitacaoDeSPSADT40') || url.includes('MantemToken')) {
+            try {
+              const text = await response.text().catch(() => '')
+              const matchGuia = text.match(/numeroDaGuia[^>]*value="(\d{8,})"/)
+              if (matchGuia) guideNumber = matchGuia[1]
+              const matchChave = text.match(/chave[^>]*value="(\d{5,})"/)
+              if (matchChave && !guideNumber) guideNumber = `chave:${matchChave[1]}`
+            } catch { /* */ }
+          }
+        })
+
+        // ─── Step 16: Call gravarGuia() ──────────────────────────
+        await page.evaluate(() => {
+          const win = window as unknown as Record<string, unknown>
+          if (typeof win.gravarGuia === 'function') (win.gravarGuia as () => void)()
+        })
+
+        // ─── Step 17: Wait for navigation ───────────────────────
+        try {
+          await page.waitForURL(/MantemTokenDeAtendimento|consultarGuia|abrirTela/, { timeout: 30_000 })
+        } catch {
+          // If navigation did not happen, re-fill profissional and retry
+          sawLog('createGuide: nao navegou, re-preenchendo profissional e tentando novamente...')
+          onProgress?.('9', 'Guia nao salva, re-tentando apos dialog...')
+          await page.evaluate(
+            (prof: { nome: string; conselho: string; numeroConselho: string; uf: string; cbo: string }) => {
+              const set = (s: string, v: string) => {
+                const el = document.querySelector(s) as HTMLInputElement | HTMLSelectElement | null
+                if (el) {
+                  ;(el as HTMLInputElement).readOnly = false
+                  el.value = v
+                  el.dispatchEvent(new Event('change', { bubbles: true }))
+                }
+              }
+              set('input[name*="contratadoSolicitante.codigo"]', '97498504')
+              set('input[name*="contratadoSolicitante.nome"]', 'DEDICARE SERVICOS DE FONOAUDIOLOGIA PSICOLOGIA E NUTRICAO')
+              set('input[name*="profissionalSolicitante.nome"]', prof.nome)
+              set('input[name*="profissionalSolicitante.crm"]', prof.numeroConselho)
+              set('select[name*="profissionalSolicitante.ufDoCrm"]', prof.uf)
+              set('select[name*="profissionalSolicitante.conselhoProfissional"]', prof.conselho)
+              set('select[name*="indicacaoDeAcidente"]', '9')
+              const cboSelect = document.querySelector('select[name*="profissionalSolicitante.cbos"]') as HTMLSelectElement | null
+              if (cboSelect) {
+                let found = false
+                for (const opt of cboSelect.options) {
+                  if (opt.value === prof.cbo) { cboSelect.value = opt.value; found = true; break }
+                }
+                if (!found) {
+                  const cboRegex = new RegExp(prof.cbo, 'i')
+                  for (const opt of cboSelect.options) {
+                    if (cboRegex.test(opt.text) || cboRegex.test(opt.value)) { cboSelect.value = opt.value; found = true; break }
+                  }
+                }
+                if (!found) {
+                  const cboMap: Record<string, string> = {
+                    '251510': 'psicólogo', '251505': 'psicólogo', '223810': 'fonoaudiólogo',
+                    '223710': 'nutricionista', '226310': 'arteterapeuta', '251605': 'assistente social',
+                  }
+                  const mapped = cboMap[prof.cbo]
+                  if (mapped) {
+                    const mapRegex = new RegExp(mapped, 'i')
+                    for (const opt of cboSelect.options) {
+                      if (mapRegex.test(opt.text)) { cboSelect.value = opt.value; found = true; break }
+                    }
+                  }
+                }
+                if (found) cboSelect.dispatchEvent(new Event('change', { bubbles: true }))
+              }
+            },
+            { ...data.profissional, conselho: conselhoSaw },
+          )
+          await page.waitForTimeout(1000)
+          await page.evaluate(() => {
+            const win = window as unknown as Record<string, unknown>
+            if (typeof win.gravarGuia === 'function') (win.gravarGuia as () => void)()
+          })
+          try {
+            await page.waitForURL(/MantemTokenDeAtendimento|consultarGuia|abrirTela/, { timeout: 30_000 })
+          } catch { /* */ }
+        }
+
+        await page.waitForTimeout(3000)
+
+        // ─── Step 18: Extract guide number from page ─────────────
+        const postUrl = page.url()
+        sawLog(`createGuide: URL apos gravar: ${postUrl.substring(0, 100)}`)
+        await page.screenshot({ path: '/tmp/debug-createguide-post.png' }).catch(() => {})
+
+        // Buscar numero da guia — pode estar no campo numeroDaGuia ou no texto da pagina
+        if (!guideNumber) {
+          guideNumber = await page.evaluate(() => {
+            // Buscar todos os inputs com numeroDaGuia (pode ter mais de um)
+            const inputs = document.querySelectorAll('input[name*="numeroDaGuia"]')
+            for (const el of inputs) {
+              const v = (el as HTMLInputElement).value?.trim()
+              if (v && v.length > 5 && /^\d+$/.test(v)) return v
+            }
+            // Buscar no campo de senha (se tem senha, guia foi criada)
+            const senha = document.querySelector('input[name*="senha"]') as HTMLInputElement | null
+            if (senha?.value && senha.value.length > 3) {
+              // Guia criada — buscar numero no texto
+              const text = document.body?.innerText ?? ''
+              const m = text.match(/(?:Guia|N[°º.]?\s*da\s*Guia)[^0-9]*(\d{8,})/)
+              if (m) return m[1]
+            }
+            // Buscar por numero longo no campo de prestador
+            const prestador = document.querySelector('input[name*="numeroDaGuiaDoPrestador"]') as HTMLInputElement | null
+            if (prestador?.value) return 'prestador:' + prestador.value
+            return ''
+          }).catch(() => '')
+        }
+
+        // Remover prefixo prestador: se existir
+        if (guideNumber?.startsWith('prestador:')) {
+          sawLog(`createGuide: numero prestador encontrado: ${guideNumber}`)
+          guideNumber = '' // nao e o numero da operadora
+        }
+
+        if (guideNumber) {
+          sawLog(`createGuide: numero da guia capturado: ${guideNumber}`)
+          onProgress?.('10', `Guia criada com sucesso: ${guideNumber}`)
+          return { success: true, guideNumber, paciente: nomeBeneficiario || undefined }
+        }
+
+        // Se nao encontrou numero mas nao houve alerts de erro — provavelmente criou
+        // Verificar se a pagina tem dados de guia gravada (senha preenchida = guia criada)
+        const hasSenha = await page.evaluate(() => {
+          const s = document.querySelector('input[name*="senha"]') as HTMLInputElement | null
+          return !!(s?.value && s.value.length > 3)
+        }).catch(() => false)
+
+        if (hasSenha) {
+          sawLog('createGuide: guia gravada (senha encontrada) mas numero nao capturado')
+          onProgress?.('10', 'Guia gravada com sucesso (numero sera capturado na importacao)')
+          return { success: true, guideNumber: undefined, paciente: nomeBeneficiario || undefined }
+        }
+
+        // Verificar se o SAW ficou no form vazio (erro real) ou se recarregou com dados
+        const pageText = await page.evaluate(() => document.body?.innerText?.substring(0, 200) ?? '').catch(() => '')
+        sawLog(`createGuide: texto pos-gravar: ${pageText.substring(0, 150)}`)
+
+        return { success: false, error: 'Guia nao foi gravada — formulario permaneceu aberto' }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Erro desconhecido ao criar guia'
+        sawLog(`createGuide: erro — ${msg}`)
+        return { success: false, error: msg }
+      } finally {
+        if (page) await page.close().catch(() => {})
+      }
+    })
+  }
+
+
   async forceReconnect(userId: string): Promise<void> {
     sawLog(`Force reconnecting for user ${userId.slice(0, 8)}...`)
     await this.destroyContext(userId)

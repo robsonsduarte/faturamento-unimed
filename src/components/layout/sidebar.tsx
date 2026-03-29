@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   LayoutDashboard,
   FileText,
+  FilePlus,
   Package,
   Code2,
   CreditCard,
@@ -25,6 +26,7 @@ type UserRole = Profile['role']
 const allNavItems = [
   { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', exact: true, roles: ['admin', 'operador'] as UserRole[] },
   { href: '/dashboard/guias', icon: FileText, label: 'Guias', roles: ['admin', 'operador', 'visualizador'] as UserRole[] },
+  { href: '/dashboard/guias/emitir', icon: FilePlus, label: 'Emitir Guia', roles: ['admin', 'operador'] as UserRole[] },
   { href: '/dashboard/lotes', icon: Package, label: 'Lotes', roles: ['admin', 'operador'] as UserRole[] },
   { href: '/dashboard/xml', icon: Code2, label: 'XML TISS', roles: ['admin', 'operador'] as UserRole[] },
   { href: '/dashboard/cobrancas', icon: CreditCard, label: 'Cobrancas', roles: ['admin', 'operador'] as UserRole[] },

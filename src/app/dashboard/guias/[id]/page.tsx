@@ -2,7 +2,7 @@
 
 import { use, useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, RefreshCw, CheckCircle, XCircle, X, RotateCw, Camera, Loader2, Send, Smartphone, MessageSquare } from 'lucide-react'
+import { ArrowLeft, RefreshCw, CheckCircle, XCircle, X, RotateCw, Camera, Loader2, Send, Smartphone, MessageSquare, FilePlus } from 'lucide-react'
 import { useGuia, useUpdateGuiaStatus } from '@/hooks/use-guias'
 import { useProfile } from '@/hooks/use-profile'
 import { StatusBadge } from '@/components/shared/status-badge'
@@ -522,17 +522,65 @@ export default function GuiaDetailPage({ params }: Props) {
         title={`Guia ${guia.guide_number}`}
         description={guia.paciente ?? undefined}
         action={
-          <Link
-            href="/dashboard/guias"
-            className={cn(
-              'inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm',
-              'bg-[var(--color-card)] border border-[var(--color-border)] text-[var(--color-text-muted)] hover:text-[var(--color-text)]',
-              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]'
+          <div className="flex items-center gap-2">
+            {!isVisualizador && guia.numero_carteira && (
+              <button
+                onClick={async () => {
+                  toast.info('Buscando dados do CPro...')
+                  try {
+                    const res = await fetch(`/api/guias/cpro-data?guide_number=${guia.guide_number}`)
+                    const data = await res.json()
+                    console.log('[EmitirGuia] CPro data:', data)
+                    const params = new URLSearchParams()
+                    if (guia.paciente) params.set('paciente', guia.paciente)
+                    if (data.success) {
+                      if (data.carteira) params.set('carteira', data.carteira)
+                      if (data.profissional?.nome) params.set('profissional', data.profissional.nome)
+                      if (data.profissional?.conselho) params.set('prof_conselho', data.profissional.conselho)
+                      if (data.profissional?.numeroConselho) params.set('prof_numero', data.profissional.numeroConselho)
+                      if (data.profissional?.uf) params.set('prof_uf', data.profissional.uf)
+                      if (data.profissional?.cbos) params.set('prof_cbo', data.profissional.cbos)
+                      if (data.procedimentoCodigo) params.set('procedimento', data.procedimentoCodigo)
+                      if (data.quantidade) params.set('quantidade', String(data.quantidade))
+                      if (data.indicacaoClinica) params.set('cid', data.indicacaoClinica)
+                    } else {
+                      // Fallback: usar dados locais da guia
+                      if (guia.numero_carteira) params.set('carteira', guia.numero_carteira)
+                      if (guia.nome_profissional) params.set('profissional', guia.nome_profissional)
+                      if (guia.indicacao_clinica) params.set('cid', guia.indicacao_clinica)
+                    }
+                    window.location.href = `/dashboard/guias/emitir?${params.toString()}`
+                  } catch {
+                    // Fallback direto
+                    const params = new URLSearchParams()
+                    if (guia.numero_carteira) params.set('carteira', guia.numero_carteira)
+                    if (guia.nome_profissional) params.set('profissional', guia.nome_profissional)
+                    if (guia.indicacao_clinica) params.set('cid', guia.indicacao_clinica)
+                    window.location.href = `/dashboard/guias/emitir?${params.toString()}`
+                  }
+                }}
+                className={cn(
+                  'inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium',
+                  'bg-[var(--color-primary)] text-white hover:opacity-90',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]'
+                )}
+              >
+                <FilePlus className="w-4 h-4" />
+                Emitir Nova Guia
+              </button>
             )}
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Voltar
-          </Link>
+            <Link
+              href="/dashboard/guias"
+              className={cn(
+                'inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm',
+                'bg-[var(--color-card)] border border-[var(--color-border)] text-[var(--color-text-muted)] hover:text-[var(--color-text)]',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]'
+              )}
+            >
+              <ArrowLeft className="w-4 h-4" />
+              Voltar
+            </Link>
+          </div>
         }
       />
 

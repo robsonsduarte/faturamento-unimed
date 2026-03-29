@@ -23,7 +23,7 @@ export interface Guia {
   id: string
   guide_number: string
   guide_number_prestador: string | null
-  status: 'PENDENTE' | 'CPRO' | 'TOKEN' | 'COMPLETA' | 'PROCESSADA' | 'FATURADA' | 'CANCELADA'
+  status: 'PENDENTE' | 'CPRO' | 'TOKEN' | 'COMPLETA' | 'PROCESSADA' | 'FATURADA' | 'CANCELADA' | 'NEGADA'
   status_xml: 'PENDENTE' | 'PROCESSADA' | 'ERRO'
   provider: string | null
   paciente: string | null

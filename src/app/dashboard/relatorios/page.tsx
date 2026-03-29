@@ -33,6 +33,7 @@ const GUIDE_STATUS_TEXT_COLORS: Record<GuideStatus, string> = {
   PROCESSADA: 'text-sky-400',
   FATURADA: 'text-green-400',
   CANCELADA: 'text-red-400',
+  NEGADA: 'text-orange-400',
 }
 
 const GUIDE_STATUS_BAR_COLORS: Record<GuideStatus, string> = {
@@ -42,6 +43,7 @@ const GUIDE_STATUS_BAR_COLORS: Record<GuideStatus, string> = {
   COMPLETA: 'bg-emerald-500',
   PROCESSADA: 'bg-sky-500',
   FATURADA: 'bg-green-500',
+  NEGADA: 'bg-orange-600',
   CANCELADA: 'bg-red-500',
 }
 
