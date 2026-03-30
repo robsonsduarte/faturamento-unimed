@@ -193,6 +193,34 @@ export async function buscarFotoBase64(
 }
 
 /**
+ * Busca foto base64 de um paciente por sequence especifica.
+ */
+export async function buscarFotoBase64PorSequence(
+  numeroCarteira: string,
+  sequence: number
+): Promise<string | null> {
+  const db = getServiceClient()
+
+  const { data: foto } = await db
+    .from('biometria_fotos')
+    .select('photo_path')
+    .eq('numero_carteira', numeroCarteira)
+    .eq('sequence', sequence)
+    .single()
+
+  if (!foto) return null
+
+  const { data: blob } = await db.storage
+    .from('biometria')
+    .download((foto as { photo_path: string }).photo_path)
+
+  if (!blob) return null
+
+  const buffer = Buffer.from(await blob.arrayBuffer())
+  return buffer.toString('base64')
+}
+
+/**
  * Lista todas as fotos de um paciente.
  * Retorna array de { sequence, url, created_at }.
  */

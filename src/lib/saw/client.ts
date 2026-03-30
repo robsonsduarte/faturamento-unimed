@@ -983,17 +983,21 @@ class SawClient {
           onProgress?.(stepLabel, `Procedimento ${proc.data} — clicando "Realizar"...`)
 
           try {
-            // Step A: Clicar "Realizar Procedimento" (2o img com title "Realizar")
+            // Step A: Clicar PRIMEIRO botao "Realizar" disponivel na lista de procedimentos
+            // Apos cada cobranca a pagina recarrega e o proximo pendente vira o primeiro
             const realizarBtns = await page.$$('img[title*="Realizar"]')
-            if (realizarBtns.length < 2) {
-              // Pode ja ter sido realizado ou nao tem mais botoes
-              onProgress?.(stepLabel, `Botao "Realizar" nao encontrado. Pode ja ter sido cobrado.`)
+            // O [0] pode ser icone do header — pegar o primeiro da area de procedimentos
+            // Tentar clicar no primeiro que esta dentro da tabela de procedimentos
+            let btnToClick = realizarBtns.length >= 2 ? realizarBtns[1] : realizarBtns[0]
+            // Se so tem 1 botao, usar ele
+            if (!btnToClick || realizarBtns.length === 0) {
+              onProgress?.(stepLabel, `Botao "Realizar" nao disponivel — pode ja estar realizado.`)
               execucoes.push({ data: proc.data, success: false, error: 'Botao Realizar nao encontrado' })
-              continue
+              break
             }
 
-            await realizarBtns[1].click()
-            await page.waitForTimeout(5000)
+            await btnToClick.click()
+            await page.waitForTimeout(3000)
             await page.screenshot({ path: `/tmp/debug-cobrar-${i + 1}-apos-realizar.png`, fullPage: false }).catch(() => {})
 
             // Step B: Autenticar biometria no iframe BioFace
@@ -1028,14 +1032,15 @@ class SawClient {
                 }
               })
 
-              await page.waitForTimeout(5000)
+              // Aguardar SAW processar biometria e abrir form
+              await page.waitForTimeout(3000)
             } else {
               onProgress?.(stepLabel, `Iframe BioFace nao encontrado. Tentando continuar...`)
             }
 
             // Step C: Aguardar formulario (nova pagina/popup)
             onProgress?.(stepLabel, `Aguardando formulario de realizacao...`)
-            await page.waitForTimeout(3000)
+            await page.waitForTimeout(2000)
 
             // Procurar nova pagina aberta (popup de realizacao)
             const pages = context.pages()
@@ -1067,19 +1072,57 @@ class SawClient {
             onProgress?.(stepLabel, `Preenchendo formulario...`)
             await formPage.screenshot({ path: `/tmp/debug-cobrar-${i + 1}-form.png`, fullPage: false }).catch(() => {})
 
-            await formPage.evaluate((p) => {
-              // Limpar campos
-              const campos = ['dataSolicitacaoProcedimento', 'horarioInicial', 'horarioFinal', 'quantidadeSolicitada']
-              campos.forEach((id) => {
-                const el = document.getElementById(id) as HTMLInputElement
-                if (el) el.value = ''
-              })
-            }, null)
+            // Formatar valores
+            const dataFormatada = `${proc.data.slice(0, 2)}/${proc.data.slice(2, 4)}/${proc.data.slice(4, 8)}`
+            const horaIni = proc.horaInicial.length === 4 ? `${proc.horaInicial.slice(0, 2)}:${proc.horaInicial.slice(2, 4)}` : proc.horaInicial
+            const horaFim = proc.horaFinal.length === 4 ? `${proc.horaFinal.slice(0, 2)}:${proc.horaFinal.slice(2, 4)}` : proc.horaFinal
+            sawLog(`cobrar: proc.data="${proc.data}" → dataFormatada="${dataFormatada}" hora="${horaIni}-${horaFim}"`)
 
-            await formPage.type('#dataSolicitacaoProcedimento', proc.data, { delay: 50 })
-            await formPage.type('#horarioInicial', proc.horaInicial, { delay: 50 })
-            await formPage.type('#horarioFinal', proc.horaFinal, { delay: 50 })
-            await formPage.type('#quantidadeSolicitada', proc.quantidade || '1', { delay: 50 })
+            // Setar data via jQuery datepicker API (setDate sincroniza estado interno + input)
+            // Setar hora/quantidade via nativeInputValueSetter (contorna protecoes do input)
+            await formPage.evaluate(`
+              (function() {
+                var day = ${parseInt(proc.data.slice(0, 2))};
+                var month = ${parseInt(proc.data.slice(2, 4)) - 1};
+                var year = ${parseInt(proc.data.slice(4, 8))};
+
+                // DATA: usar jQuery datepicker setDate se disponivel
+                var $ = window.jQuery || window.$;
+                var dateEl = document.getElementById('dataSolicitacaoProcedimento');
+                if ($ && dateEl) {
+                  try {
+                    var dp = $(dateEl);
+                    if (dp.datepicker) {
+                      dp.datepicker('setDate', new Date(year, month, day));
+                      dp.datepicker('hide');
+                    }
+                  } catch(e) {
+                    // Fallback: setar direto
+                    dateEl.value = '${dataFormatada}';
+                  }
+                } else if (dateEl) {
+                  dateEl.value = '${dataFormatada}';
+                }
+
+                // HORA e QUANTIDADE: setar via nativeInputValueSetter (sem disparar blur/validacao)
+                var nativeSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+                function setNative(id, val) {
+                  var el = document.getElementById(id);
+                  if (el && nativeSetter) {
+                    nativeSetter.call(el, val);
+                    el.dispatchEvent(new Event('input', {bubbles:true}));
+                  }
+                }
+                setNative('horarioInicial', '${horaIni}');
+                setNative('horarioFinal', '${horaFim}');
+                setNative('quantidadeSolicitada', '${proc.quantidade || '1'}');
+              })()
+            `)
+            await formPage.waitForTimeout(300)
+
+            // Verificar se a data foi realmente setada
+            const dataNoInput = await formPage.evaluate(`document.getElementById('dataSolicitacaoProcedimento')?.value || ''`)
+            sawLog(`cobrar: valor no input apos setar: "${dataNoInput}"`)
 
             // Selects
             await formPage.selectOption('#viaDeAcesso', proc.viaAcesso || '1').catch(() => {})
@@ -1099,12 +1142,12 @@ class SawClient {
               }
             })
 
-            await page.waitForTimeout(3000)
+            await page.waitForTimeout(2000)
 
             // Step F: Recarregar pagina principal
             onProgress?.(stepLabel, `Procedimento executado! Recarregando...`)
-            await page.goto(guiaUrl, { waitUntil: 'networkidle', timeout: 30_000 }).catch(() => {})
-            await page.waitForTimeout(2000)
+            await page.reload({ waitUntil: 'networkidle' }).catch(() => {})
+            await page.waitForTimeout(1000)
 
             // Fechar popup se abriu
             if (formPage !== page) {

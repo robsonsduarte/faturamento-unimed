@@ -35,8 +35,8 @@ export default function GuiaDetailPage({ params }: Props) {
   })
 
   // Biometria states
-  const [showCamera, setShowCamera] = useState(false)
-  const [bioPhoto, setBioPhoto] = useState<string | null>(null)
+  const [patientPhotos, setPatientPhotos] = useState<Array<{ sequence: number; url: string }>>([])
+  const [captureSlot, setCaptureSlot] = useState<number | null>(null)
   const [bioLoading, setBioLoading] = useState(false)
   const [bioResolving, setBioResolving] = useState(false)
   const [bioLogs, setBioLogs] = useState<ImportLog[]>([])
@@ -67,40 +67,46 @@ export default function GuiaDetailPage({ params }: Props) {
   const [cobrarShowCamera, setCobrarShowCamera] = useState(false)
   const [cobrarHasFoto, setCobrarHasFoto] = useState<boolean | null>(null)
   const [cobrarModalOpen, setCobrarModalOpen] = useState(false)
-  const [cobrarPendentes, setCobrarPendentes] = useState<Array<{ date: string; start: string; end: string; checked: boolean }>>([])
+  const [cobrarPendentes, setCobrarPendentes] = useState<Array<{ date: string; start: string; end: string; checked: boolean; photoSequence?: number; _showPhotoPicker?: boolean }>>([])
   const [cobrarLoadingPendentes, setCobrarLoadingPendentes] = useState(false)
 
-  // Buscar foto existente quando guia TOKEN ou PENDENTE carrega
+  // Buscar fotos existentes quando guia com numero_carteira carrega
+  function fetchPhotos(carteira: string) {
+    fetch(`/api/biometria/foto/${encodeURIComponent(carteira)}`)
+      .then((r) => r.json())
+      .then((data: { exists: boolean; fotos?: Array<{ sequence: number; url: string }> }) => {
+        if (data.exists && data.fotos) {
+          setPatientPhotos(data.fotos)
+          setCobrarHasFoto(data.fotos.length > 0)
+        } else {
+          setPatientPhotos([])
+          setCobrarHasFoto(false)
+        }
+      })
+      .catch(() => { setPatientPhotos([]); setCobrarHasFoto(false) })
+  }
+
   useEffect(() => {
     if (!guia?.numero_carteira) return
     if (guia.status === 'TOKEN' || guia.status === 'PENDENTE') {
-      fetch(`/api/biometria/foto/${encodeURIComponent(guia.numero_carteira)}`)
-        .then((r) => r.json())
-        .then((data) => {
-          if (data.exists && data.url) { setBioPhoto(data.url); setCobrarHasFoto(true) }
-          else setCobrarHasFoto(false)
-        })
-        .catch(() => setCobrarHasFoto(false))
+      fetchPhotos(guia.numero_carteira)
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [guia?.status, guia?.numero_carteira])
 
   async function handleCapturarFoto(base64: string) {
     if (!guia) return
     setBioLoading(true)
-    setShowCamera(false)
+    setCaptureSlot(null)
     try {
       const res = await fetch('/api/biometria/capturar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ guia_id: guia.id, photo_base64: base64 }),
+        body: JSON.stringify({ guia_id: guia.id, photo_base64: base64, sequence: captureSlot }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
-      if (guia.numero_carteira) {
-        const fotoRes = await fetch(`/api/biometria/foto/${encodeURIComponent(guia.numero_carteira)}`)
-        const fotoData = await fotoRes.json()
-        if (fotoData.exists && fotoData.url) setBioPhoto(fotoData.url)
-      }
+      if (guia.numero_carteira) fetchPhotos(guia.numero_carteira)
       toast.success('Foto capturada e salva com sucesso')
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Erro ao salvar foto')
@@ -301,7 +307,7 @@ export default function GuiaDetailPage({ params }: Props) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           guia_id: guia.id,
-          atendimentos: selecionados.map((p) => ({ date: p.date, start: p.start, end: p.end })),
+          atendimentos: selecionados.map((p) => ({ date: p.date, start: p.start, end: p.end, photoSequence: p.photoSequence })),
         }),
       })
       const reader = res.body?.getReader()
@@ -767,7 +773,7 @@ export default function GuiaDetailPage({ params }: Props) {
 
           <div className="p-5 space-y-4">
             {/* Escolha do modo */}
-            {tokenMode === 'none' && !showCamera && (
+            {tokenMode === 'none' && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <button
                   onClick={() => { setTokenMode('whatsapp'); setTokenStep('choose') }}
@@ -784,7 +790,7 @@ export default function GuiaDetailPage({ params }: Props) {
                   </div>
                 </button>
                 <button
-                  onClick={() => { setTokenMode('biometria'); setShowCamera(true) }}
+                  onClick={() => { setTokenMode('biometria') }}
                   className="flex items-center gap-3 rounded-lg border p-4 text-left transition-colors hover:border-[var(--color-primary)]"
                   style={{ borderColor: 'var(--color-border)', background: 'var(--color-surface)' }}
                 >
@@ -799,66 +805,102 @@ export default function GuiaDetailPage({ params }: Props) {
               </div>
             )}
 
-            {/* === MODO BIOMETRIA === */}
+            {/* === MODO BIOMETRIA — galeria de ate 5 fotos === */}
             {tokenMode === 'biometria' && (
-              <>
-                {showCamera ? (
-                  <CameraCapture onCapture={handleCapturarFoto} onCancel={() => { setShowCamera(false); setTokenMode('none') }} />
-                ) : bioPhoto ? (
-                  <div className="flex items-start gap-4">
-                    <div className="shrink-0 overflow-hidden rounded-lg border" style={{ borderColor: 'var(--color-border)', width: 160 }}>
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={bioPhoto} alt="Foto biometria" className="w-full" />
-                    </div>
-                    <div className="space-y-2">
-                      <p className="text-sm" style={{ color: 'var(--color-text)' }}>Foto salva.</p>
-                      <div className="flex gap-2 items-center">
-                        <button
-                          onClick={handleResolverToken}
-                          disabled={bioResolving}
-                          className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white"
-                          style={{ background: 'var(--color-primary)' }}
-                        >
-                          {bioResolving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                          Resolver Token
-                        </button>
-                        <button onClick={() => setShowCamera(true)} className="text-xs underline" style={{ color: 'var(--color-text-muted)' }}>
-                          Refazer
-                        </button>
-                        <button
-                          onClick={() => {
-                            if (!guia?.numero_carteira) return
-                            setConfirmModal({
-                              show: true,
-                              message: 'Tem certeza que deseja excluir a foto de biometria deste paciente?',
-                              onConfirm: () => {
-                                fetch(`/api/biometria/foto/${encodeURIComponent(guia.numero_carteira ?? '')}`, { method: 'DELETE' })
-                                  .then(() => { setBioPhoto(null); toast.success('Foto excluida') })
-                                  .catch(() => toast.error('Erro ao excluir foto'))
-                                setConfirmModal({ show: false, message: '', onConfirm: () => {} })
-                              },
-                            })
-                          }}
-                          className="text-xs underline"
-                          style={{ color: 'var(--color-danger)' }}
-                        >
-                          Excluir
-                        </button>
-                      </div>
-                    </div>
-                  </div>
+              <div className="space-y-3">
+                {captureSlot !== null ? (
+                  <CameraCapture
+                    onCapture={handleCapturarFoto}
+                    onCancel={() => { setCaptureSlot(null); setTokenMode(patientPhotos.length === 0 ? 'none' : 'biometria') }}
+                  />
                 ) : (
-                  <button
-                    onClick={() => setShowCamera(true)}
-                    disabled={bioLoading}
-                    className="inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold text-white"
-                    style={{ background: 'var(--color-primary)' }}
-                  >
-                    {bioLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Camera className="w-4 h-4" />}
-                    Capturar Foto
-                  </button>
+                  <>
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-sm font-semibold" style={{ color: 'var(--color-text)' }}>
+                        Fotos do Paciente ({patientPhotos.length}/5)
+                      </h3>
+                      {patientPhotos.length > 0 && (
+                        <div className="flex items-center gap-3">
+                          <button
+                            onClick={handleResolverToken}
+                            disabled={bioResolving}
+                            className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white"
+                            style={{ background: 'var(--color-primary)' }}
+                          >
+                            {bioResolving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                            Resolver Token
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (!guia?.numero_carteira) return
+                              setConfirmModal({
+                                show: true,
+                                message: 'Tem certeza que deseja excluir todas as fotos de biometria deste paciente?',
+                                onConfirm: () => {
+                                  fetch(`/api/biometria/foto/${encodeURIComponent(guia.numero_carteira ?? '')}`, { method: 'DELETE' })
+                                    .then(() => { setPatientPhotos([]); setCobrarHasFoto(false); toast.success('Fotos excluidas') })
+                                    .catch(() => toast.error('Erro ao excluir fotos'))
+                                  setConfirmModal({ show: false, message: '', onConfirm: () => {} })
+                                },
+                              })
+                            }}
+                            className="text-xs underline"
+                            style={{ color: 'var(--color-danger)' }}
+                          >
+                            Excluir todas
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-5 gap-2">
+                      {[1, 2, 3, 4, 5].map((seq) => {
+                        const photo = patientPhotos.find((p) => p.sequence === seq)
+                        return (
+                          <div
+                            key={seq}
+                            className="aspect-video rounded-lg border overflow-hidden relative"
+                            style={{ borderColor: 'var(--color-border)', background: 'var(--color-surface)' }}
+                          >
+                            {photo ? (
+                              <>
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img src={photo.url} alt={`Foto ${seq}`} className="w-full h-full object-cover" />
+                                <button
+                                  onClick={() => { setCaptureSlot(seq) }}
+                                  title="Refazer foto"
+                                  className="absolute bottom-1 right-1 flex items-center justify-center rounded p-0.5"
+                                  style={{ background: 'rgba(0,0,0,0.55)', color: 'var(--color-text-muted)' }}
+                                >
+                                  <RotateCw className="w-3 h-3" />
+                                </button>
+                              </>
+                            ) : (
+                              <button
+                                onClick={() => { setCaptureSlot(seq) }}
+                                disabled={bioLoading}
+                                className="w-full h-full flex flex-col items-center justify-center gap-1"
+                                style={{ color: 'var(--color-text-muted)' }}
+                              >
+                                {bioLoading && captureSlot === seq
+                                  ? <Loader2 className="w-4 h-4 animate-spin" />
+                                  : <Camera className="w-4 h-4" />}
+                                <span className="text-xs">Foto {seq}</span>
+                              </button>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+
+                    {patientPhotos.length === 0 && (
+                      <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                        Clique em um slot para capturar a foto do paciente.
+                      </p>
+                    )}
+                  </>
                 )}
-              </>
+              </div>
             )}
 
             {/* === MODO WHATSAPP === */}
@@ -1200,12 +1242,7 @@ export default function GuiaDetailPage({ params }: Props) {
                     })
                     const data = await res.json()
                     if (!res.ok) throw new Error(data.error)
-                    setCobrarHasFoto(true)
-                    if (guia.numero_carteira) {
-                      const fotoRes = await fetch(`/api/biometria/foto/${encodeURIComponent(guia.numero_carteira)}`)
-                      const fotoData = await fotoRes.json()
-                      if (fotoData.exists && fotoData.url) setBioPhoto(fotoData.url)
-                    }
+                    if (guia.numero_carteira) fetchPhotos(guia.numero_carteira)
                     toast.success('Foto salva!')
                   } catch (err) {
                     toast.error(err instanceof Error ? err.message : 'Erro ao salvar foto')
@@ -1225,15 +1262,17 @@ export default function GuiaDetailPage({ params }: Props) {
             </div>
           )}
 
-          {/* Foto mini preview */}
-          {cobrarHasFoto && bioPhoto && !cobrarShowCamera && !cobrando && cobrarLogs.length === 0 && (
-            <div className="px-5 py-3 flex items-center gap-3">
-              <div className="shrink-0 w-16 h-9 overflow-hidden rounded border" style={{ borderColor: 'var(--color-border)' }}>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={bioPhoto} alt="Foto" className="w-full h-full object-cover" />
-              </div>
-              <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-                Foto disponivel para biometria.
+          {/* Fotos mini preview */}
+          {cobrarHasFoto && patientPhotos.length > 0 && !cobrarShowCamera && !cobrando && cobrarLogs.length === 0 && (
+            <div className="px-5 py-3 flex items-center gap-2">
+              {patientPhotos.slice(0, 5).map((p) => (
+                <div key={p.sequence} className="shrink-0 w-16 h-9 overflow-hidden rounded border" style={{ borderColor: 'var(--color-border)' }}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={p.url} alt={`Foto ${p.sequence}`} className="w-full h-full object-cover" />
+                </div>
+              ))}
+              <p className="text-xs ml-1" style={{ color: 'var(--color-text-muted)' }}>
+                {patientPhotos.length} foto{patientPhotos.length > 1 ? 's' : ''} disponivel{patientPhotos.length > 1 ? 'is' : ''} para biometria.
               </p>
             </div>
           )}
@@ -1345,6 +1384,50 @@ export default function GuiaDetailPage({ params }: Props) {
                         onChange={(e) => setCobrarPendentes((prev) => prev.map((pp, j) => j === i ? { ...pp, end: e.target.value + ':00' } : pp))}
                         className="w-[90px] px-2 py-1 rounded border text-xs font-mono bg-[var(--color-surface)] border-[var(--color-border)] text-[var(--color-text-muted)]"
                       />
+                      {/* Seletor de foto */}
+                      {patientPhotos.length > 0 && (
+                        <div className="relative group">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              // Abrir popover com fotos
+                              setCobrarPendentes((prev) => prev.map((pp, j) => j === i ? { ...pp, _showPhotoPicker: !pp._showPhotoPicker } : { ...pp, _showPhotoPicker: false }))
+                            }}
+                            className="flex items-center gap-1 px-2 py-1 rounded border text-xs shrink-0"
+                            style={{ borderColor: p.photoSequence ? 'var(--color-primary)' : 'var(--color-border)', color: p.photoSequence ? 'var(--color-primary)' : 'var(--color-text-muted)' }}
+                            title={p.photoSequence ? `Foto ${p.photoSequence}` : 'Escolher foto (random)'}
+                          >
+                            <Camera className="w-3 h-3" />
+                            {p.photoSequence ? `#${p.photoSequence}` : '?'}
+                          </button>
+                          {p._showPhotoPicker && (
+                            <div className="absolute right-0 top-full mt-1 z-50 rounded-lg border p-2 shadow-lg" style={{ background: 'var(--color-card)', borderColor: 'var(--color-border)', minWidth: '200px' }}>
+                              <p className="text-xs mb-2" style={{ color: 'var(--color-text-muted)' }}>Escolher foto:</p>
+                              <div className="flex gap-1 flex-wrap">
+                                <button
+                                  onClick={() => setCobrarPendentes((prev) => prev.map((pp, j) => j === i ? { ...pp, photoSequence: undefined, _showPhotoPicker: false } : pp))}
+                                  className={cn('w-10 h-10 rounded border text-xs flex items-center justify-center', !p.photoSequence && 'ring-2 ring-[var(--color-primary)]')}
+                                  style={{ borderColor: 'var(--color-border)', background: 'var(--color-surface)', color: 'var(--color-text-muted)' }}
+                                  title="Aleatória"
+                                >
+                                  ?
+                                </button>
+                                {patientPhotos.map((foto) => (
+                                  <button
+                                    key={foto.sequence}
+                                    onClick={() => setCobrarPendentes((prev) => prev.map((pp, j) => j === i ? { ...pp, photoSequence: foto.sequence, _showPhotoPicker: false } : pp))}
+                                    className={cn('w-10 h-10 rounded border overflow-hidden', p.photoSequence === foto.sequence && 'ring-2 ring-[var(--color-primary)]')}
+                                    style={{ borderColor: 'var(--color-border)' }}
+                                    title={`Foto ${foto.sequence}`}
+                                  >
+                                    <img src={foto.url} alt={`Foto ${foto.sequence}`} className="w-full h-full object-cover" />
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>

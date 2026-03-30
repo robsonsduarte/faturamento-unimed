@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { requireAuth, isAuthError } from '@/lib/auth'
 import { rateLimit } from '@/lib/rate-limit'
-import { buscarFotoBase64 } from '@/lib/services/biometria'
+import { buscarFotoBase64, buscarFotoBase64PorSequence } from '@/lib/services/biometria'
 import { getSawClient } from '@/lib/saw/client'
 import type { SawCookie } from '@/lib/saw/client'
 import type { SawCredentials } from '@/lib/types'
@@ -117,7 +117,7 @@ export async function POST(request: NextRequest) {
 
   const body = await request.json().catch(() => ({})) as {
     guia_id?: string
-    atendimentos?: Array<{ date: string; start: string; end: string }>
+    atendimentos?: Array<{ date: string; start: string; end: string; photoSequence?: number }>
   }
   if (!body.guia_id) {
     return new Response(JSON.stringify({ error: 'guia_id obrigatorio' }), {
@@ -133,9 +133,12 @@ export async function POST(request: NextRequest) {
         controller.enqueue(enc.encode(sseEvent(type, message)))
       }
 
+      // Timeout proporcional: 3min por procedimento + 2min base (login/setup)
+      const numProcs = body.atendimentos?.length ?? 5
+      const timeoutMs = (2 + numProcs * 3) * 60 * 1000
       const timeout = setTimeout(() => {
-        try { send('error', 'Timeout: operacao excedeu 5 minutos'); controller.close() } catch { /**/ }
-      }, 5 * 60 * 1000)
+        try { send('error', `Timeout: operacao excedeu ${Math.round(timeoutMs / 60000)} minutos`); controller.close() } catch { /**/ }
+      }, timeoutMs)
 
       const db = getServiceClient()
 
@@ -150,11 +153,17 @@ export async function POST(request: NextRequest) {
 
         if (!guia) { send('error', 'Guia nao encontrada'); controller.close(); return }
 
-        // 2. Buscar foto
-        send('processing', '[2/7] Buscando foto do paciente...')
+        // 2. Buscar foto (específica por sequence ou aleatória)
+        const requestedSequence = body.atendimentos?.[0]?.photoSequence
+        send('processing', `[2/7] Buscando foto do paciente${requestedSequence ? ` (#${requestedSequence})` : ' (aleatoria)'}...`)
         let photoBase64: string | null = null
         if (guia.numero_carteira) {
-          photoBase64 = await buscarFotoBase64(guia.numero_carteira)
+          if (requestedSequence) {
+            photoBase64 = await buscarFotoBase64PorSequence(guia.numero_carteira, requestedSequence)
+          }
+          if (!photoBase64) {
+            photoBase64 = await buscarFotoBase64(guia.numero_carteira)
+          }
         }
         if (!photoBase64) {
           send('error', 'Foto do paciente nao encontrada. Capture a foto primeiro.')
