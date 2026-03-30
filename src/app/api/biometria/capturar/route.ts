@@ -24,11 +24,13 @@ export async function POST(request: NextRequest) {
     const result = await salvarFotoBiometria(
       parsed.data.guia_id,
       parsed.data.photo_base64,
-      auth.user.id
+      auth.user.id,
+      parsed.data.sequence
     )
 
     if (!result.success) {
-      return NextResponse.json({ error: result.error }, { status: 400 })
+      const status = result.error === 'Limite de 5 fotos atingido' ? 422 : 400
+      return NextResponse.json({ error: result.error }, { status })
     }
 
     return NextResponse.json(result, { status: 201 })
