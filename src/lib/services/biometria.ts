@@ -1,4 +1,5 @@
 import { createClient as createAdminClient } from '@supabase/supabase-js'
+import jwt from 'jsonwebtoken'
 
 function getServiceClient() {
   return createAdminClient(
@@ -229,4 +230,44 @@ export async function listarFotos(
 ): Promise<Array<{ sequence: number; url: string; created_at: string }>> {
   const result = await buscarFotosPorCarteira(numeroCarteira)
   return result.fotos ?? []
+}
+
+interface BiofaceTokenPayload {
+  guia_id: string
+  numero_carteira: string
+  sub: string
+}
+
+function getBiofaceSecret(): string {
+  const secret = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!secret) throw new Error('SUPABASE_SERVICE_ROLE_KEY nao configurado')
+  return secret
+}
+
+/**
+ * Gera JWT para captura publica de bioface (expira em 24h).
+ * Token payload: { guia_id, numero_carteira, sub: 'bioface' }
+ */
+export function gerarTokenBioface(guiaId: string, numeroCarteira: string): string {
+  return jwt.sign(
+    { guia_id: guiaId, numero_carteira: numeroCarteira, sub: 'bioface' },
+    getBiofaceSecret(),
+    { expiresIn: '24h' }
+  )
+}
+
+/**
+ * Valida JWT de bioface.
+ * Retorna payload com guia_id e numero_carteira, ou null se invalido/expirado.
+ */
+export function validarTokenBioface(
+  token: string
+): { guia_id: string; numero_carteira: string } | null {
+  try {
+    const payload = jwt.verify(token, getBiofaceSecret()) as BiofaceTokenPayload
+    if (payload.sub !== 'bioface') return null
+    return { guia_id: payload.guia_id, numero_carteira: payload.numero_carteira }
+  } catch {
+    return null
+  }
 }
