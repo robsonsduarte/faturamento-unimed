@@ -63,8 +63,8 @@ export async function GET(request: NextRequest) {
       }
 
       const token = gerarTokenBioface(guia.id as string, guia.numero_carteira as string)
-      const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
-      const url = `${appUrl}/bioface/${token}`
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://faturamento.consultoriopro.com.br'
+      const url = `${appUrl}/bioface/${guia.id}?t=${token}`
 
       return NextResponse.json({ url })
     }
@@ -103,7 +103,7 @@ export async function GET(request: NextRequest) {
     const { data: guia, error: guiaErr } = await db
       .from('guias')
       .select(
-        'id, guide_number, paciente, numero_carteira, profissional, valor_sessao'
+        'id, guide_number, paciente, numero_carteira, nome_profissional, valor_total, quantidade_autorizada, saw_xml_data'
       )
       .eq('id', guiaId)
       .single()
@@ -112,21 +112,29 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Guia nao encontrada' }, { status: 404 })
     }
 
-    // Contar procedimentos vinculados à guia
-    const { count: qtdProcedimentos } = await db
-      .from('guia_procedimentos')
-      .select('id', { count: 'exact', head: true })
-      .eq('guia_id', guiaId)
+    // Extrair codigo do procedimento do saw_xml_data
+    let procCodigo = ''
+    if (guia.saw_xml_data) {
+      const xmlData = guia.saw_xml_data as { procedimentosExecutados?: Array<{ codigoProcedimento?: string }> }
+      procCodigo = xmlData.procedimentosExecutados?.[0]?.codigoProcedimento ?? ''
+    }
 
-    const carteiraMasked = mascaraCarteira(guia.numero_carteira ?? payload.numero_carteira)
+    // Calcular valor por sessao: valor_total / 2, exceto psicomotricidade (50000012) que é cheio
+    const valorTotal = typeof guia.valor_total === 'number' ? guia.valor_total : parseFloat(guia.valor_total ?? '0')
+    const valorSessao = procCodigo === '50000012' ? valorTotal : valorTotal / 2
+
+    const carteira = guia.numero_carteira ?? payload.numero_carteira
+    const carteiraMasked = carteira.length > 8
+      ? `${carteira.slice(0, 3)}-****${carteira.slice(-6)}`
+      : carteira
 
     return NextResponse.json({
       success: true,
       paciente: guia.paciente ?? 'Paciente',
       guia_number: guia.guide_number ?? '',
-      profissional: guia.profissional ?? '',
-      qtd: qtdProcedimentos ?? 0,
-      valor_sessao: guia.valor_sessao ?? null,
+      profissional: guia.nome_profissional ?? '',
+      qtd: guia.quantidade_autorizada ?? 0,
+      valor_sessao: valorSessao > 0 ? valorSessao : null,
       carteira_masked: carteiraMasked,
     })
   } catch (err) {

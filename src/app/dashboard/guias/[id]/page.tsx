@@ -2,7 +2,7 @@
 
 import { use, useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, RefreshCw, CheckCircle, XCircle, X, RotateCw, Camera, Loader2, Send, Smartphone, MessageSquare, FilePlus } from 'lucide-react'
+import { ArrowLeft, RefreshCw, CheckCircle, XCircle, X, RotateCw, Camera, Loader2, Send, Smartphone, MessageSquare, FilePlus, Link2, Database } from 'lucide-react'
 import { useGuia, useUpdateGuiaStatus } from '@/hooks/use-guias'
 import { useProfile } from '@/hooks/use-profile'
 import { StatusBadge } from '@/components/shared/status-badge'
@@ -69,6 +69,14 @@ export default function GuiaDetailPage({ params }: Props) {
   const [cobrarModalOpen, setCobrarModalOpen] = useState(false)
   const [cobrarPendentes, setCobrarPendentes] = useState<Array<{ date: string; start: string; end: string; checked: boolean; photoSequence?: number; _showPhotoPicker?: boolean }>>([])
   const [cobrarLoadingPendentes, setCobrarLoadingPendentes] = useState(false)
+
+  // CPro states
+  const [cproModalOpen, setCproModalOpen] = useState(false)
+  const [cproProfissionais, setCproProfissionais] = useState<Array<{ id: number; name: string }>>([])
+  const [cproUser, setCproUser] = useState<number | ''>('')
+  const [cproUserAttendant, setCproUserAttendant] = useState<number | ''>('')
+  const [cproAtendimentos, setCproAtendimentos] = useState<Array<{ date: string; hour_start: string }>>([{ date: '', hour_start: '' }])
+  const [cproSaving, setCproSaving] = useState(false)
 
   // Buscar fotos existentes quando guia com numero_carteira carrega
   function fetchPhotos(carteira: string) {
@@ -335,6 +343,47 @@ export default function GuiaDetailPage({ params }: Props) {
     }
   }
 
+  async function handleAbrirCproModal() {
+    setCproModalOpen(true)
+    const res = await fetch('/api/guias/cpro/profissionais')
+    const data = await res.json()
+    if (data.profissionais) setCproProfissionais(data.profissionais)
+    if (guia?.nome_profissional && data.profissionais) {
+      const match = (data.profissionais as Array<{ id: number; name: string }>).find((p) =>
+        p.name.toLowerCase().includes(guia.nome_profissional!.split(' ')[0].toLowerCase())
+      )
+      if (match) { setCproUser(match.id); setCproUserAttendant(match.id) }
+    }
+  }
+
+  async function handleSalvarCpro() {
+    if (!guia || !cproUser || cproAtendimentos.some((a) => !a.date || !a.hour_start)) {
+      toast.error('Preencha todos os campos')
+      return
+    }
+    setCproSaving(true)
+    try {
+      const res = await fetch('/api/guias/cpro/salvar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          guia_id: guia.id,
+          user: cproUser,
+          user_attendant: cproUserAttendant,
+          atendimentos: cproAtendimentos,
+        }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        toast.success('Guia cadastrada no CPro!')
+        setCproModalOpen(false)
+      } else {
+        toast.error(data.error || 'Erro ao salvar no CPro')
+      }
+    } catch { toast.error('Erro de conexao') }
+    finally { setCproSaving(false) }
+  }
+
   function startCountdown() {
     if (countdownRef.current) clearInterval(countdownRef.current)
     setCountdown(270) // 4:30 = 270 segundos
@@ -529,7 +578,18 @@ export default function GuiaDetailPage({ params }: Props) {
         description={guia.paciente ?? undefined}
         action={
           <div className="flex items-center gap-2">
-            {!isVisualizador && guia.numero_carteira && (
+            <button
+              onClick={handleAbrirCproModal}
+              className={cn(
+                'inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium',
+                'bg-blue-600 text-white hover:bg-blue-700',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500'
+              )}
+            >
+              <Database className="w-4 h-4" />
+              Cadastrar no CPro
+            </button>
+            {guia.numero_carteira && (
               <button
                 onClick={async () => {
                   toast.info('Buscando dados do CPro...')
@@ -760,15 +820,43 @@ export default function GuiaDetailPage({ params }: Props) {
           style={{ borderColor: 'var(--color-warning)', background: 'var(--color-card)' }}
         >
           <div
-            className="px-5 py-4 border-b"
+            className="px-5 py-4 border-b flex items-start justify-between gap-4"
             style={{ borderColor: 'var(--color-warning)', background: 'rgba(245, 158, 11, 0.08)' }}
           >
-            <h2 className="text-sm font-semibold" style={{ color: 'var(--color-warning)' }}>
-              Resolver Token de Atendimento
-            </h2>
-            <p className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>
-              Esta guia requer autenticacao antes de ser acessada no SAW.
-            </p>
+            <div>
+              <h2 className="text-sm font-semibold" style={{ color: 'var(--color-warning)' }}>
+                Resolver Token de Atendimento
+              </h2>
+              <p className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>
+                Esta guia requer autenticacao antes de ser acessada no SAW.
+              </p>
+            </div>
+            <button
+              onClick={async () => {
+                try {
+                  const res = await fetch(
+                    `/api/biometria/capturar-publico?action=generate-link&guia_id=${guia.id}`
+                  )
+                  const data = await res.json() as { url?: string; error?: string }
+                  if (!res.ok) throw new Error(data.error ?? 'Erro ao gerar link')
+                  if (data.url) {
+                    await navigator.clipboard.writeText(data.url)
+                    toast.success('Link copiado! Envie ao paciente via WhatsApp.')
+                  }
+                } catch (err) {
+                  toast.error(err instanceof Error ? err.message : 'Erro ao gerar link')
+                }
+              }}
+              className={cn(
+                'inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium shrink-0',
+                'bg-[var(--color-card)] border border-[var(--color-border)]',
+                'text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]'
+              )}
+            >
+              <Link2 className="w-4 h-4" />
+              Enviar LINK Bioface
+            </button>
           </div>
 
           <div className="p-5 space-y-4">
@@ -1505,6 +1593,158 @@ export default function GuiaDetailPage({ params }: Props) {
           </div>
         </div>
       )}
+      {/* Modal Cadastrar no CPro */}
+      {cproModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div
+            className="mx-4 w-full max-w-lg rounded-xl border shadow-2xl"
+            style={{ background: 'var(--color-card)', borderColor: 'var(--color-primary)' }}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: 'var(--color-border)' }}>
+              <div>
+                <h2 className="text-sm font-semibold" style={{ color: 'var(--color-primary)' }}>Cadastrar no CPro</h2>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
+                  Guia {guia.guide_number} — {guia.paciente}
+                </p>
+              </div>
+              <button onClick={() => setCproModalOpen(false)} className="p-1 rounded hover:bg-white/10">
+                <X className="w-4 h-4" style={{ color: 'var(--color-text-muted)' }} />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="px-6 py-4 space-y-4 max-h-[460px] overflow-y-auto">
+              {/* Profissional Executante */}
+              <div className="space-y-1">
+                <label className="text-xs font-medium" style={{ color: 'var(--color-text-muted)' }}>
+                  Profissional Executante
+                </label>
+                <select
+                  value={cproUser}
+                  onChange={(e) => {
+                    const val = e.target.value === '' ? '' : Number(e.target.value)
+                    setCproUser(val)
+                    setCproUserAttendant(val)
+                  }}
+                  className="w-full rounded-lg border px-3 py-2 text-sm"
+                  style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+                >
+                  <option value="">Selecione...</option>
+                  {cproProfissionais.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Quem Atende */}
+              <div className="space-y-1">
+                <label className="text-xs font-medium" style={{ color: 'var(--color-text-muted)' }}>
+                  Quem Atende
+                </label>
+                <select
+                  value={cproUserAttendant}
+                  onChange={(e) => setCproUserAttendant(e.target.value === '' ? '' : Number(e.target.value))}
+                  className="w-full rounded-lg border px-3 py-2 text-sm"
+                  style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+                >
+                  <option value="">Selecione...</option>
+                  {cproProfissionais.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Paciente */}
+              <div className="space-y-1">
+                <label className="text-xs font-medium" style={{ color: 'var(--color-text-muted)' }}>
+                  Paciente
+                </label>
+                <input
+                  type="text"
+                  readOnly
+                  value={guia.paciente ?? ''}
+                  className="w-full rounded-lg border px-3 py-2 text-sm opacity-60 cursor-not-allowed"
+                  style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+                />
+              </div>
+
+              {/* Atendimentos */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-medium" style={{ color: 'var(--color-text-muted)' }}>
+                    Atendimentos
+                  </label>
+                  <button
+                    type="button"
+                    disabled={cproAtendimentos.length >= (guia.quantidade_autorizada ?? 4)}
+                    onClick={() => setCproAtendimentos((prev) => [...prev, { date: '', hour_start: '' }])}
+                    className="text-xs px-2 py-1 rounded border disabled:opacity-40 disabled:cursor-not-allowed"
+                    style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-muted)' }}
+                  >
+                    + Adicionar
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  {cproAtendimentos.map((a, i) => (
+                    <div key={i} className="flex items-center gap-2">
+                      <input
+                        type="date"
+                        value={a.date}
+                        onChange={(e) => setCproAtendimentos((prev) => prev.map((x, j) => j === i ? { ...x, date: e.target.value } : x))}
+                        className="flex-1 rounded-lg border px-3 py-2 text-sm font-mono"
+                        style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+                      />
+                      <input
+                        type="time"
+                        value={a.hour_start}
+                        onChange={(e) => setCproAtendimentos((prev) => prev.map((x, j) => j === i ? { ...x, hour_start: e.target.value } : x))}
+                        className="w-[110px] rounded-lg border px-3 py-2 text-sm font-mono"
+                        style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+                      />
+                      {i > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setCproAtendimentos((prev) => prev.filter((_, j) => j !== i))}
+                          className="p-1.5 rounded hover:bg-white/10 shrink-0"
+                        >
+                          <X className="w-3.5 h-3.5" style={{ color: 'var(--color-danger)' }} />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                {guia.quantidade_autorizada && (
+                  <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                    Maximo: {guia.quantidade_autorizada} atendimento(s) autorizado(s)
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t" style={{ borderColor: 'var(--color-border)' }}>
+              <button
+                onClick={() => setCproModalOpen(false)}
+                className="rounded-lg border px-4 py-2 text-sm"
+                style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-muted)' }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleSalvarCpro}
+                disabled={cproSaving}
+                className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                style={{ background: 'var(--color-primary)' }}
+              >
+                {cproSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Database className="w-4 h-4" />}
+                {cproSaving ? 'Salvando...' : 'Salvar no CPro'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Modal de Confirmacao */}
       {confirmModal.show && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">

@@ -61,6 +61,7 @@ export default function BiofacePage({
   const [lgpdChecked, setLgpdChecked] = useState(false)
   const [isPortrait, setIsPortrait] = useState(false)
   const [capturing, setCapturing] = useState(false)
+  const [faceDetected, setFaceDetected] = useState(false)
 
   const videoRef = useRef<HTMLVideoElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
@@ -142,6 +143,49 @@ export default function BiofacePage({
       active = false
       streamRef.current?.getTracks().forEach((t) => t.stop())
       streamRef.current = null
+    }
+  }, [screen, isPortrait])
+
+  // ── Face detection (muda cor da moldura) ──────────────────────────────────
+  useEffect(() => {
+    if (screen !== 'camera' || isPortrait) return
+
+    let active = true
+    let intervalId: ReturnType<typeof setInterval> | null = null
+
+    // Usar FaceDetector API se disponivel (Chrome 70+, Android)
+    const hasFaceDetector = typeof window !== 'undefined' && 'FaceDetector' in window
+
+    if (hasFaceDetector) {
+      const detector = new (window as unknown as { FaceDetector: new () => { detect: (source: HTMLVideoElement) => Promise<Array<{ boundingBox: DOMRect }>> } }).FaceDetector()
+
+      intervalId = setInterval(async () => {
+        if (!active || !videoRef.current || videoRef.current.readyState < 2) return
+        try {
+          const faces = await detector.detect(videoRef.current)
+          if (!active) return
+          if (faces.length > 0) {
+            const face = faces[0]
+            const vw = videoRef.current.videoWidth
+            const vh = videoRef.current.videoHeight
+            const faceArea = (face.boundingBox.width * face.boundingBox.height) / (vw * vh)
+            // Rosto ocupa entre 8% e 40% da area do video = enquadrado
+            setFaceDetected(faceArea > 0.08 && faceArea < 0.40)
+          } else {
+            setFaceDetected(false)
+          }
+        } catch {
+          // FaceDetector pode falhar — ignorar
+        }
+      }, 500)
+    } else {
+      // Fallback: sem detecção, manter verde
+      setFaceDetected(false)
+    }
+
+    return () => {
+      active = false
+      if (intervalId) clearInterval(intervalId)
     }
   }, [screen, isPortrait])
 
@@ -312,29 +356,82 @@ export default function BiofacePage({
               style={styles.video}
             />
 
-            {/* Oval face guide */}
-            <div style={styles.ovalGuide} />
-
-            {/* Controls */}
-            <div style={styles.cameraControls}>
-              <button
-                onClick={handleCapturar}
-                disabled={capturing}
-                style={{
-                  ...styles.btn,
-                  ...(capturing ? styles.btnDisabled : styles.btnPrimary),
-                  minWidth: 160,
-                }}
-              >
-                {capturing ? 'Enviando...' : 'Capturar Foto'}
-              </button>
-              <button
-                onClick={handleCancelar}
-                style={styles.cancelLink}
-              >
-                Cancelar
-              </button>
+            {/* Oval face guide — azul quando rosto enquadrado, verde quando nao */}
+            <div style={{
+              ...styles.ovalGuide,
+              borderColor: faceDetected
+                ? 'rgba(59, 130, 246, 0.95)'   /* azul — enquadrado */
+                : 'rgba(16, 185, 129, 0.85)',  /* verde — buscando */
+            }} />
+            {/* Instrucao de enquadramento */}
+            <div style={{
+              position: 'absolute',
+              bottom: '4rem',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              color: faceDetected ? '#3b82f6' : '#10b981',
+              fontSize: '0.8rem',
+              fontWeight: 500,
+              textShadow: '0 1px 4px rgba(0,0,0,0.7)',
+              transition: 'color 0.3s',
+              pointerEvents: 'none',
+              textAlign: 'center',
+              whiteSpace: 'nowrap',
+            }}>
+              {faceDetected ? '✓ Rosto enquadrado' : 'Posicione o rosto dentro da moldura'}
             </div>
+
+            {/* Botao circular ESQUERDO (cancelar) */}
+            <button
+              onClick={handleCancelar}
+              style={{
+                position: 'absolute',
+                bottom: '1.5rem',
+                left: '1.5rem',
+                width: 56,
+                height: 56,
+                borderRadius: '50%',
+                border: '2px solid rgba(148,163,184,0.6)',
+                background: 'rgba(0,0,0,0.5)',
+                color: '#94a3b8',
+                fontSize: '1.2rem',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                zIndex: 10,
+              }}
+              title="Cancelar"
+            >
+              ✕
+            </button>
+
+            {/* Botao circular DIREITO (capturar) */}
+            <button
+              onClick={handleCapturar}
+              disabled={capturing}
+              style={{
+                position: 'absolute',
+                bottom: '1.5rem',
+                right: '1.5rem',
+                width: 64,
+                height: 64,
+                borderRadius: '50%',
+                border: '3px solid #10b981',
+                background: capturing ? 'rgba(0,0,0,0.5)' : 'rgba(16,185,129,0.25)',
+                color: '#fff',
+                fontSize: '1.5rem',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: capturing ? 'wait' : 'pointer',
+                opacity: capturing ? 0.5 : 1,
+                zIndex: 10,
+              }}
+              title="Capturar Foto"
+            >
+              {capturing ? '⏳' : '📷'}
+            </button>
           </>
         )}
       </div>
@@ -532,27 +629,28 @@ const styles: Record<string, React.CSSProperties> = {
   },
   ovalGuide: {
     position: 'absolute',
-    top: '50%',
+    top: '44%',
     left: '50%',
     transform: 'translate(-50%, -50%)',
-    width: '55vw',
-    height: '78vh',
-    maxWidth: 340,
-    maxHeight: 280,
-    border: '3px solid rgba(16, 185, 129, 0.85)',
+    width: '22vw',
+    height: '58vh',
+    maxWidth: 180,
+    maxHeight: 260,
+    border: '2.5px solid rgba(16, 185, 129, 0.85)',
     borderRadius: '50%',
-    boxShadow: '0 0 0 9999px rgba(0,0,0,0.45)',
+    boxShadow: '0 0 0 9999px rgba(0,0,0,0.35)',
     pointerEvents: 'none',
+    transition: 'border-color 0.3s ease',
   },
   cameraControls: {
     position: 'absolute',
-    bottom: '1.5rem',
+    bottom: '0.5rem',
     left: 0,
     right: 0,
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    gap: '0.75rem',
+    gap: '0.4rem',
     padding: '0 2rem',
   },
   cancelLink: {

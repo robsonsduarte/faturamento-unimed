@@ -1,8 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { Plus, Search, Filter, RefreshCw } from 'lucide-react'
+import { Plus, Search, Filter, RefreshCw, Camera } from 'lucide-react'
 import { useGuias } from '@/hooks/use-guias'
 import { useProfile } from '@/hooks/use-profile'
 import { StatusBadge } from '@/components/shared/status-badge'
@@ -21,6 +21,7 @@ export default function GuiasPage() {
   const [status, setStatus] = useState<string>('')
   const [mes, setMes] = useState(getCurrentMonth())
   const [page, setPage] = useState(1)
+  const [fotosSet, setFotosSet] = useState<Set<string>>(new Set())
 
   const { data, isLoading, error, refetch } = useGuias({
     search: search || undefined,
@@ -33,6 +34,27 @@ export default function GuiasPage() {
   const guias = data?.data ?? []
   const total = data?.count ?? 0
   const totalPages = Math.ceil(total / 20)
+
+  // Busca quais numero_carteira possuem fotos de biometria
+  useEffect(() => {
+    if (guias.length === 0) return
+    const carteiras = guias
+      .map((g) => g.numero_carteira)
+      .filter((c): c is string => !!c)
+    if (carteiras.length === 0) return
+
+    fetch('/api/biometria/fotos-existentes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ carteiras }),
+    })
+      .then((r) => r.json())
+      .then((d: { carteiras_com_foto?: string[] }) => {
+        setFotosSet(new Set(d.carteiras_com_foto ?? []))
+      })
+      .catch(() => { /* silencioso — icone permanece cinza */ })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data])
 
   return (
     <div className="space-y-6">
@@ -182,16 +204,34 @@ export default function GuiasPage() {
                       {formatCurrency(guia.valor_total)}
                     </td>
                     <td className="px-4 py-3">
-                      <Link
-                        href={`/dashboard/guias/${guia.id}`}
-                        className={cn(
-                          'px-3 py-1.5 rounded-lg text-xs font-medium',
-                          'bg-[var(--color-surface)] text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors',
-                          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]'
-                        )}
-                      >
-                        Ver
-                      </Link>
+                      <div className="flex items-center gap-2">
+                        <span
+                          title={
+                            guia.numero_carteira && fotosSet.has(guia.numero_carteira)
+                              ? 'Paciente possui foto de biometria'
+                              : 'Sem foto de biometria'
+                          }
+                        >
+                          <Camera
+                            className={cn(
+                              'w-4 h-4 shrink-0',
+                              guia.numero_carteira && fotosSet.has(guia.numero_carteira)
+                                ? 'text-emerald-500'
+                                : 'text-gray-400'
+                            )}
+                          />
+                        </span>
+                        <Link
+                          href={`/dashboard/guias/${guia.id}`}
+                          className={cn(
+                            'px-3 py-1.5 rounded-lg text-xs font-medium',
+                            'bg-[var(--color-surface)] text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors',
+                            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]'
+                          )}
+                        >
+                          Ver
+                        </Link>
+                      </div>
                     </td>
                   </tr>
                   )

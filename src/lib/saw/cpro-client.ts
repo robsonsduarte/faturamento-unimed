@@ -130,6 +130,198 @@ function cproGet(
 }
 
 /**
+ * Makes an HTTPS POST request to ConsultorioPro API.
+ * Same TLS rationale as cproGet — self-signed cert on private VPS.
+ */
+function cproPost(
+  config: CproConfig,
+  path: string,
+  body: unknown
+): Promise<{ status: number; body: string } | null> {
+  const url = `${config.api_url}${path}`
+
+  let parsed: URL
+  try {
+    parsed = new URL(url)
+  } catch {
+    console.error('[CPRO] URL invalida:', url)
+    return Promise.resolve(null)
+  }
+
+  const requestPath = parsed.pathname + parsed.search
+  const bodyStr = JSON.stringify(body)
+
+  return new Promise((resolve) => {
+    const options: https.RequestOptions = {
+      hostname: parsed.hostname,
+      port: parsed.port || 443,
+      path: requestPath,
+      method: 'POST',
+      headers: {
+        'X-API-Key': config.api_key,
+        Host: 'consultoriopro.com.br',
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(bodyStr),
+      },
+      rejectUnauthorized: false,
+      timeout: 30000,
+    }
+
+    const req = https.request(options, (res) => {
+      let data = ''
+      res.on('data', (chunk: Buffer) => {
+        data += chunk.toString()
+      })
+      res.on('end', () => {
+        resolve({ status: res.statusCode ?? 0, body: data })
+      })
+    })
+
+    req.on('error', (err) => {
+      console.error(`[CPRO] Erro de conexao POST (${requestPath}):`, err.message)
+      resolve(null)
+    })
+
+    req.on('timeout', () => {
+      console.error(`[CPRO] Timeout apos 30s POST (${requestPath})`)
+      req.destroy()
+      resolve(null)
+    })
+
+    req.write(bodyStr)
+    req.end()
+  })
+}
+
+/**
+ * Fetches list of professionals registered in CPro for a company.
+ */
+export async function buscarProfissionaisCpro(
+  config: CproConfig
+): Promise<Array<{ id: number; name: string; occupation?: string }>> {
+  const res = await cproGet(
+    config,
+    `/service/api/v1/professionals/${config.company}`
+  )
+
+  if (!res || res.status >= 400) {
+    console.error(
+      `[CPRO] buscarProfissionaisCpro retornou status ${res?.status ?? 'null'}` +
+      ` (company=${config.company})`
+    )
+    return []
+  }
+
+  try {
+    const json = JSON.parse(res.body)
+    const list = Array.isArray(json?.data) ? json.data : (Array.isArray(json) ? json : [])
+    return list as Array<{ id: number; name: string; occupation?: string }>
+  } catch (err) {
+    console.error('[CPRO] Erro ao parsear profissionais:', err)
+    return []
+  }
+}
+
+/**
+ * Searches for a patient in CPro by document (carteira number).
+ */
+export async function buscarPatientCpro(
+  config: CproConfig,
+  carteira: string
+): Promise<{ id: number; name: string } | null> {
+  const res = await cproGet(
+    config,
+    `/service/api/v1/patients/search?document=${encodeURIComponent(carteira)}&company=${config.company}`
+  )
+
+  if (!res || res.status >= 400) {
+    console.error(
+      `[CPRO] buscarPatientCpro retornou status ${res?.status ?? 'null'}` +
+      ` (carteira=${carteira})`
+    )
+    return null
+  }
+
+  try {
+    const json = JSON.parse(res.body)
+    const patient = json?.data ?? json
+    if (patient && typeof patient.id === 'number' && typeof patient.name === 'string') {
+      return { id: patient.id, name: patient.name }
+    }
+    return null
+  } catch (err) {
+    console.error('[CPRO] Erro ao parsear paciente:', err)
+    return null
+  }
+}
+
+export interface CproGuiaProcedimento {
+  codigoProcedimento: string
+  sequencialItem: number
+  dataExecucao: string   // YYYY-MM-DD
+  horaInicial: string    // HH:mm
+}
+
+export interface CproSalvarPayload {
+  guia: {
+    guide_number: string
+    data_autorizacao: string | null
+    senha: string | null
+    numero_carteira: string | null
+    paciente: string | null
+    indicacao_clinica: string | null
+  }
+  procedimentos: CproGuiaProcedimento[]
+  user: number
+  user_attendant: number
+  company: string
+}
+
+export interface CproSalvarResult {
+  success: boolean
+  cpro_guide_id?: number
+  error?: string
+}
+
+/**
+ * Saves a complete guide (guia + procedimentos) into CPro via importar-completa endpoint.
+ */
+export async function salvarGuiaNoCpro(
+  config: CproConfig,
+  payload: CproSalvarPayload
+): Promise<CproSalvarResult> {
+  const res = await cproPost(
+    config,
+    '/service/api/v1/tiss/guias/importar-completa',
+    payload
+  )
+
+  if (!res) {
+    return { success: false, error: 'Sem resposta do CPro (timeout ou erro de conexao)' }
+  }
+
+  try {
+    const json = JSON.parse(res.body)
+
+    if (res.status >= 400) {
+      const errMsg = json?.message ?? json?.error ?? `HTTP ${res.status}`
+      console.error('[CPRO] salvarGuiaNoCpro erro:', res.status, res.body.slice(0, 300))
+      return { success: false, error: errMsg }
+    }
+
+    return {
+      success: json?.success === true,
+      cpro_guide_id: typeof json?.data?.id === 'number' ? json.data.id : undefined,
+      error: json?.success !== true ? (json?.message ?? 'Resposta inesperada do CPro') : undefined,
+    }
+  } catch (err) {
+    console.error('[CPRO] Erro ao parsear resposta salvarGuiaNoCpro:', err)
+    return { success: false, error: 'Erro ao parsear resposta do CPro' }
+  }
+}
+
+/**
  * Fetches guide data from ConsultorioPro API.
  *
  * Uses the /executions/by-guide-number/{guia} endpoint which returns:
