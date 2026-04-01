@@ -353,6 +353,7 @@ export interface CproExecucaoPayload {
   patient: number
   agreement: number
   guide_number: string
+  appointment_day?: string
   attendance_day: string
   attendance_start: string
   value: number

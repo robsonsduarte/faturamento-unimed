@@ -119,20 +119,22 @@ function prevBusinessDay(dateStr: string, holidays: Set<string>): Date {
 function generateDuplicateDates(
   atendimentos: Atendimento[],
   holidays: Set<string>
-): Array<{ date: string; hour_start: string }> {
-  const all: Array<{ date: string; hour_start: string }> = []
+): Array<{ appointment_day: string; date: string; hour_start: string }> {
+  const all: Array<{ appointment_day: string; date: string; hour_start: string }> = []
 
   for (const atend of atendimentos) {
-    all.push({ date: atend.date, hour_start: atend.hour_start })
+    // Original: appointment_day = attendance_day
+    all.push({ appointment_day: atend.date, date: atend.date, hour_start: atend.hour_start })
 
+    // Duplicate: appointment_day stays the same, attendance_day changes
     const originalMonth = new Date(atend.date + 'T12:00:00').getMonth()
     const next = nextBusinessDay(atend.date, holidays)
 
     if (next.getMonth() === originalMonth) {
-      all.push({ date: formatDate(next), hour_start: atend.hour_start })
+      all.push({ appointment_day: atend.date, date: formatDate(next), hour_start: atend.hour_start })
     } else {
       const prev = prevBusinessDay(atend.date, holidays)
-      all.push({ date: formatDate(prev), hour_start: atend.hour_start })
+      all.push({ appointment_day: atend.date, date: formatDate(prev), hour_start: atend.hour_start })
     }
   }
 
@@ -218,7 +220,7 @@ export async function POST(request: NextRequest) {
   // Generate all execution dates
   const execDates = multiplicador === 2
     ? generateDuplicateDates(body.atendimentos, holidays)
-    : body.atendimentos.map((a) => ({ date: a.date, hour_start: a.hour_start }))
+    : body.atendimentos.map((a) => ({ appointment_day: a.date, date: a.date, hour_start: a.hour_start }))
 
   // ─── RULE 2: No duplicate date for same patient+user ───
   const seen = new Set<string>()
@@ -275,6 +277,7 @@ export async function POST(request: NextRequest) {
       patient: patientId,
       agreement: body.agreement_id,
       guide_number: g.guide_number,
+      appointment_day: atend.appointment_day,
       attendance_day: atend.date,
       attendance_start: atend.hour_start,
       value: valorSessao,
