@@ -328,6 +328,7 @@ class SawClient {
               numeroCarteira: null,
               quantidadeSolicitada: 0,
               quantidadeAutorizada: 0,
+              codigoProcedimentoSolicitado: '',
               procedimentosRealizados: 0,
               procedimentosDetalhes: [],
               chave: null,
@@ -481,6 +482,7 @@ class SawClient {
             /* QUANTITIES FROM #procedimentos table (FIRST ROW) */
             let quantidadeSolicitada = 0
             let quantidadeAutorizada = 0
+            let codigoProcedimentoSolicitado = ''
 
             const tabelaProcedimentos = document.querySelector('#procedimentos table')
             if (tabelaProcedimentos) {
@@ -488,6 +490,7 @@ class SawClient {
               for (let i = 1; i < linhas.length; i++) {
                 const colunas = linhas[i].querySelectorAll('td')
                 if (colunas.length >= 5) {
+                  codigoProcedimentoSolicitado = (colunas[1].textContent ?? '').trim().replace(/\u00a0/g, '')
                   const qtdSolic = (colunas[3].textContent ?? '').trim().replace(/\u00a0/g, '')
                   const qtdAutor = (colunas[4].textContent ?? '').trim().replace(/\u00a0/g, '')
                   if (qtdSolic && !isNaN(Number(qtdSolic))) quantidadeSolicitada = parseInt(qtdSolic)
@@ -630,6 +633,7 @@ class SawClient {
               indicacaoAcidente,
               quantidadeSolicitada,
               quantidadeAutorizada,
+              codigoProcedimentoSolicitado,
               procedimentosRealizados,
               procedimentosDetalhes,
               tokenMessage,

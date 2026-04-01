@@ -4,7 +4,7 @@ import { requireAuth, isAuthError } from '@/lib/auth'
 import { rateLimit } from '@/lib/rate-limit'
 import { getSawClient } from '@/lib/saw/client'
 import type { SawCookie } from '@/lib/saw/client'
-import { fetchCproData } from '@/lib/saw/cpro-client'
+import { fetchCproData, buscarAgreementsUnimed, buscarPatientByName } from '@/lib/saw/cpro-client'
 import type { SawCredentials, CproConfig } from '@/lib/types'
 import { computeGuideStatus } from '@/lib/guide-status'
 import { classifyGuia } from '@/lib/carteira'
@@ -394,6 +394,38 @@ export async function POST(request: NextRequest) {
                   valorTotal: cproResult.valorTotal,
                   valorTotalFormatado: cproResult.valorTotalFormatado,
                   profissional: cproResult.profissional,
+                }
+
+                // Enrich with agreement and patient for CPro modal pre-fill
+                const cproCfg = { api_url: cproConfig.api_url, api_key: cproConfig.api_key, company: cproConfig.company ?? '1' }
+                const codigoProc = typeof sawData?.['codigoProcedimentoSolicitado'] === 'string'
+                  ? sawData['codigoProcedimentoSolicitado'] as string
+                  : ''
+                const rawNome = sawData?.['nomeBeneficiario']
+                const pacienteNome = (typeof rawNome === 'string' && rawNome.trim() !== '' ? rawNome.trim() : null) as string | null
+
+                const [agreements, patient] = await Promise.all([
+                  buscarAgreementsUnimed(cproCfg),
+                  pacienteNome ? buscarPatientByName(cproCfg, pacienteNome) : Promise.resolve(null),
+                ])
+
+                // Match agreement by procedure code
+                const matchedAg = codigoProc
+                  ? agreements.find((ag) => ag.title.startsWith(codigoProc))
+                  : null
+
+                if (matchedAg) {
+                  cproData.agreement_id = matchedAg.id
+                  cproData.agreement_value = matchedAg.value
+                  cproData.agreement_title = matchedAg.title
+                }
+                if (patient) {
+                  cproData.patient_id = patient.id
+                  cproData.patient_name = patient.name
+                }
+                // user from CPro (professional)
+                if (cproResult.userId) {
+                  cproData.user_id = Number(cproResult.userId)
                 }
                 if (cproResult.procedimentosCadastrados > 0) {
                   send('info', `Guia ${guideNumber}: CPro retornou ${cproResult.procedimentosCadastrados} procedimento(s) cadastrado(s)`, guideNumber)

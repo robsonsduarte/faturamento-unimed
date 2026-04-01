@@ -256,44 +256,132 @@ export async function buscarPatientCpro(
   }
 }
 
-export interface CproGuiaProcedimento {
-  codigoProcedimento: string
-  sequencialItem: number
-  dataExecucao: string   // YYYY-MM-DD
-  horaInicial: string    // HH:mm
+interface CproAgreement {
+  id: number
+  title: string
+  value: number | null
+  parent_name: string | null
 }
 
-export interface CproSalvarPayload {
-  guia: {
-    guide_number: string
-    data_autorizacao: string | null
-    senha: string | null
-    numero_carteira: string | null
-    paciente: string | null
-    indicacao_clinica: string | null
+/**
+ * Fetches all Unimed agreements from CPro.
+ */
+async function fetchAgreementsUnimed(
+  config: CproConfig
+): Promise<CproAgreement[]> {
+  const res = await cproGet(
+    config,
+    `/service/api/v1/executions/agreements?company=${config.company}`
+  )
+
+  if (!res || res.status >= 400) {
+    console.error(`[CPRO] fetchAgreementsUnimed status ${res?.status ?? 'null'}`)
+    return []
   }
-  procedimentos: CproGuiaProcedimento[]
+
+  try {
+    const json = JSON.parse(res.body)
+    const agreements = json?.data?.agreements ?? json?.agreements ?? []
+    if (!Array.isArray(agreements)) return []
+
+    return agreements
+      .filter((ag: { title?: string; parent_name?: string }) => {
+        const title = (ag.title ?? '').toLowerCase()
+        const parent = (ag.parent_name ?? '').toLowerCase()
+        return title.includes('unimed') || parent.includes('unimed')
+      })
+      .map((ag: { id: string | number; title: string; value?: string | number | null; parent_name?: string }) => ({
+        id: Number(ag.id),
+        title: ag.title ?? '',
+        value: ag.value != null ? Number(ag.value) : null,
+        parent_name: ag.parent_name ?? null,
+      }))
+  } catch (err) {
+    console.error('[CPRO] Erro ao parsear agreements:', err)
+    return []
+  }
+}
+
+/**
+ * Fetches Unimed child agreements (with value) for display in the modal.
+ */
+export async function buscarAgreementsUnimed(
+  config: CproConfig
+): Promise<Array<{ id: number; title: string; value: number | null }>> {
+  const all = await fetchAgreementsUnimed(config)
+  // Return only children with parent_name (actual procedures, not parent "Unimed")
+  return all
+    .filter((ag) => ag.parent_name)
+    .map((ag) => ({ id: ag.id, title: ag.title, value: ag.value }))
+}
+
+/**
+ * Searches for a patient by name in CPro.
+ */
+export async function buscarPatientByName(
+  config: CproConfig,
+  nome: string
+): Promise<{ id: number; name: string } | null> {
+  const res = await cproGet(
+    config,
+    `/service/api/v1/patients/search?company=${config.company}&query=${encodeURIComponent(nome)}&limit=5`
+  )
+
+  if (!res || res.status >= 400) {
+    console.error(`[CPRO] buscarPatientByName status ${res?.status ?? 'null'} (nome=${nome})`)
+    return null
+  }
+
+  try {
+    const json = JSON.parse(res.body)
+    const patients = json?.data?.patients ?? json?.patients ?? []
+    if (!Array.isArray(patients) || patients.length === 0) return null
+
+    const p = patients[0]
+    const name = [p.first_name, p.last_name].filter(Boolean).join(' ') || p.name || ''
+    return { id: Number(p.id), name }
+  } catch (err) {
+    console.error('[CPRO] Erro ao parsear paciente por nome:', err)
+    return null
+  }
+}
+
+export interface CproExecucaoPayload {
+  company: string | number
   user: number
   user_attendant: number
-  company: string
+  patient: number
+  agreement: number
+  guide_number: string
+  attendance_day: string
+  attendance_start: string
+  value: number
+  type?: string
+  status_guide?: string
+  status?: string
+  authorization_date?: string | null
+  password?: string | null
+  validate_password?: string | null
+  clinical_indication?: string | null
+  author?: number
 }
 
-export interface CproSalvarResult {
+export interface CproExecucaoResult {
   success: boolean
-  cpro_guide_id?: number
+  id?: number
   error?: string
 }
 
 /**
- * Saves a complete guide (guia + procedimentos) into CPro via importar-completa endpoint.
+ * Creates a single execution in CPro via POST /executions.
  */
-export async function salvarGuiaNoCpro(
+export async function criarExecucaoCpro(
   config: CproConfig,
-  payload: CproSalvarPayload
-): Promise<CproSalvarResult> {
+  payload: CproExecucaoPayload
+): Promise<CproExecucaoResult> {
   const res = await cproPost(
     config,
-    '/service/api/v1/tiss/guias/importar-completa',
+    '/service/api/v1/executions',
     payload
   )
 
@@ -306,17 +394,17 @@ export async function salvarGuiaNoCpro(
 
     if (res.status >= 400) {
       const errMsg = json?.message ?? json?.error ?? `HTTP ${res.status}`
-      console.error('[CPRO] salvarGuiaNoCpro erro:', res.status, res.body.slice(0, 300))
+      console.error('[CPRO] criarExecucaoCpro erro:', res.status, res.body.slice(0, 300))
       return { success: false, error: errMsg }
     }
 
     return {
       success: json?.success === true,
-      cpro_guide_id: typeof json?.data?.id === 'number' ? json.data.id : undefined,
+      id: typeof json?.data?.id === 'number' ? json.data.id : undefined,
       error: json?.success !== true ? (json?.message ?? 'Resposta inesperada do CPro') : undefined,
     }
   } catch (err) {
-    console.error('[CPRO] Erro ao parsear resposta salvarGuiaNoCpro:', err)
+    console.error('[CPRO] Erro ao parsear resposta criarExecucaoCpro:', err)
     return { success: false, error: 'Erro ao parsear resposta do CPro' }
   }
 }

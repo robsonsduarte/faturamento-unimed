@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { requireAuth, isAuthError } from '@/lib/auth'
-import { buscarProfissionaisCpro } from '@/lib/saw/cpro-client'
+import { buscarProfissionaisCpro, buscarAgreementsUnimed } from '@/lib/saw/cpro-client'
 import type { CproConfig } from '@/lib/types'
 
 function getServiceClient() {
@@ -13,7 +13,7 @@ function getServiceClient() {
 
 /**
  * GET /api/guias/cpro/profissionais
- * Returns the list of professionals registered in CPro for the configured company.
+ * Returns professionals and Unimed agreements from CPro.
  */
 export async function GET() {
   const auth = await requireAuth()
@@ -33,7 +33,10 @@ export async function GET() {
 
   const config = cproInteg.config as CproConfig
 
-  const profissionais = await buscarProfissionaisCpro(config)
+  const [profissionais, agreements] = await Promise.all([
+    buscarProfissionaisCpro(config),
+    buscarAgreementsUnimed(config),
+  ])
 
-  return NextResponse.json({ profissionais })
+  return NextResponse.json({ profissionais, agreements })
 }

@@ -73,9 +73,12 @@ export default function GuiaDetailPage({ params }: Props) {
   // CPro states
   const [cproModalOpen, setCproModalOpen] = useState(false)
   const [cproProfissionais, setCproProfissionais] = useState<Array<{ id: number; name: string }>>([])
+  const [cproAgreements, setCproAgreements] = useState<Array<{ id: number; title: string; value: number | null }>>([])
+  const [cproAgreement, setCproAgreement] = useState<number | ''>('')
   const [cproUser, setCproUser] = useState<number | ''>('')
   const [cproUserAttendant, setCproUserAttendant] = useState<number | ''>('')
   const [cproAtendimentos, setCproAtendimentos] = useState<Array<{ date: string; hour_start: string }>>([{ date: '', hour_start: '' }])
+  const [cproMultiplicador, setCproMultiplicador] = useState<1 | 2>(2)
   const [cproSaving, setCproSaving] = useState(false)
 
   // Buscar fotos existentes quando guia com numero_carteira carrega
@@ -348,7 +351,30 @@ export default function GuiaDetailPage({ params }: Props) {
     const res = await fetch('/api/guias/cpro/profissionais')
     const data = await res.json()
     if (data.profissionais) setCproProfissionais(data.profissionais)
-    if (guia?.nome_profissional && data.profissionais) {
+    if (data.agreements) setCproAgreements(data.agreements)
+
+    const cd = guia?.cpro_data as Record<string, unknown> | null
+    const sd = guia?.saw_data as Record<string, unknown> | null
+    const codigoProc = (sd?.codigoProcedimentoSolicitado as string) ?? ''
+    const ags = (data.agreements ?? []) as Array<{ id: number; title: string; value: number | null }>
+
+    // Auto-match agreement by procedure code
+    let matched = false
+    if (codigoProc && ags.length > 0) {
+      const match = ags.find((ag) => ag.title.startsWith(codigoProc))
+      if (match) { setCproAgreement(match.id); matched = true }
+      else toast.error(`Procedimento ${codigoProc} nao encontrado nos convenios Unimed. Selecione manualmente ou adicione no CPro.`)
+    }
+    // Fallback: from cpro_data
+    if (!matched && cd && typeof cd.agreement_id === 'number') {
+      setCproAgreement(cd.agreement_id)
+    }
+
+    // Pre-fill professional
+    if (cd && typeof cd.user_id === 'number') {
+      setCproUser(cd.user_id)
+      setCproUserAttendant(cd.user_id)
+    } else if (guia?.nome_profissional && data.profissionais) {
       const match = (data.profissionais as Array<{ id: number; name: string }>).find((p) =>
         p.name.toLowerCase().includes(guia.nome_profissional!.split(' ')[0].toLowerCase())
       )
@@ -357,7 +383,7 @@ export default function GuiaDetailPage({ params }: Props) {
   }
 
   async function handleSalvarCpro() {
-    if (!guia || !cproUser || cproAtendimentos.some((a) => !a.date || !a.hour_start)) {
+    if (!guia || !cproUser || !cproAgreement || cproAtendimentos.some((a) => !a.date || !a.hour_start)) {
       toast.error('Preencha todos os campos')
       return
     }
@@ -371,14 +397,34 @@ export default function GuiaDetailPage({ params }: Props) {
           user: cproUser,
           user_attendant: cproUserAttendant,
           atendimentos: cproAtendimentos,
+          multiplicador: cproMultiplicador,
+          agreement_id: cproAgreement,
+          agreement_value: cproAgreements.find((a) => a.id === cproAgreement)?.value ?? 0,
         }),
       })
       const data = await res.json()
       if (data.success) {
-        toast.success('Guia cadastrada no CPro!')
+        toast.success(`${data.created ?? 1} execucao(oes) criada(s) no CPro!`)
+        // Persist selection to cpro_data for future use
+        const selAg = cproAgreements.find((a) => a.id === cproAgreement)
+        if (guia) {
+          fetch(`/api/guias/cpro/salvar-config`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              guia_id: guia.id,
+              agreement_id: cproAgreement,
+              agreement_value: selAg?.value ?? 0,
+              agreement_title: selAg?.title ?? '',
+              user_id: cproUser,
+              patient_id: null,
+            }),
+          }).catch(() => {})
+        }
         setCproModalOpen(false)
       } else {
-        toast.error(data.error || 'Erro ao salvar no CPro')
+        const errMsg = typeof data.error === 'string' ? data.error : (data.error?.message ?? JSON.stringify(data.error) ?? 'Erro ao salvar no CPro')
+        toast.error(errMsg)
       }
     } catch { toast.error('Erro de conexao') }
     finally { setCproSaving(false) }
@@ -654,7 +700,7 @@ export default function GuiaDetailPage({ params }: Props) {
       <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-5">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-sm font-semibold text-[var(--color-text)]">Pipeline de Status</h2>
-          {isVisualizador && guia.status !== 'COMPLETA' && (
+          {guia.status !== 'COMPLETA' && (
             <button
               onClick={handleReimport}
               disabled={reimporting}
@@ -799,6 +845,7 @@ export default function GuiaDetailPage({ params }: Props) {
             { label: 'Tipo Atendimento', value: guia.tipo_atendimento },
             { label: 'Indicacao Acidente', value: guia.indicacao_acidente },
             { label: 'Indicacao Clinica', value: guia.indicacao_clinica },
+            { label: 'Procedimento', value: (guia.saw_data as Record<string, unknown> | null)?.codigoProcedimentoSolicitado as string | undefined, mono: true },
             { label: 'Procs. Realizados', value: guia.procedimentos_realizados },
             { label: 'Procs. Cadastrados', value: guia.procedimentos_cadastrados },
             { label: 'Token Biometrico', value: guia.token_biometrico ? 'Sim' : 'Nao' },
@@ -1655,6 +1702,47 @@ export default function GuiaDetailPage({ params }: Props) {
                 </select>
               </div>
 
+              {/* Procedimento / Convenio */}
+              <div className="space-y-1">
+                <label className="text-xs font-medium" style={{ color: 'var(--color-text-muted)' }}>
+                  Procedimento
+                </label>
+                <select
+                  value={cproAgreement}
+                  onChange={(e) => setCproAgreement(e.target.value === '' ? '' : Number(e.target.value))}
+                  className="w-full rounded-lg border px-3 py-2 text-sm"
+                  style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+                >
+                  <option value="">Selecione...</option>
+                  {cproAgreements.map((ag) => (
+                    <option key={ag.id} value={ag.id}>
+                      {ag.title} {ag.value != null ? `(R$ ${Number(ag.value).toFixed(2).replace('.', ',')})` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Dobrar cobranca */}
+              <div className="flex items-center justify-between rounded-lg border px-3 py-2.5" style={{ borderColor: 'var(--color-border)', background: 'var(--color-surface)' }}>
+                <div>
+                  <span className="text-xs font-medium" style={{ color: 'var(--color-text)' }}>Dobrar cobranca</span>
+                  <p className="text-[10px] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
+                    {cproMultiplicador === 2 ? 'Valor x2 (Psicologia, Fono, Nutricao...)' : 'Valor x1 (Psicomotricidade, Musicoterapia)'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setCproMultiplicador((prev) => prev === 2 ? 1 : 2)}
+                  className="relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors"
+                  style={{ background: cproMultiplicador === 2 ? 'var(--color-primary)' : 'var(--color-border)' }}
+                >
+                  <span
+                    className="inline-block h-5 w-5 rounded-full bg-white shadow transition-transform"
+                    style={{ transform: cproMultiplicador === 2 ? 'translateX(20px)' : 'translateX(0)' }}
+                  />
+                </button>
+              </div>
+
               {/* Paciente */}
               <div className="space-y-1">
                 <label className="text-xs font-medium" style={{ color: 'var(--color-text-muted)' }}>
@@ -1678,7 +1766,16 @@ export default function GuiaDetailPage({ params }: Props) {
                   <button
                     type="button"
                     disabled={cproAtendimentos.length >= (guia.quantidade_autorizada ?? 4)}
-                    onClick={() => setCproAtendimentos((prev) => [...prev, { date: '', hour_start: '' }])}
+                    onClick={() => setCproAtendimentos((prev) => {
+                      const last = prev[prev.length - 1]
+                      let nextDate = ''
+                      if (last?.date) {
+                        const d = new Date(last.date + 'T12:00:00')
+                        d.setDate(d.getDate() + 7)
+                        nextDate = d.toISOString().slice(0, 10)
+                      }
+                      return [...prev, { date: nextDate, hour_start: last?.hour_start ?? '' }]
+                    })}
                     className="text-xs px-2 py-1 rounded border disabled:opacity-40 disabled:cursor-not-allowed"
                     style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-muted)' }}
                   >
