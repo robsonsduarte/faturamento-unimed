@@ -48,17 +48,18 @@ export const LOTE_STATUS_LABELS: Record<LoteStatus, string> = {
 }
 
 export const GUIDE_STATUS_FLOW = [
-  'PENDENTE',
   'CPRO',
   'TOKEN',
+  'PENDENTE',
   'COMPLETA',
   'PROCESSADA',
   'FATURADA',
-  'CANCELADA',
-  'NEGADA',
 ] as const
 
-export type GuideStatus = (typeof GUIDE_STATUS_FLOW)[number]
+/** Terminal statuses shown alone (not in the pipeline) */
+export const GUIDE_STATUS_TERMINAL = ['CANCELADA', 'NEGADA'] as const
+
+export type GuideStatus = (typeof GUIDE_STATUS_FLOW)[number] | (typeof GUIDE_STATUS_TERMINAL)[number]
 
 export const GUIDE_STATUS_COLORS: Record<GuideStatus, string> = {
   PENDENTE: 'bg-slate-500',

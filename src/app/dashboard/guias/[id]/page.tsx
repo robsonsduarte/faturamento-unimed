@@ -9,7 +9,7 @@ import { StatusBadge } from '@/components/shared/status-badge'
 import { Skeleton } from '@/components/shared/loading-skeleton'
 import { PageHeader } from '@/components/shared/page-header'
 import { formatCurrency, formatDate, cn } from '@/lib/utils'
-import { GUIDE_STATUS_FLOW } from '@/lib/constants'
+import { GUIDE_STATUS_FLOW, GUIDE_STATUS_TERMINAL } from '@/lib/constants'
 import type { GuideStatus } from '@/lib/constants'
 import type { ImportLog } from '@/lib/types'
 import { CameraCapture } from '@/components/shared/camera-capture'
@@ -614,7 +614,8 @@ export default function GuiaDetailPage({ params }: Props) {
     )
   }
 
-  const statusIndex = GUIDE_STATUS_FLOW.indexOf(guia.status as GuideStatus)
+  const isTerminal = (GUIDE_STATUS_TERMINAL as readonly string[]).includes(guia.status)
+  const statusIndex = isTerminal ? -1 : GUIDE_STATUS_FLOW.indexOf(guia.status as (typeof GUIDE_STATUS_FLOW)[number])
   const lastLog = logs.length > 0 ? logs[logs.length - 1] : null
 
   return (
@@ -759,45 +760,54 @@ export default function GuiaDetailPage({ params }: Props) {
         )}
 
         <div className="flex items-center gap-1 overflow-x-auto pb-2">
-          {GUIDE_STATUS_FLOW.map((s, i) => {
-            const isActive = s === guia.status
-            const isDone = i < statusIndex
-            return (
-              <div key={s} className="flex items-center gap-1 shrink-0">
-                {isVisualizador ? (
-                  <span
-                    className={cn(
-                      'px-3 py-1.5 rounded-full text-xs font-medium',
-                      isActive && 'bg-[var(--color-primary)] text-white',
-                      isDone && !isActive && 'bg-[var(--color-success)]/20 text-[var(--color-success)]',
-                      !isActive && !isDone && 'bg-[var(--color-surface)] text-[var(--color-text-muted)]'
-                    )}
-                  >
-                    {isDone && <CheckCircle className="w-3 h-3 inline mr-1" />}
-                    {s}
-                  </span>
-                ) : (
-                  <button
-                    onClick={() => updateStatus.mutate({ id: guia.id, status: s as GuideStatus })}
-                    disabled={updateStatus.isPending}
-                    className={cn(
-                      'px-3 py-1.5 rounded-full text-xs font-medium transition-colors',
-                      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]',
-                      isActive && 'bg-[var(--color-primary)] text-white',
-                      isDone && !isActive && 'bg-[var(--color-success)]/20 text-[var(--color-success)]',
-                      !isActive && !isDone && 'bg-[var(--color-surface)] text-[var(--color-text-muted)] hover:bg-[var(--color-card)]'
-                    )}
-                  >
-                    {isDone && <CheckCircle className="w-3 h-3 inline mr-1" />}
-                    {s}
-                  </button>
-                )}
-                {i < GUIDE_STATUS_FLOW.length - 1 && (
-                  <div className={cn('w-6 h-0.5', isDone ? 'bg-[var(--color-success)]' : 'bg-[var(--color-border)]')} />
-                )}
-              </div>
-            )
-          })}
+          {isTerminal ? (
+            <span className={cn(
+              'px-4 py-2 rounded-full text-xs font-semibold text-white',
+              guia.status === 'CANCELADA' ? 'bg-red-500' : 'bg-orange-600'
+            )}>
+              {guia.status}
+            </span>
+          ) : (
+            GUIDE_STATUS_FLOW.map((s, i) => {
+              const isActive = s === guia.status
+              const isDone = i < statusIndex
+              return (
+                <div key={s} className="flex items-center gap-1 shrink-0">
+                  {isVisualizador ? (
+                    <span
+                      className={cn(
+                        'px-3 py-1.5 rounded-full text-xs font-medium',
+                        isActive && 'bg-[var(--color-primary)] text-white',
+                        isDone && !isActive && 'bg-[var(--color-success)]/20 text-[var(--color-success)]',
+                        !isActive && !isDone && 'bg-[var(--color-surface)] text-[var(--color-text-muted)]'
+                      )}
+                    >
+                      {isDone && <CheckCircle className="w-3 h-3 inline mr-1" />}
+                      {s}
+                    </span>
+                  ) : (
+                    <button
+                      onClick={() => updateStatus.mutate({ id: guia.id, status: s as GuideStatus })}
+                      disabled={updateStatus.isPending}
+                      className={cn(
+                        'px-3 py-1.5 rounded-full text-xs font-medium transition-colors',
+                        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]',
+                        isActive && 'bg-[var(--color-primary)] text-white',
+                        isDone && !isActive && 'bg-[var(--color-success)]/20 text-[var(--color-success)]',
+                        !isActive && !isDone && 'bg-[var(--color-surface)] text-[var(--color-text-muted)] hover:bg-[var(--color-card)]'
+                      )}
+                    >
+                      {isDone && <CheckCircle className="w-3 h-3 inline mr-1" />}
+                      {s}
+                    </button>
+                  )}
+                  {i < GUIDE_STATUS_FLOW.length - 1 && (
+                    <div className={cn('w-6 h-0.5', isDone ? 'bg-[var(--color-success)]' : 'bg-[var(--color-border)]')} />
+                  )}
+                </div>
+              )
+            })
+          )}
         </div>
       </div>
 

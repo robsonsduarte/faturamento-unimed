@@ -535,8 +535,16 @@ export async function POST(request: NextRequest) {
           // valor_total and procedimentos_cadastrados already stored in the DB.
           if (cproData !== null) {
             guiaPayload.cpro_data = cproData
-            guiaPayload.valor_total = typeof cproData['valorTotal'] === 'number' ? cproData['valorTotal'] : null
             guiaPayload.procedimentos_cadastrados = procedimentosCadastrados ?? 0
+
+            // Recalculate valor_total from agreement value if available
+            const agValue = typeof cproData['agreement_value'] === 'number' ? cproData['agreement_value'] as number : null
+            const qtdAut = quantidadeAutorizada ?? 0
+            if (agValue && agValue > 0 && qtdAut > 0) {
+              guiaPayload.valor_total = agValue * qtdAut
+            } else {
+              guiaPayload.valor_total = typeof cproData['valorTotal'] === 'number' ? cproData['valorTotal'] : null
+            }
           }
 
           const { data: upsertedGuia, error: upsertError } = await db
