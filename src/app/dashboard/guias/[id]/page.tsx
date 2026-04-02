@@ -9,6 +9,7 @@ import { StatusBadge } from '@/components/shared/status-badge'
 import { Skeleton } from '@/components/shared/loading-skeleton'
 import { PageHeader } from '@/components/shared/page-header'
 import { formatCurrency, formatDate, cn } from '@/lib/utils'
+import { generateAvailableMonthsWithNext, formatMonthDisplay } from '@/lib/month-utils'
 import { GUIDE_STATUS_FLOW, GUIDE_STATUS_TERMINAL } from '@/lib/constants'
 import type { GuideStatus } from '@/lib/constants'
 import type { ImportLog } from '@/lib/types'
@@ -59,6 +60,32 @@ export default function GuiaDetailPage({ params }: Props) {
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const [countdown, setCountdown] = useState<number>(0)
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  // Mes referencia inline edit
+  const [mesRefSaving, setMesRefSaving] = useState(false)
+
+  async function handleMesReferenciaChange(newMes: string) {
+    if (!guia || newMes === guia.mes_referencia) return
+    setMesRefSaving(true)
+    try {
+      const res = await fetch(`/api/guias/${guia.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mes_referencia: newMes }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Erro' })) as { error: string }
+        toast.error(err.error)
+        return
+      }
+      toast.success('Mes de referencia atualizado')
+      refetch()
+    } catch {
+      toast.error('Erro ao atualizar mes de referencia')
+    } finally {
+      setMesRefSaving(false)
+    }
+  }
 
   // Cobrar atendimentos states
   const [cobrando, setCobrando] = useState(false)
@@ -843,6 +870,24 @@ export default function GuiaDetailPage({ params }: Props) {
               </span>
             </div>
           ))}
+          {/* Mes Referencia — editavel inline */}
+          <div className="flex justify-between items-center gap-2">
+            <span className="text-xs text-[var(--color-text-muted)] shrink-0">Mes Referencia</span>
+            <select
+              value={guia.mes_referencia ?? ''}
+              onChange={(e) => void handleMesReferenciaChange(e.target.value)}
+              disabled={mesRefSaving}
+              className={cn(
+                'px-2 py-1 rounded text-xs font-mono bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text)]',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]',
+                mesRefSaving && 'opacity-50'
+              )}
+            >
+              {generateAvailableMonthsWithNext().map((m) => (
+                <option key={m} value={m}>{formatMonthDisplay(m)}</option>
+              ))}
+            </select>
+          </div>
         </div>
 
         {/* Profissional */}

@@ -17,6 +17,7 @@ export const guiaUpdateSchema = z.object({
   tipo_atendimento: z.string().optional(),
   indicacao_acidente: z.string().optional(),
   lote_id: z.string().uuid().nullable().optional(),
+  mes_referencia: z.string().regex(/^\d{4}-\d{2}$/).optional(),
 })
 
 export type GuiaUpdateInput = z.infer<typeof guiaUpdateSchema>
