@@ -11,9 +11,9 @@ export async function GET(request: NextRequest) {
 
     const { data, error } = await supabase
       .from('guias')
-      .select('status, valor_total, created_at')
-      .gte('created_at', `${ano}-01-01`)
-      .lte('created_at', `${ano}-12-31`)
+      .select('status, valor_total, mes_referencia')
+      .gte('mes_referencia', `${ano}-01`)
+      .lte('mes_referencia', `${ano}-12`)
 
     if (error) return NextResponse.json({ error: error.message }, { status: 400 })
 
@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
     for (let m = 1; m <= 12; m++) byMonth[m] = { count: 0, valor: 0 }
 
     for (const guia of data ?? []) {
-      const mes = new Date(guia.created_at).getMonth() + 1
+      const mes = parseInt(guia.mes_referencia.split('-')[1], 10)
       byMonth[mes].count++
       byMonth[mes].valor += guia.valor_total ?? 0
     }

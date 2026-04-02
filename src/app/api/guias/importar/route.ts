@@ -45,10 +45,11 @@ export async function POST(request: NextRequest) {
   }
   const { user, supabase } = auth
 
-  const body = await request.json().catch(() => ({})) as { guide_numbers?: string[] }
+  const body = await request.json().catch(() => ({})) as { guide_numbers?: string[]; mes_referencia?: string }
   const guideNumbers: string[] = Array.isArray(body.guide_numbers)
     ? body.guide_numbers.filter(Boolean)
     : []
+  const mesReferencia = body.mes_referencia
 
   // Visualizador pode atualizar somente uma guia por vez (botao "Atualizar dados")
   // Importacao em massa e restrita a admin e operador
@@ -540,6 +541,12 @@ export async function POST(request: NextRequest) {
             saw_data: sawData,
             status: finalStatus,
             updated_at: new Date().toISOString(),
+          }
+
+          // Only set mes_referencia on first import (when provided).
+          // Reimports (without mes_referencia) preserve the existing value.
+          if (mesReferencia) {
+            guiaPayload.mes_referencia = mesReferencia
           }
 
           // Only overwrite CPro-derived fields when CPro returned data.

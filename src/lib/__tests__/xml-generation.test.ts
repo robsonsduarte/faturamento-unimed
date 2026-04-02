@@ -377,6 +377,7 @@ describe('XML TISS Generation — Real Data', () => {
       saw_data: null,
       cpro_data: null,
       saw_xml_data: null,
+      mes_referencia: '2026-01',
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       procedimentos: [], // Empty!

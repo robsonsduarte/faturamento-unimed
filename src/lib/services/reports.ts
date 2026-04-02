@@ -15,7 +15,7 @@ export async function getReportData(mes?: string): Promise<ReportData> {
     const [year, month] = mes.split('-').map(Number)
     const nextM = month === 12 ? { y: year + 1, m: 1 } : { y: year, m: month + 1 }
     const endDate = `${nextM.y}-${String(nextM.m).padStart(2, '0')}-01`
-    guiasQuery = guiasQuery.gte('created_at', startDate).lt('created_at', endDate)
+    guiasQuery = guiasQuery.eq('mes_referencia', mes)
     lotesQuery = lotesQuery.eq('referencia', mes)
     cobrancasQuery = cobrancasQuery.gte('created_at', startDate).lt('created_at', endDate)
   }

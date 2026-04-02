@@ -50,6 +50,7 @@ export interface Guia {
   data_token: string | null
   saw_data: Record<string, unknown> | null
   cpro_data: Record<string, unknown> | null
+  mes_referencia: string
   saw_xml_data: SawXmlData | null
   created_at: string
   updated_at: string

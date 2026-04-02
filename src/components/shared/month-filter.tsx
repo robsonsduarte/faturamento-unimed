@@ -2,7 +2,7 @@
 
 import { Calendar } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { generateAvailableMonths, formatMonthDisplay, getCurrentMonth } from '@/lib/month-utils'
+import { generateAvailableMonthsWithNext, formatMonthDisplay, getCurrentMonth } from '@/lib/month-utils'
 
 interface MonthFilterProps {
   value: string
@@ -11,7 +11,7 @@ interface MonthFilterProps {
 }
 
 export function MonthFilter({ value, onChange, showAll = true }: MonthFilterProps) {
-  const months = generateAvailableMonths()
+  const months = generateAvailableMonthsWithNext()
 
   return (
     <div className="flex items-center gap-2">

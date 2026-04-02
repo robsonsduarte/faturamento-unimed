@@ -7,6 +7,7 @@ import { ArrowLeft, Send, Loader2, CheckCircle, X, TerminalSquare, Database } fr
 import { toast } from 'sonner'
 import { PageHeader } from '@/components/shared/page-header'
 import { cn } from '@/lib/utils'
+import { generateAvailableMonthsWithNext, formatMonthDisplay, getCurrentMonth } from '@/lib/month-utils'
 import type { ImportLog } from '@/lib/types'
 import type { CproProfissional } from '@/lib/saw/cpro-client'
 
@@ -44,6 +45,7 @@ export default function EmitirGuiaPage() {
   const [carteiraSuffix, setCarteiraSuffix] = useState('')
   const [quantidade, setQuantidade] = useState('4')
   const [indicacaoClinica, setIndicacaoClinica] = useState('')
+  const [mesReferencia, setMesReferencia] = useState(getCurrentMonth())
 
   // CPro data (unified)
   const [cproProfissionais, setCproProfissionais] = useState<CproProfissional[]>([])
@@ -213,7 +215,7 @@ export default function EmitirGuiaPage() {
       const importRes = await fetch('/api/guias/importar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ guide_numbers: [guideNumber] }),
+        body: JSON.stringify({ guide_numbers: [guideNumber], mes_referencia: mesReferencia }),
         signal: abort.signal,
       })
 
@@ -316,6 +318,17 @@ export default function EmitirGuiaPage() {
           <div>
             <h2 className="text-sm font-semibold text-[var(--color-text)]">Dados da Guia</h2>
             <p className="text-xs text-[var(--color-text-muted)] mt-1">Preencha para emitir no SAW e cadastrar no CPro.</p>
+          </div>
+
+          {/* Mes de Referencia */}
+          <div className="space-y-1.5">
+            <label className={labelCls}>Mes de Referencia</label>
+            <select value={mesReferencia} onChange={(e) => setMesReferencia(e.target.value)}
+              disabled={loading} className={inputCls}>
+              {generateAvailableMonthsWithNext().map((m) => (
+                <option key={m} value={m}>{formatMonthDisplay(m)}</option>
+              ))}
+            </select>
           </div>
 
           {/* Paciente */}

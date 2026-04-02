@@ -34,6 +34,19 @@ export function generateAvailableMonths(): string[] {
   return months
 }
 
+/** Gera lista de meses de START_MONTH ate o proximo mes (para form de emissao). */
+export function generateAvailableMonthsWithNext(): string[] {
+  const current = getCurrentMonth()
+  const nextMonth = getNextMonthFirstDay(current).slice(0, 7)
+  const months: string[] = []
+  let cursor = START_MONTH
+  while (cursor <= nextMonth) {
+    months.push(cursor)
+    cursor = getNextMonthFirstDay(cursor).slice(0, 7)
+  }
+  return months
+}
+
 /** Gera lista de meses de START_MONTH ate um limite futuro (para selects de criacao). */
 export function generateMonthsUntil(endYear: number, endMonth: number): string[] {
   const months: string[] = []

@@ -42,11 +42,7 @@ export async function GET(request: NextRequest) {
     if (periodoInicio) query = query.gte('data_autorizacao', periodoInicio)
     if (periodoFim) query = query.lte('data_autorizacao', periodoFim)
     if (mes && mes !== 'todos') {
-      const startDate = `${mes}-01`
-      const [year, month] = mes.split('-').map(Number)
-      const nextM = month === 12 ? { y: year + 1, m: 1 } : { y: year, m: month + 1 }
-      const endDate = `${nextM.y}-${String(nextM.m).padStart(2, '0')}-01`
-      query = query.gte('created_at', startDate).lt('created_at', endDate)
+      query = query.eq('mes_referencia', mes)
     }
 
     const from = (page - 1) * pageSize

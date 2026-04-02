@@ -43,11 +43,7 @@ export async function getGuias(
   if (periodo_inicio) query = query.gte('data_autorizacao', periodo_inicio)
   if (periodo_fim) query = query.lte('data_autorizacao', periodo_fim)
   if (mes && mes !== 'todos') {
-    const startDate = `${mes}-01`
-    const [year, month] = mes.split('-').map(Number)
-    const nextM = month === 12 ? { y: year + 1, m: 1 } : { y: year, m: month + 1 }
-    const endDate = `${nextM.y}-${String(nextM.m).padStart(2, '0')}-01`
-    query = query.gte('created_at', startDate).lt('created_at', endDate)
+    query = query.eq('mes_referencia', mes)
   }
 
   const from = (page - 1) * pageSize
