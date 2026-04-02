@@ -136,7 +136,8 @@ function cproGet(
 function cproPost(
   config: CproConfig,
   path: string,
-  body: unknown
+  body: unknown,
+  method: 'POST' | 'PUT' = 'POST'
 ): Promise<{ status: number; body: string } | null> {
   const url = `${config.api_url}${path}`
 
@@ -156,7 +157,7 @@ function cproPost(
       hostname: parsed.hostname,
       port: parsed.port || 443,
       path: requestPath,
-      method: 'POST',
+      method,
       headers: {
         'X-API-Key': config.api_key,
         Host: 'consultoriopro.com.br',
@@ -197,9 +198,19 @@ function cproPost(
 /**
  * Fetches list of professionals registered in CPro for a company.
  */
+export interface CproProfissional {
+  id: number
+  name: string
+  council_code: string | null
+  council_number: string | null
+  council_uf: string | null
+  cbos: string | null
+  occupation_name: string | null
+}
+
 export async function buscarProfissionaisCpro(
   config: CproConfig
-): Promise<Array<{ id: number; name: string; occupation?: string }>> {
+): Promise<CproProfissional[]> {
   const res = await cproGet(
     config,
     `/service/api/v1/professionals/${config.company}`
@@ -216,7 +227,15 @@ export async function buscarProfissionaisCpro(
   try {
     const json = JSON.parse(res.body)
     const list = Array.isArray(json?.data) ? json.data : (Array.isArray(json) ? json : [])
-    return list as Array<{ id: number; name: string; occupation?: string }>
+    return list.map((p: Record<string, unknown>) => ({
+      id: Number(p.id),
+      name: (p.name as string) ?? '',
+      council_code: (p.council as Record<string, unknown>)?.code as string ?? null,
+      council_number: (p.council as Record<string, unknown>)?.number as string ?? null,
+      council_uf: (p.council as Record<string, unknown>)?.uf as string ?? null,
+      cbos: (p.occupation as Record<string, unknown>)?.cbos as string ?? null,
+      occupation_name: (p.occupation as Record<string, unknown>)?.name as string ?? null,
+    }))
   } catch (err) {
     console.error('[CPRO] Erro ao parsear profissionais:', err)
     return []
@@ -407,6 +426,69 @@ export async function criarExecucaoCpro(
   } catch (err) {
     console.error('[CPRO] Erro ao parsear resposta criarExecucaoCpro:', err)
     return { success: false, error: 'Erro ao parsear resposta do CPro' }
+  }
+}
+
+export interface CproPendingExec {
+  id: number
+  data: string       // DD/MM/YYYY
+  horaInicial: string
+  horaFinal: string
+}
+
+/**
+ * Fetches pending (not yet realized) executions for a guide from CPro.
+ */
+export async function buscarExecucoesPendentes(
+  config: CproConfig,
+  guideNumber: string
+): Promise<CproPendingExec[]> {
+  const res = await cproGet(
+    config,
+    `/service/api/v1/executions/pending/${guideNumber}?company=${config.company}`
+  )
+
+  if (!res || res.status >= 400) {
+    console.error(`[CPRO] buscarExecucoesPendentes status ${res?.status ?? 'null'} (guide=${guideNumber})`)
+    return []
+  }
+
+  try {
+    const json = JSON.parse(res.body)
+    const procs = json?.data?.procedimentos ?? []
+    if (!Array.isArray(procs)) return []
+    return procs as CproPendingExec[]
+  } catch (err) {
+    console.error('[CPRO] Erro ao parsear pendentes:', err)
+    return []
+  }
+}
+
+/**
+ * Marks a single CPro execution as realized via PUT /executions/{id}/mark-realized.
+ */
+export async function marcarExecucaoRealizada(
+  config: CproConfig,
+  executionId: number,
+  data: { attendance_day: string; attendance_start: string; attendance_end: string }
+): Promise<{ success: boolean; error?: string }> {
+  const res = await cproPost(
+    config,
+    `/service/api/v1/executions/${executionId}/mark-realized?company=${config.company}`,
+    { realized: true, ...data },
+    'PUT'
+  )
+
+  if (!res) return { success: false, error: 'Sem resposta do CPro' }
+
+  try {
+    const json = JSON.parse(res.body)
+    if (res.status >= 400) {
+      return { success: false, error: json?.message ?? json?.error ?? `HTTP ${res.status}` }
+    }
+    return { success: json?.success === true }
+  } catch {
+    return { success: false, error: 'Erro ao parsear resposta' }
   }
 }
 

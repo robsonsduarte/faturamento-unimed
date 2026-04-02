@@ -5,7 +5,8 @@ export async function getDashboardKPIs(mes?: string): Promise<DashboardKPIs> {
   const supabase = createClient()
 
   let guiasQuery = supabase.from('guias').select('status, valor_total')
-  let lotesQuery = supabase.from('lotes').select('status').in('status', ['rascunho', 'gerado', 'enviado'])
+  let lotesAbertosQuery = supabase.from('lotes').select('status').in('status', ['rascunho', 'gerado', 'enviado'])
+  let lotesFaturadosQuery = supabase.from('lotes').select('valor_total').eq('status', 'faturado')
   let cobrancasQuery = supabase.from('cobrancas').select('valor_pago, valor_glosado, valor_cobrado')
 
   if (mes && mes !== 'todos') {
@@ -14,21 +15,24 @@ export async function getDashboardKPIs(mes?: string): Promise<DashboardKPIs> {
     const nextM = month === 12 ? { y: year + 1, m: 1 } : { y: year, m: month + 1 }
     const endDate = `${nextM.y}-${String(nextM.m).padStart(2, '0')}-01`
     guiasQuery = guiasQuery.gte('created_at', startDate).lt('created_at', endDate)
-    lotesQuery = lotesQuery.eq('referencia', mes)
+    lotesAbertosQuery = lotesAbertosQuery.eq('referencia', mes)
+    lotesFaturadosQuery = lotesFaturadosQuery.eq('referencia', mes)
     cobrancasQuery = cobrancasQuery.gte('created_at', startDate).lt('created_at', endDate)
   }
 
-  const [guiasResult, lotesResult, cobrancasResult] = await Promise.all([
+  const [guiasResult, lotesAbertosResult, lotesFaturadosResult, cobrancasResult] = await Promise.all([
     guiasQuery,
-    lotesQuery,
+    lotesAbertosQuery,
+    lotesFaturadosQuery,
     cobrancasQuery,
   ])
 
   if (guiasResult.error) throw new Error(guiasResult.error.message)
-  if (lotesResult.error) throw new Error(lotesResult.error.message)
+  if (lotesAbertosResult.error) throw new Error(lotesAbertosResult.error.message)
   if (cobrancasResult.error) throw new Error(cobrancasResult.error.message)
 
   const guias = guiasResult.data ?? []
+  const lotesFaturados = lotesFaturadosResult.data ?? []
   const cobrancas = cobrancasResult.data ?? []
 
   return {
@@ -46,11 +50,9 @@ export async function getDashboardKPIs(mes?: string): Promise<DashboardKPIs> {
     valor_processado: guias
       .filter((g) => g.status === 'PROCESSADA')
       .reduce((acc, g) => acc + (g.valor_total ?? 0), 0),
-    valor_total_faturado: guias
-      .filter((g) => g.status === 'FATURADA')
-      .reduce((acc, g) => acc + (g.valor_total ?? 0), 0),
+    valor_total_faturado: lotesFaturados.reduce((acc, l) => acc + (l.valor_total ?? 0), 0),
     valor_total_pago: cobrancas.reduce((acc, c) => acc + (c.valor_pago ?? 0), 0),
     valor_total_glosado: cobrancas.reduce((acc, c) => acc + (c.valor_glosado ?? 0), 0),
-    lotes_abertos: lotesResult.data?.length ?? 0,
+    lotes_abertos: lotesAbertosResult.data?.length ?? 0,
   }
 }

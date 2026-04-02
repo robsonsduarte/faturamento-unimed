@@ -1,5 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { requireAuth, isAuthError } from '@/lib/auth'
+
+function getServiceClient() {
+  return createAdminClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  )
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -11,6 +19,8 @@ export async function GET(request: NextRequest) {
 
     let guiasQuery = supabase.from('guias').select('status, valor_total')
     let lotesQuery = supabase.from('lotes').select('status').in('status', ['rascunho', 'gerado', 'enviado'])
+    const admin = getServiceClient()
+    let lotesFaturadosQuery = admin.from('lotes').select('valor_total').eq('status', 'faturado')
     let cobrancasQuery = supabase.from('cobrancas').select('valor_pago, valor_glosado, valor_cobrado')
 
     if (mes && mes !== 'todos') {
@@ -20,13 +30,15 @@ export async function GET(request: NextRequest) {
       const endDate = `${nextM.y}-${String(nextM.m).padStart(2, '0')}-01`
       guiasQuery = guiasQuery.gte('created_at', startDate).lt('created_at', endDate)
       lotesQuery = lotesQuery.eq('referencia', mes)
+      lotesFaturadosQuery = lotesFaturadosQuery.eq('referencia', mes)
       cobrancasQuery = cobrancasQuery.gte('created_at', startDate).lt('created_at', endDate)
     }
 
-    const [guiasResult, lotesResult, cobrancasResult] = await Promise.all([
+    const [guiasResult, lotesResult, cobrancasResult, lotesFaturadosResult] = await Promise.all([
       guiasQuery,
       lotesQuery,
       cobrancasQuery,
+      lotesFaturadosQuery,
     ])
 
     if (guiasResult.error) return NextResponse.json({ error: guiasResult.error.message }, { status: 400 })
@@ -51,7 +63,7 @@ export async function GET(request: NextRequest) {
       valor_processado: guias
         .filter((g) => g.status === 'PROCESSADA')
         .reduce((a, g) => a + (g.valor_total ?? 0), 0),
-      valor_total_faturado: guias.filter((g) => g.status === 'FATURADA').reduce((a, g) => a + (g.valor_total ?? 0), 0),
+      valor_total_faturado: (lotesFaturadosResult.data ?? []).reduce((a: number, l: { valor_total: number }) => a + (l.valor_total ?? 0), 0),
       valor_total_pago: cobrancas.reduce((a, c) => a + (c.valor_pago ?? 0), 0),
       valor_total_glosado: cobrancas.reduce((a, c) => a + (c.valor_glosado ?? 0), 0),
       lotes_abertos: lotesResult.data?.length ?? 0,

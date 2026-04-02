@@ -3,55 +3,28 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { ArrowLeft, FilePlus, Send, Loader2, CheckCircle, X, Download, TerminalSquare } from 'lucide-react'
+import { ArrowLeft, Send, Loader2, CheckCircle, X, TerminalSquare, Database } from 'lucide-react'
 import { toast } from 'sonner'
 import { PageHeader } from '@/components/shared/page-header'
 import { cn } from '@/lib/utils'
 import type { ImportLog } from '@/lib/types'
+import type { CproProfissional } from '@/lib/saw/cpro-client'
 
-const CONSELHOS = [
-  { codigo: '08', label: 'CRP' },
-  { codigo: '06', label: 'CRM' },
-  { codigo: '07', label: 'CREFONO' },
-]
-
-const UFS = [
-  { codigo: '29', label: 'BA' },
-  { codigo: '35', label: 'SP' },
-  { codigo: '33', label: 'RJ' },
-]
-
-const PROCEDIMENTOS = [
-  { codigo: '50000012', descricao: 'Sessão de Psicomotricidade' },
-  { codigo: '50000462', descricao: 'Consulta Psicologia' },
-  { codigo: '50000470', descricao: 'Sessão de Psicoterapia Individual por Psicólogo' },
-  { codigo: '50000560', descricao: 'Consulta Nutricionista' },
-  { codigo: '50000586', descricao: 'Consulta Fonoaudiologia' },
-  { codigo: '50000616', descricao: 'Sessão Individual Ambulatorial de Fonoaudiologia' },
-  { codigo: '50000675', descricao: 'Avaliação do Processamento Auditivo Central' },
-  { codigo: '50001213', descricao: 'Musicoterapia' },
-]
-
-interface SuccessResult {
-  guideNumber: string
-  paciente: string
+/** CPro council code → SAW conselho code mapping */
+const COUNCIL_MAP: Record<string, string> = {
+  '6': '06', '06': '06', // CRM
+  '7': '07', '07': '07', // CREFONO
+  '8': '08', '08': '08', // CRP
+  '9': '08', '09': '08', // CPro uses 9 for CRP, SAW uses 08
 }
 
 function LogLine({ log }: { log: ImportLog }) {
   const colorMap: Record<ImportLog['type'], string> = {
-    info: 'text-[#a0a0a0]',
-    processing: 'text-[#f0c040]',
-    success: 'text-[#4ade80]',
-    error: 'text-[#f87171]',
+    info: 'text-[#a0a0a0]', processing: 'text-[#f0c040]', success: 'text-[#4ade80]', error: 'text-[#f87171]',
   }
-
   const prefixMap: Record<ImportLog['type'], string> = {
-    info: '  ',
-    processing: '~ ',
-    success: '+ ',
-    error: '- ',
+    info: '  ', processing: '~ ', success: '+ ', error: '- ',
   }
-
   return (
     <div className="flex gap-2 leading-5">
       <span className="shrink-0 text-[#4ade80] select-none">[{log.timestamp}]</span>
@@ -69,111 +42,146 @@ export default function EmitirGuiaPage() {
   const [pacienteNome, setPacienteNome] = useState('')
   const [carteiraPrefix] = useState('0865')
   const [carteiraSuffix, setCarteiraSuffix] = useState('')
-  const [profNome, setProfNome] = useState('')
-  const [profConselho, setProfConselho] = useState('08') // default CRP
-  const [profNumero, setProfNumero] = useState('')
-  const [profUf, setProfUf] = useState('29') // default BA
-  const [profCbo, setProfCbo] = useState('')
-  const [procedimentoCodigo, setProcedimentoCodigo] = useState('')
   const [quantidade, setQuantidade] = useState('4')
   const [indicacaoClinica, setIndicacaoClinica] = useState('')
 
-  // Pre-fill from query params (when coming from guide detail page)
-  useEffect(() => {
-    const paciente = searchParams.get('paciente')
-    const carteira = searchParams.get('carteira')
-    const prof = searchParams.get('profissional')
-    const conselho = searchParams.get('prof_conselho')
-    const numero = searchParams.get('prof_numero')
-    const uf = searchParams.get('prof_uf')
-    const cbo = searchParams.get('prof_cbo')
-    const proc = searchParams.get('procedimento')
-    const qtd = searchParams.get('quantidade')
-    const cid = searchParams.get('cid')
+  // CPro data (unified)
+  const [cproProfissionais, setCproProfissionais] = useState<CproProfissional[]>([])
+  const [cproAgreements, setCproAgreements] = useState<Array<{ id: number; title: string; value: number | null }>>([])
+  const [selectedProf, setSelectedProf] = useState<number | ''>('')
+  const [selectedProfAttendant, setSelectedProfAttendant] = useState<number | ''>('')
+  const [selectedAgreement, setSelectedAgreement] = useState<number | ''>('')
+  const [cproMultiplicador, setCproMultiplicador] = useState<1 | 2>(2)
+  const [cproAtendimentos, setCproAtendimentos] = useState<Array<{ date: string; hour_start: string }>>([{ date: '', hour_start: '' }])
 
-    if (paciente) setPacienteNome(paciente)
-    if (carteira) {
-      // Remove prefix 0865 or 865 if present
-      const suffix = carteira.replace(/^0?865/, '')
-      setCarteiraSuffix(suffix)
-    }
-    if (prof) setProfNome(prof)
-    if (conselho) setProfConselho(conselho)
-    if (numero) setProfNumero(numero)
-    if (uf) setProfUf(uf)
-    if (cbo) setProfCbo(cbo)
-    if (proc) {
-      const match = PROCEDIMENTOS.find(p => p.codigo === proc)
-      if (match) setProcedimentoCodigo(match.codigo)
-      else if (proc) setProcedimentoCodigo(proc) // Set even if not in list
-    }
-    if (qtd) setQuantidade(qtd)
-    if (cid) setIndicacaoClinica(cid)
-  }, [searchParams])
-
-  // Emission state
-  const [loadingEmitir, setLoadingEmitir] = useState(false)
-  const [loadingImportar, setLoadingImportar] = useState(false)
+  // Pipeline state
+  const [pipelineStep, setPipelineStep] = useState<'idle' | 'emitindo' | 'importando' | 'cpro' | 'done'>('idle')
   const [logs, setLogs] = useState<ImportLog[]>([])
-  const [successResult, setSuccessResult] = useState<SuccessResult | null>(null)
   const logEndRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
 
-  const loading = loadingEmitir || loadingImportar
+  const loading = pipelineStep !== 'idle' && pipelineStep !== 'done'
+
+  const prof = typeof selectedProf === 'number' ? cproProfissionais.find((p) => p.id === selectedProf) : null
+  const agreement = typeof selectedAgreement === 'number' ? cproAgreements.find((a) => a.id === selectedAgreement) : null
+  // Extract procedure code from agreement title (e.g. "50000470 - Sessao...")
+  const procedimentoCodigo = agreement?.title.match(/^(\d+)/)?.[1] ?? ''
 
   const appendLog = useCallback((log: ImportLog) => {
     setLogs((prev) => [...prev, log])
-    // Scroll happens via useEffect on parent, but we trigger it here too
-    setTimeout(() => {
-      logEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-    }, 50)
+    setTimeout(() => logEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50)
   }, [])
 
-  function nowTimestamp() {
+  function nowTs() {
     return new Date().toLocaleTimeString('pt-BR', { hour12: false })
   }
+
+  // Pre-fill from query params
+  useEffect(() => {
+    const p = searchParams
+    if (p.get('paciente')) setPacienteNome(p.get('paciente')!)
+    if (p.get('carteira')) setCarteiraSuffix(p.get('carteira')!.replace(/^0?865/, ''))
+    if (p.get('quantidade')) setQuantidade(p.get('quantidade')!)
+    if (p.get('cid')) setIndicacaoClinica(p.get('cid')!)
+  }, [searchParams])
+
+  // Load CPro data + auto-match from query params
+  useEffect(() => {
+    fetch('/api/guias/cpro/profissionais')
+      .then((r) => r.json())
+      .then((data: { profissionais?: CproProfissional[]; agreements?: Array<{ id: number; title: string; value: number | null }> }) => {
+        const profs = data.profissionais ?? []
+        const ags = data.agreements ?? []
+        setCproProfissionais(profs)
+        setCproAgreements(ags)
+
+        // Auto-match profissional by name from query param
+        const profName = searchParams.get('profissional')
+        if (profName && profs.length > 0) {
+          const firstName = profName.split(' ')[0].toLowerCase()
+          const match = profs.find((p) => p.name.toLowerCase().includes(firstName))
+          if (match) { setSelectedProf(match.id); setSelectedProfAttendant(match.id) }
+        }
+
+        // Auto-match agreement by procedure code from query param
+        const procCode = searchParams.get('procedimento')
+        if (procCode && ags.length > 0) {
+          const match = ags.find((ag) => ag.title.startsWith(procCode))
+          if (match) setSelectedAgreement(match.id)
+        }
+      })
+      .catch(() => {})
+  }, [searchParams])
 
   function validateForm(): string | null {
     if (!carteiraSuffix.trim()) return 'Informe o numero da carteira'
     if (carteiraSuffix.trim().length > 13) return 'Carteira deve ter no maximo 13 digitos'
-    if (!profNome.trim()) return 'Informe o nome do profissional'
-    if (!profNumero.trim()) return 'Informe o numero do conselho do profissional'
-    if (!procedimentoCodigo) return 'Selecione um procedimento'
+    if (!selectedProf) return 'Selecione o profissional'
+    if (!selectedAgreement) return 'Selecione o procedimento/convenio'
+    if (!procedimentoCodigo) return 'Procedimento invalido'
     const qtd = parseInt(quantidade, 10)
     if (isNaN(qtd) || qtd < 1) return 'Quantidade deve ser maior que zero'
+    if (cproAtendimentos.some((a) => !a.date || !a.hour_start)) return 'Preencha todas as datas e horarios'
     return null
+  }
+
+  async function readSSE(
+    response: Response,
+    onEvent: (evt: Record<string, unknown>) => void,
+    signal: AbortSignal
+  ) {
+    const reader = response.body!.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done || signal.aborted) break
+      buffer += decoder.decode(value, { stream: true })
+      const parts = buffer.split('\n\n')
+      buffer = parts.pop() ?? ''
+      for (const part of parts) {
+        const line = part.trim()
+        if (!line.startsWith('data: ')) continue
+        try { onEvent(JSON.parse(line.slice(6)) as Record<string, unknown>) } catch { /* skip */ }
+      }
+    }
   }
 
   async function handleEmitir() {
     if (loading) return
-
     const error = validateForm()
-    if (error) {
-      toast.error(error)
-      return
-    }
+    if (error) { toast.error(error); return }
+
+    if (!prof) { toast.error('Profissional nao encontrado'); return }
 
     const carteira = carteiraSuffix.trim()
+    const sawConselho = COUNCIL_MAP[prof.council_code ?? ''] ?? prof.council_code ?? '08'
+    const sawCbo = prof.occupation_name ?? prof.cbos ?? ''
 
-    setLoadingEmitir(true)
     setLogs([])
-    setSuccessResult(null)
+    setPipelineStep('emitindo')
 
     const abort = new AbortController()
     abortRef.current = abort
 
+    let guideNumber = ''
+    let guiaId = ''
+
     try {
-      const response = await fetch('/api/guias/emitir', {
+      // ─── Step 1: Emit guide on SAW ───
+      appendLog({ type: 'processing', message: 'Passo 1/3: Emitindo guia no SAW...', timestamp: nowTs() })
+
+      const emitRes = await fetch('/api/guias/emitir', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           carteira,
           profissional: {
-            nome: profNome,
-            conselho: profConselho,
-            numeroConselho: profNumero,
-            uf: profUf,
-            cbo: profCbo,
+            nome: prof.name,
+            conselho: sawConselho,
+            numeroConselho: prof.council_number ?? '',
+            uf: prof.council_uf ?? '29',
+            cbo: sawCbo,
           },
           procedimento_codigo: procedimentoCodigo,
           quantidade: parseInt(quantidade, 10),
@@ -182,579 +190,334 @@ export default function EmitirGuiaPage() {
         signal: abort.signal,
       })
 
-      if (!response.ok || !response.body) {
-        const err = await response.json().catch(() => ({ error: 'Erro ao iniciar emissao' })) as { error: string }
+      if (!emitRes.ok || !emitRes.body) {
+        const err = await emitRes.json().catch(() => ({ error: 'Erro ao iniciar emissao' })) as { error: string }
         throw new Error(err.error)
       }
 
-      const reader = response.body.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ''
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-
-        buffer += decoder.decode(value, { stream: true })
-        const parts = buffer.split('\n\n')
-        buffer = parts.pop() ?? ''
-
-        for (const part of parts) {
-          const line = part.trim()
-          if (!line.startsWith('data: ')) continue
-          try {
-            const parsed = JSON.parse(line.slice(6)) as {
-              type: ImportLog['type'] | 'result'
-              message: string
-              timestamp: string
-              guide_number?: string
-              guideNumber?: string
-              paciente?: string
-            }
-
-            if (parsed.type === 'result') {
-              // Success result — show modal
-              setSuccessResult({
-                guideNumber: parsed.guideNumber ?? parsed.guide_number ?? '',
-                paciente: parsed.paciente ?? '',
-              })
-              toast.success('Guia emitida com sucesso!')
-            } else {
-              appendLog({
-                type: parsed.type as ImportLog['type'],
-                message: parsed.message,
-                timestamp: parsed.timestamp,
-                guide_number: parsed.guide_number,
-              })
-            }
-          } catch {
-            // Malformed SSE line — skip
-          }
+      await readSSE(emitRes, (evt) => {
+        if (evt.type === 'result') {
+          guideNumber = (evt.guideNumber ?? evt.guide_number ?? '') as string
+          appendLog({ type: 'success', message: `Guia ${guideNumber} emitida com sucesso!`, timestamp: nowTs() })
+        } else {
+          appendLog({ type: evt.type as ImportLog['type'], message: evt.message as string, timestamp: evt.timestamp as string })
         }
-      }
-    } catch (err) {
-      if (err instanceof Error && err.name === 'AbortError') {
-        appendLog({ type: 'error', message: 'Emissao cancelada pelo usuario.', timestamp: nowTimestamp() })
-      } else {
-        const msg = err instanceof Error ? err.message : 'Erro ao emitir guia'
-        appendLog({ type: 'error', message: `Erro fatal: ${msg}`, timestamp: nowTimestamp() })
-        toast.error(msg)
-      }
-    } finally {
-      setLoadingEmitir(false)
-      abortRef.current = null
-    }
-  }
+      }, abort.signal)
 
-  async function handleImportarGuia(guideNumber: string) {
-    if (loadingImportar) return
+      if (!guideNumber) throw new Error('Emissao nao retornou numero da guia')
 
-    setLoadingImportar(true)
-    appendLog({ type: 'info', message: `Iniciando importacao da guia ${guideNumber}...`, timestamp: nowTimestamp() })
+      // ─── Step 2: Import guide from SAW ───
+      setPipelineStep('importando')
+      appendLog({ type: 'processing', message: `Passo 2/3: Importando guia ${guideNumber} do SAW...`, timestamp: nowTs() })
 
-    const abort = new AbortController()
-    abortRef.current = abort
-
-    try {
-      const response = await fetch('/api/guias/importar', {
+      const importRes = await fetch('/api/guias/importar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ guide_numbers: [guideNumber] }),
         signal: abort.signal,
       })
 
-      if (!response.ok || !response.body) {
-        const err = await response.json().catch(() => ({ error: 'Erro ao iniciar importacao' })) as { error: string }
+      if (!importRes.ok || !importRes.body) {
+        const err = await importRes.json().catch(() => ({ error: 'Erro ao importar' })) as { error: string }
         throw new Error(err.error)
       }
 
-      const reader = response.body.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ''
-      let imported = false
+      await readSSE(importRes, (evt) => {
+        if (evt.guia_id) guiaId = evt.guia_id as string
+        appendLog({ type: evt.type as ImportLog['type'], message: evt.message as string, timestamp: evt.timestamp as string })
+      }, abort.signal)
 
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
+      if (!guiaId) throw new Error('Importacao nao retornou ID da guia')
 
-        buffer += decoder.decode(value, { stream: true })
-        const parts = buffer.split('\n\n')
-        buffer = parts.pop() ?? ''
+      // ─── Step 3: Register in CPro ───
+      setPipelineStep('cpro')
+      appendLog({ type: 'processing', message: 'Passo 3/3: Cadastrando cobranças no CPro...', timestamp: nowTs() })
 
-        for (const part of parts) {
-          const line = part.trim()
-          if (!line.startsWith('data: ')) continue
-          try {
-            const parsed = JSON.parse(line.slice(6)) as {
-              type: ImportLog['type']
-              message: string
-              timestamp: string
-              guide_number?: string
-            }
+      const cproRes = await fetch('/api/guias/cpro/salvar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          guia_id: guiaId,
+          user: selectedProf,
+          user_attendant: selectedProfAttendant,
+          atendimentos: cproAtendimentos,
+          multiplicador: cproMultiplicador,
+          agreement_id: selectedAgreement,
+          agreement_value: agreement?.value ?? 0,
+        }),
+        signal: abort.signal,
+      })
 
-            appendLog({
-              type: parsed.type,
-              message: parsed.message,
-              timestamp: parsed.timestamp,
-              guide_number: parsed.guide_number,
-            })
+      const cproData = await cproRes.json() as { success?: boolean; created?: number; error?: string }
 
-            if (parsed.type === 'success') imported = true
-          } catch {
-            // Malformed SSE line — skip
-          }
-        }
-      }
-
-      if (imported) {
-        toast.success('Guia importada com sucesso!')
-        router.push('/dashboard/guias')
+      if (cproData.success) {
+        appendLog({ type: 'success', message: `${cproData.created ?? 0} execucao(oes) criada(s) no CPro!`, timestamp: nowTs() })
       } else {
-        toast.info('Importacao concluida')
+        appendLog({ type: 'error', message: `CPro: ${cproData.error ?? 'Erro desconhecido'}`, timestamp: nowTs() })
       }
+
+      // Persist CPro config
+      fetch('/api/guias/cpro/salvar-config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          guia_id: guiaId,
+          agreement_id: selectedAgreement,
+          agreement_value: agreement?.value ?? 0,
+          agreement_title: agreement?.title ?? '',
+          user_id: selectedProf,
+        }),
+      }).catch(() => {})
+
+      // ─── Done ───
+      setPipelineStep('done')
+      appendLog({ type: 'success', message: 'Pipeline completo! Redirecionando...', timestamp: nowTs() })
+      toast.success('Guia emitida, importada e cadastrada no CPro!')
+      setTimeout(() => router.push(`/dashboard/guias/${guiaId}`), 1500)
+
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') {
-        appendLog({ type: 'error', message: 'Importacao cancelada pelo usuario.', timestamp: nowTimestamp() })
+        appendLog({ type: 'error', message: 'Operacao cancelada.', timestamp: nowTs() })
       } else {
-        const msg = err instanceof Error ? err.message : 'Erro ao importar'
-        appendLog({ type: 'error', message: `Erro fatal: ${msg}`, timestamp: nowTimestamp() })
+        const msg = err instanceof Error ? err.message : 'Erro no pipeline'
+        appendLog({ type: 'error', message: `Erro: ${msg}`, timestamp: nowTs() })
         toast.error(msg)
       }
+      setPipelineStep('idle')
     } finally {
-      setLoadingImportar(false)
       abortRef.current = null
     }
   }
 
-  function handleCancelar() {
-    abortRef.current?.abort()
-  }
+  const inputCls = cn(
+    'w-full px-3.5 py-2.5 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)]',
+    'text-sm text-[var(--color-text)] placeholder:text-[var(--color-text-muted)]',
+    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]',
+    'disabled:opacity-50'
+  )
+  const labelCls = 'text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide'
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Emitir Guia"
-        description="Solicita nova guia no portal SAW com log em tempo real"
+        description="Emissao + importacao + cadastro CPro em pipeline unico"
         action={
-          <Link
-            href="/dashboard/guias"
-            className={cn(
-              'inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm',
-              'bg-[var(--color-card)] border border-[var(--color-border)] text-[var(--color-text-muted)] hover:text-[var(--color-text)]',
-              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]'
-            )}
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Voltar
+          <Link href="/dashboard/guias"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm bg-[var(--color-card)] border border-[var(--color-border)] text-[var(--color-text-muted)] hover:text-[var(--color-text)]">
+            <ArrowLeft className="w-4 h-4" /> Voltar
           </Link>
         }
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Left panel: form */}
-        <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-6 space-y-5">
+        <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-6 space-y-5 overflow-y-auto max-h-[calc(100vh-140px)]">
           <div>
-            <h2 className="text-sm font-semibold text-[var(--color-text)]">Dados da guia</h2>
-            <p className="text-xs text-[var(--color-text-muted)] mt-1">
-              Preencha os dados para emitir a guia no portal SAW.
-            </p>
+            <h2 className="text-sm font-semibold text-[var(--color-text)]">Dados da Guia</h2>
+            <p className="text-xs text-[var(--color-text-muted)] mt-1">Preencha para emitir no SAW e cadastrar no CPro.</p>
           </div>
 
-          {/* Paciente (readonly) */}
+          {/* Paciente */}
           {pacienteNome && (
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide">
-                Paciente
-              </label>
-              <div
-                className="w-full px-3.5 py-2.5 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)] text-sm text-[var(--color-text)] opacity-75"
-              >
-                {pacienteNome}
-              </div>
+              <label className={labelCls}>Paciente</label>
+              <div className={cn(inputCls, 'opacity-75')}>{pacienteNome}</div>
             </div>
           )}
 
           {/* Carteira */}
           <div className="space-y-1.5">
-            <label className="text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide">
-              Carteira
-            </label>
+            <label className={labelCls}>Carteira</label>
             <div className="flex items-center gap-0">
-              <span
-                className={cn(
-                  'inline-flex items-center px-3 py-2.5 rounded-l-lg',
-                  'bg-[var(--color-surface)] border border-r-0 border-[var(--color-border)]',
-                  'text-sm font-mono text-[var(--color-text-muted)] select-none'
-                )}
-              >
+              <span className="inline-flex items-center px-3 py-2.5 rounded-l-lg bg-[var(--color-surface)] border border-r-0 border-[var(--color-border)] text-sm font-mono text-[var(--color-text-muted)] select-none">
                 {carteiraPrefix}
               </span>
-              <input
-                type="text"
-                inputMode="numeric"
-                maxLength={13}
-                value={carteiraSuffix}
+              <input type="text" inputMode="numeric" maxLength={13} value={carteiraSuffix}
                 onChange={(e) => setCarteiraSuffix(e.target.value.replace(/\D/g, ''))}
-                placeholder="0000000000000"
-                disabled={loading}
-                className={cn(
-                  'flex-1 px-3.5 py-2.5 rounded-r-lg bg-[var(--color-surface)] border border-[var(--color-border)]',
-                  'text-sm font-mono text-[var(--color-text)] placeholder:text-[var(--color-text-muted)]',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]',
-                  'disabled:opacity-50'
-                )}
-              />
+                placeholder="0000000000000" disabled={loading} className={cn(inputCls, 'rounded-l-none')} />
             </div>
           </div>
 
-          {/* Profissional */}
+          {/* Profissional (unified CPro select) */}
           <div className="space-y-1.5">
-            <label className="text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide">
-              Profissional
-            </label>
-            <input
-              type="text"
-              value={profNome}
-              onChange={(e) => setProfNome(e.target.value)}
-              placeholder="Nome completo do profissional"
-              disabled={loading}
-              className={cn(
-                'w-full px-3.5 py-2.5 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)]',
-                'text-sm text-[var(--color-text)] placeholder:text-[var(--color-text-muted)]',
-                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]',
-                'disabled:opacity-50'
-              )}
-            />
+            <label className={labelCls}>Profissional</label>
+            <select value={selectedProf}
+              onChange={(e) => { const v = e.target.value === '' ? '' as const : Number(e.target.value); setSelectedProf(v); setSelectedProfAttendant(v) }}
+              disabled={loading} className={inputCls}>
+              <option value="">Selecione...</option>
+              {cproProfissionais.map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+            {prof && (
+              <div className="flex items-center gap-3 text-[10px] text-[var(--color-text-muted)] px-1">
+                <span>Conselho: {prof.council_code ?? '—'}</span>
+                <span>Numero: {prof.council_number ?? '—'}</span>
+                <span>UF: {prof.council_uf ?? '—'}</span>
+                <span>CBO: {prof.cbos ?? '—'}</span>
+                {prof.occupation_name && <span>({prof.occupation_name})</span>}
+              </div>
+            )}
           </div>
 
-          {/* Conselho / Numero / UF / CBO */}
-          <div className="grid grid-cols-4 gap-3">
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide">
-                Conselho
-              </label>
-              <select
-                value={profConselho}
-                onChange={(e) => setProfConselho(e.target.value)}
-                disabled={loading}
-                className={cn(
-                  'w-full px-3 py-2.5 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)]',
-                  'text-sm text-[var(--color-text)]',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]',
-                  'disabled:opacity-50'
-                )}
-              >
-                {CONSELHOS.map((c) => (
-                  <option key={c.codigo} value={c.codigo}>{c.label}</option>
-                ))}
-              </select>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide">
-                Numero
-              </label>
-              <input
-                type="text"
-                value={profNumero}
-                onChange={(e) => setProfNumero(e.target.value)}
-                placeholder="00000"
-                disabled={loading}
-                className={cn(
-                  'w-full px-3 py-2.5 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)]',
-                  'text-sm font-mono text-[var(--color-text)] placeholder:text-[var(--color-text-muted)]',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]',
-                  'disabled:opacity-50'
-                )}
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide">
-                UF
-              </label>
-              <select
-                value={profUf}
-                onChange={(e) => setProfUf(e.target.value)}
-                disabled={loading}
-                className={cn(
-                  'w-full px-3 py-2.5 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)]',
-                  'text-sm text-[var(--color-text)]',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]',
-                  'disabled:opacity-50'
-                )}
-              >
-                {UFS.map((u) => (
-                  <option key={u.codigo} value={u.codigo}>{u.label}</option>
-                ))}
-              </select>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide">
-                CBO
-              </label>
-              <input
-                type="text"
-                value={profCbo}
-                onChange={(e) => setProfCbo(e.target.value)}
-                placeholder="ex: psicólogo"
-                disabled={loading}
-                className={cn(
-                  'w-full px-3 py-2.5 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)]',
-                  'text-sm text-[var(--color-text)] placeholder:text-[var(--color-text-muted)]',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]',
-                  'disabled:opacity-50'
-                )}
-              />
-            </div>
+          {/* Quem Atende */}
+          <div className="space-y-1.5">
+            <label className={labelCls}>Quem Atende</label>
+            <select value={selectedProfAttendant}
+              onChange={(e) => setSelectedProfAttendant(e.target.value === '' ? '' : Number(e.target.value))}
+              disabled={loading} className={inputCls}>
+              <option value="">Selecione...</option>
+              {cproProfissionais.map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
           </div>
 
-          {/* Procedimento + Quantidade */}
+          {/* Procedimento (unified CPro agreement) */}
           <div className="grid grid-cols-3 gap-3">
             <div className="col-span-2 space-y-1.5">
-              <label className="text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide">
-                Procedimento
-              </label>
-              <select
-                value={procedimentoCodigo}
-                onChange={(e) => setProcedimentoCodigo(e.target.value)}
-                disabled={loading}
-                className={cn(
-                  'w-full px-3.5 py-2.5 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)]',
-                  'text-sm text-[var(--color-text)]',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]',
-                  'disabled:opacity-50',
-                  !procedimentoCodigo && 'text-[var(--color-text-muted)]'
-                )}
-              >
-                <option value="" disabled>Selecione...</option>
-                {PROCEDIMENTOS.map((p) => (
-                  <option key={p.codigo} value={p.codigo}>
-                    {p.codigo} — {p.descricao}
+              <label className={labelCls}>Procedimento</label>
+              <select value={selectedAgreement}
+                onChange={(e) => setSelectedAgreement(e.target.value === '' ? '' : Number(e.target.value))}
+                disabled={loading} className={inputCls}>
+                <option value="">Selecione...</option>
+                {cproAgreements.map((ag) => (
+                  <option key={ag.id} value={ag.id}>
+                    {ag.title} {ag.value != null ? `(R$ ${Number(ag.value).toFixed(2).replace('.', ',')})` : ''}
                   </option>
                 ))}
               </select>
             </div>
-
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide">
-                Quantidade
-              </label>
-              <input
-                type="number"
-                min="1"
-                max="99"
-                value={quantidade}
-                onChange={(e) => setQuantidade(e.target.value)}
-                disabled={loading}
-                className={cn(
-                  'w-full px-3.5 py-2.5 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)]',
-                  'text-sm text-[var(--color-text)]',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]',
-                  'disabled:opacity-50'
-                )}
-              />
+              <label className={labelCls}>Quantidade</label>
+              <input type="number" min="1" max="99" value={quantidade}
+                onChange={(e) => setQuantidade(e.target.value)} disabled={loading} className={inputCls} />
             </div>
           </div>
 
           {/* Indicacao Clinica */}
           <div className="space-y-1.5">
-            <label className="text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide">
-              Indicacao Clinica <span className="normal-case font-normal">(opcional)</span>
-            </label>
-            <input
-              type="text"
-              value={indicacaoClinica}
-              onChange={(e) => setIndicacaoClinica(e.target.value)}
-              placeholder="Descreva a indicacao clinica..."
-              disabled={loading}
-              className={cn(
-                'w-full px-3.5 py-2.5 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)]',
-                'text-sm text-[var(--color-text)] placeholder:text-[var(--color-text-muted)]',
-                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]',
-                'disabled:opacity-50'
-              )}
-            />
+            <label className={labelCls}>Indicacao Clinica <span className="normal-case font-normal">(opcional)</span></label>
+            <input type="text" value={indicacaoClinica} onChange={(e) => setIndicacaoClinica(e.target.value)}
+              placeholder="Descreva..." disabled={loading} className={inputCls} />
           </div>
 
-          {/* Actions */}
+          {/* CPro Section */}
+          <div className="border-t border-[var(--color-border)] pt-5 mt-2">
+            <div className="flex items-center gap-2 mb-4">
+              <Database className="w-4 h-4 text-blue-400" />
+              <h2 className="text-sm font-semibold text-[var(--color-text)]">Cobranças CPro</h2>
+            </div>
+
+            <div className="space-y-4">
+              {/* Toggle dobrar */}
+              <div className="flex items-center justify-between rounded-lg border px-3 py-2.5" style={{ borderColor: 'var(--color-border)', background: 'var(--color-surface)' }}>
+                <div>
+                  <span className="text-xs font-medium" style={{ color: 'var(--color-text)' }}>Dobrar cobranca</span>
+                  <p className="text-[10px] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
+                    {cproMultiplicador === 2 ? 'Valor x2 (Psicologia, Fono, Nutricao...)' : 'Valor x1 (Psicomotricidade, Musicoterapia)'}
+                  </p>
+                </div>
+                <button type="button" onClick={() => setCproMultiplicador((prev) => prev === 2 ? 1 : 2)}
+                  className="relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors"
+                  style={{ background: cproMultiplicador === 2 ? 'var(--color-primary)' : 'var(--color-border)' }}>
+                  <span className="inline-block h-5 w-5 rounded-full bg-white shadow transition-transform"
+                    style={{ transform: cproMultiplicador === 2 ? 'translateX(20px)' : 'translateX(0)' }} />
+                </button>
+              </div>
+
+              {/* Atendimentos */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className={labelCls}>Atendimentos</label>
+                  <button type="button" disabled={loading}
+                    onClick={() => setCproAtendimentos((prev) => {
+                      const last = prev[prev.length - 1]
+                      let nextDate = ''
+                      if (last?.date) {
+                        const d = new Date(last.date + 'T12:00:00')
+                        d.setDate(d.getDate() + 7)
+                        nextDate = d.toISOString().slice(0, 10)
+                      }
+                      return [...prev, { date: nextDate, hour_start: last?.hour_start ?? '' }]
+                    })}
+                    className="text-xs px-2 py-1 rounded border disabled:opacity-40"
+                    style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-muted)' }}>
+                    + Adicionar
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  {cproAtendimentos.map((a, i) => (
+                    <div key={i} className="flex items-center gap-2">
+                      <input type="date" value={a.date}
+                        onChange={(e) => setCproAtendimentos((prev) => prev.map((x, j) => j === i ? { ...x, date: e.target.value } : x))}
+                        disabled={loading} className={cn(inputCls, 'flex-1 font-mono')} />
+                      <input type="time" value={a.hour_start}
+                        onChange={(e) => setCproAtendimentos((prev) => prev.map((x, j) => j === i ? { ...x, hour_start: e.target.value } : x))}
+                        disabled={loading} className={cn(inputCls, 'w-[110px] font-mono')} />
+                      {i > 0 && (
+                        <button type="button" onClick={() => setCproAtendimentos((prev) => prev.filter((_, j) => j !== i))}
+                          className="p-1.5 rounded hover:bg-white/10 shrink-0">
+                          <X className="w-3.5 h-3.5" style={{ color: 'var(--color-danger)' }} />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Action */}
           <div className="flex gap-3 pt-1">
-            <button
-              onClick={() => void handleEmitir()}
-              disabled={loading}
+            <button onClick={() => void handleEmitir()} disabled={loading}
               className={cn(
                 'flex-1 py-2.5 rounded-lg font-medium text-sm text-white',
                 'bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] transition-colors',
-                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]',
-                'disabled:opacity-50 disabled:cursor-not-allowed',
-                'flex items-center justify-center gap-2'
-              )}
-            >
-              {loadingEmitir ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Emitindo...
-                </>
+                'disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2'
+              )}>
+              {loading ? (
+                <><Loader2 className="w-4 h-4 animate-spin" />{pipelineStep === 'emitindo' ? 'Emitindo...' : pipelineStep === 'importando' ? 'Importando...' : pipelineStep === 'cpro' ? 'CPro...' : 'Processando...'}</>
               ) : (
-                <>
-                  <Send className="w-4 h-4" />
-                  Emitir Guia
-                </>
+                <><Send className="w-4 h-4" />Emitir Guia</>
               )}
             </button>
-
             {loading && (
-              <button
-                onClick={handleCancelar}
-                className={cn(
-                  'px-4 py-2.5 rounded-lg font-medium text-sm',
-                  'bg-[var(--color-surface)] border border-[var(--color-border)]',
-                  'text-[var(--color-danger)] hover:bg-[var(--color-danger)]/10 transition-colors',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-danger)]'
-                )}
-              >
+              <button onClick={() => abortRef.current?.abort()}
+                className="px-4 py-2.5 rounded-lg font-medium text-sm bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-danger)] hover:bg-[var(--color-danger)]/10 transition-colors">
                 Cancelar
               </button>
             )}
           </div>
         </div>
 
-        {/* Right panel: real-time log console */}
+        {/* Right panel: log */}
         <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl overflow-hidden flex flex-col">
           <div className="flex items-center gap-2 px-4 py-3 border-b border-[var(--color-border)] bg-[var(--color-surface)]">
             <TerminalSquare className="w-4 h-4 text-[var(--color-text-muted)]" />
-            <span className="text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wider">Log de emissao</span>
+            <span className="text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wider">Pipeline</span>
             {loading && (
               <span className="ml-auto flex items-center gap-1.5 text-xs text-[#f0c040]">
                 <span className="w-1.5 h-1.5 rounded-full bg-[#f0c040] animate-pulse" />
-                Ao vivo
+                {pipelineStep === 'emitindo' ? 'Emitindo SAW' : pipelineStep === 'importando' ? 'Importando' : pipelineStep === 'cpro' ? 'CPro' : 'Ao vivo'}
               </span>
             )}
-            {!loading && successResult && (
+            {pipelineStep === 'done' && (
               <span className="ml-auto flex items-center gap-1.5 text-xs text-[#4ade80]">
-                <CheckCircle className="w-3.5 h-3.5" />
-                Concluido
+                <CheckCircle className="w-3.5 h-3.5" /> Concluido
               </span>
             )}
           </div>
-
-          <div
-            className="flex-1 overflow-y-auto p-4 font-mono text-xs space-y-0.5"
-            style={{
-              background: '#0a0a0a',
-              minHeight: '400px',
-              maxHeight: '500px',
-              scrollbarWidth: 'thin',
-              scrollbarColor: '#333 #0a0a0a',
-            }}
-          >
-            {logs.length === 0 && !loading && (
-              <p className="text-[#444] select-none">
-                Aguardando emissao da guia...
-              </p>
-            )}
-
-            {loading && logs.length === 0 && (
-              <p className="text-[#f0c040]">Conectando...</p>
-            )}
-
-            {logs.map((log, i) => (
-              <LogLine key={i} log={log} />
-            ))}
-
+          <div className="flex-1 overflow-y-auto p-4 font-mono text-xs space-y-0.5"
+            style={{ background: '#0a0a0a', minHeight: '400px', maxHeight: 'calc(100vh - 200px)', scrollbarWidth: 'thin', scrollbarColor: '#333 #0a0a0a' }}>
+            {logs.length === 0 && !loading && <p className="text-[#444] select-none">Aguardando emissao da guia...</p>}
+            {loading && logs.length === 0 && <p className="text-[#f0c040]">Conectando...</p>}
+            {logs.map((log, i) => <LogLine key={i} log={log} />)}
             <div ref={logEndRef} />
           </div>
         </div>
       </div>
-
-      {/* Success Modal */}
-      {successResult && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div
-            className={cn(
-              'w-full max-w-sm bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl p-6 shadow-2xl',
-              'space-y-5'
-            )}
-          >
-            {/* Header */}
-            <div className="flex items-start justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-[var(--color-success)]/15 flex items-center justify-center">
-                  <CheckCircle className="w-5 h-5 text-[var(--color-success)]" />
-                </div>
-                <div>
-                  <h3 className="text-base font-semibold text-[var(--color-text)]">Guia emitida com sucesso!</h3>
-                  <p className="text-xs text-[var(--color-text-muted)] mt-0.5">Pronta para importacao</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setSuccessResult(null)}
-                className={cn(
-                  'p-1.5 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text)]',
-                  'hover:bg-[var(--color-surface)] transition-colors',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]'
-                )}
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Guide info */}
-            <div className="rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)] p-4 space-y-2">
-              <div className="flex justify-between items-center">
-                <span className="text-xs text-[var(--color-text-muted)]">Numero da guia</span>
-                <span className="text-sm font-mono font-semibold text-[var(--color-text)]">{successResult.guideNumber}</span>
-              </div>
-              {successResult.paciente && (
-                <div className="flex justify-between items-center">
-                  <span className="text-xs text-[var(--color-text-muted)]">Paciente</span>
-                  <span className="text-sm text-[var(--color-text)] text-right max-w-[60%] truncate">{successResult.paciente}</span>
-                </div>
-              )}
-            </div>
-
-            {/* Actions */}
-            <div className="flex gap-3">
-              <button
-                onClick={() => void handleImportarGuia(successResult.guideNumber)}
-                disabled={loadingImportar}
-                className={cn(
-                  'flex-1 py-2.5 rounded-lg font-medium text-sm text-white',
-                  'bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] transition-colors',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]',
-                  'disabled:opacity-50 disabled:cursor-not-allowed',
-                  'flex items-center justify-center gap-2'
-                )}
-              >
-                {loadingImportar ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Importando...
-                  </>
-                ) : (
-                  <>
-                    <Download className="w-4 h-4" />
-                    Importar Guia
-                  </>
-                )}
-              </button>
-
-              <button
-                onClick={() => setSuccessResult(null)}
-                className={cn(
-                  'px-4 py-2.5 rounded-lg font-medium text-sm',
-                  'bg-[var(--color-surface)] border border-[var(--color-border)]',
-                  'text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]'
-                )}
-              >
-                Fechar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

@@ -4,7 +4,7 @@ import { requireAuth, isAuthError } from '@/lib/auth'
 import { rateLimit } from '@/lib/rate-limit'
 import { getSawClient } from '@/lib/saw/client'
 import type { SawCookie } from '@/lib/saw/client'
-import { fetchCproData, buscarAgreementsUnimed, buscarPatientByName } from '@/lib/saw/cpro-client'
+import { fetchCproData, buscarAgreementsUnimed, buscarPatientByName, buscarExecucoesPendentes, marcarExecucaoRealizada } from '@/lib/saw/cpro-client'
 import type { SawCredentials, CproConfig } from '@/lib/types'
 import { computeGuideStatus } from '@/lib/guide-status'
 import { classifyGuia } from '@/lib/carteira'
@@ -25,8 +25,8 @@ function timestamp(): string {
   return new Date().toLocaleTimeString('pt-BR', { hour12: false })
 }
 
-function sseEvent(type: string, message: string, guide_number?: string): string {
-  const payload = JSON.stringify({ type, message, timestamp: timestamp(), guide_number })
+function sseEvent(type: string, message: string, guide_number?: string, extra?: Record<string, unknown>): string {
+  const payload = JSON.stringify({ type, message, timestamp: timestamp(), guide_number, ...extra })
   return `data: ${payload}\n\n`
 }
 
@@ -82,8 +82,8 @@ export async function POST(request: NextRequest) {
   const stream = new ReadableStream({
     async start(controller) {
       const enc = new TextEncoder()
-      const send = (type: string, message: string, guide_number?: string) => {
-        controller.enqueue(enc.encode(sseEvent(type, message, guide_number)))
+      const send = (type: string, message: string, guide_number?: string, extra?: Record<string, unknown>) => {
+        controller.enqueue(enc.encode(sseEvent(type, message, guide_number, extra)))
       }
 
       // Global stream timeout — kills the stream if it exceeds STREAM_TIMEOUT_MS
@@ -498,7 +498,19 @@ export async function POST(request: NextRequest) {
             sawStatus
           )
 
-          send('info', `Guia ${guideNumber}: status calculado = ${status} (realiz=${procedimentosRealizados}, aut=${quantidadeAutorizada}, cpro=${procedimentosCadastrados}, senha=${senhaRaw ? 'sim' : 'nao'}, dataAut=${dataAutorizacaoRaw ? 'sim' : 'nao'})`, guideNumber)
+          // Preserve FATURADA/PROCESSADA — reimport must not regress these statuses
+          const PRESERVED_STATUSES = ['FATURADA', 'PROCESSADA']
+          const { data: existingGuia } = await db
+            .from('guias')
+            .select('status')
+            .eq('guide_number', guideNumber)
+            .single()
+
+          const finalStatus = existingGuia && PRESERVED_STATUSES.includes(existingGuia.status)
+            ? existingGuia.status
+            : status
+
+          send('info', `Guia ${guideNumber}: status = ${finalStatus}${finalStatus !== status ? ` (preservado, calculado seria ${status})` : ''} (realiz=${procedimentosRealizados}, aut=${quantidadeAutorizada}, cpro=${procedimentosCadastrados})`, guideNumber)
 
           // Classify as Local/Intercambio based on carteira prefix
           const numeroCarteira = orNull(sawData?.['numeroCarteira']) as string | null
@@ -526,7 +538,7 @@ export async function POST(request: NextRequest) {
             tipo_guia: tipoGuia,
             token_biometrico: tokenMessage === 'Realize o check-in do Paciente',
             saw_data: sawData,
-            status,
+            status: finalStatus,
             updated_at: new Date().toISOString(),
           }
 
@@ -557,6 +569,30 @@ export async function POST(request: NextRequest) {
             send('error', `Guia ${guideNumber} falhou ao salvar: ${upsertError?.message ?? 'Erro desconhecido'}`, guideNumber)
             errorCount++
             continue
+          }
+
+          // Recalculate lote valor_total if guia belongs to a lote
+          if (existingGuia) {
+            const { data: guiaWithLote } = await db
+              .from('guias')
+              .select('lote_id')
+              .eq('id', upsertedGuia.id)
+              .single()
+
+            if (guiaWithLote?.lote_id) {
+              const { data: loteGuias } = await db
+                .from('guias')
+                .select('valor_total')
+                .eq('lote_id', guiaWithLote.lote_id)
+
+              if (loteGuias) {
+                const somaLote = loteGuias.reduce((acc, g) => acc + (g.valor_total ?? 0), 0)
+                await db
+                  .from('lotes')
+                  .update({ valor_total: somaLote })
+                  .eq('id', guiaWithLote.lote_id)
+              }
+            }
           }
 
           // Insert/update realized procedure rows from SAW data
@@ -652,6 +688,73 @@ export async function POST(request: NextRequest) {
             send('info', `Guia ${guideNumber}: XML nao salvo (status != COMPLETA, status atual = ${status})`, guideNumber)
           }
 
+          // ─── Match realized SAW procedures with pending CPro executions ───
+          if (sawProcedimentos.length > 0 && cproConfig?.api_url && cproConfig?.api_key) {
+            try {
+              const cproCfg = { api_url: cproConfig.api_url, api_key: cproConfig.api_key, company: cproConfig.company ?? '1' }
+              send('processing', `Guia ${guideNumber}: Sincronizando cobrancas com CPro...`, guideNumber)
+              const pendentes = await buscarExecucoesPendentes(cproCfg, guideNumber)
+
+              // Check if CPro already has enough realized — skip if so
+              const totalCadastradas = procedimentosCadastrados ?? 0
+              const jaRealizadas = totalCadastradas - pendentes.length
+              if (jaRealizadas >= sawProcedimentos.length) {
+                send('info', `Guia ${guideNumber}: CPro ja tem ${jaRealizadas} realizada(s), SAW tem ${sawProcedimentos.length} — nada a atualizar`, guideNumber)
+              } else if (pendentes.length > 0) {
+                send('info', `Guia ${guideNumber}: ${pendentes.length} pendente(s) no CPro, ${jaRealizadas} realizada(s), ${sawProcedimentos.length} no SAW`, guideNumber)
+                // Convert SAW dates (DD/MM/YYYY) to YYYY-MM-DD for comparison
+                const sawDates = sawProcedimentos.map((p) => {
+                  const parts = p.data.split('/')
+                  const isoDate = parts.length === 3 ? `${parts[2]}-${parts[1]}-${parts[0]}` : p.data
+                  return { isoDate, horaInicio: p.horaInicio || '08:00', horaFim: p.horaFim || '08:30' }
+                })
+
+                // Convert CPro pending dates (DD/MM/YYYY) to YYYY-MM-DD
+                const cproPending = pendentes.map((p) => {
+                  const parts = p.data.split('/')
+                  const isoDate = parts.length === 3 ? `${parts[2]}-${parts[1]}-${parts[0]}` : p.data
+                  return { ...p, isoDate }
+                })
+
+                // Greedy closest-date matching
+                const used = new Set<number>()
+                let matched = 0
+
+                for (const saw of sawDates) {
+                  const sawMs = new Date(saw.isoDate + 'T12:00:00').getTime()
+                  let bestIdx = -1
+                  let bestDiff = Infinity
+
+                  for (let i = 0; i < cproPending.length; i++) {
+                    if (used.has(i)) continue
+                    const cproMs = new Date(cproPending[i].isoDate + 'T12:00:00').getTime()
+                    const diff = Math.abs(sawMs - cproMs)
+                    if (diff < bestDiff) { bestDiff = diff; bestIdx = i }
+                  }
+
+                  if (bestIdx >= 0) {
+                    used.add(bestIdx)
+                    const exec = cproPending[bestIdx]
+                    // Keep CPro's original attendance_day — only update status
+                    const result = await marcarExecucaoRealizada(cproCfg, exec.id, {
+                      attendance_day: exec.isoDate,
+                      attendance_start: exec.horaInicial,
+                      attendance_end: exec.horaFinal,
+                    })
+                    if (result.success) matched++
+                  }
+                }
+
+                if (matched > 0) {
+                  send('info', `Guia ${guideNumber}: ${matched} cobranca(s) marcada(s) como realizada(s) no CPro`, guideNumber)
+                }
+              }
+            } catch (matchErr) {
+              const matchMsg = matchErr instanceof Error ? matchErr.message : 'Erro'
+              send('info', `Guia ${guideNumber}: falha ao sincronizar CPro (${matchMsg})`, guideNumber)
+            }
+          }
+
           // SSE: truncar nome do paciente para protecao LGPD (apenas primeiro nome)
           const pacienteLabel = typeof paciente === 'string' && paciente.length > 0
             ? paciente.split(' ')[0]
@@ -662,7 +765,7 @@ export async function POST(request: NextRequest) {
             ? `qtd: ${procedimentosRealizados}/${quantidadeAutorizada}`
             : ''
           const details = [label, statusLabel, qtdLabel].filter(Boolean).join(' | ')
-          send('success', `Guia ${guideNumber} importada (${details})`, guideNumber)
+          send('success', `Guia ${guideNumber} importada (${details})`, guideNumber, { guia_id: upsertedGuia.id })
           successCount++
         } catch (guiaErr) {
           // Per-guide safety net — any unexpected error skips this guide, does NOT kill the loop
