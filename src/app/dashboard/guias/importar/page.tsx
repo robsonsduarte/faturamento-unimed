@@ -8,6 +8,7 @@ import { toast } from 'sonner'
 import { useQueryClient } from '@tanstack/react-query'
 import { PageHeader } from '@/components/shared/page-header'
 import { cn } from '@/lib/utils'
+import { generateAvailableMonthsWithNext, formatMonthDisplay, getCurrentMonth } from '@/lib/month-utils'
 import type { ImportLog } from '@/lib/types'
 
 interface ImportStats {
@@ -60,6 +61,9 @@ export default function ImportarGuiasPage() {
   const abortRef = useRef<AbortController | null>(null)
   const queryClient = useQueryClient()
 
+  // Mes de referencia
+  const [mesReferencia, setMesReferencia] = useState(getCurrentMonth())
+
   // Re-importar guias existentes
   const [selectedStatuses, setSelectedStatuses] = useState<ReimportStatus[]>(['PENDENTE'])
   const [loadingPendentes, setLoadingPendentes] = useState(false)
@@ -103,6 +107,7 @@ export default function ImportarGuiasPage() {
     try {
       const params = new URLSearchParams({
         statuses: selectedStatuses.join(','),
+        mes: mesReferencia,
       })
       const res = await fetch(`/api/guias/pendentes?${params.toString()}`)
       if (!res.ok) {
@@ -299,6 +304,26 @@ export default function ImportarGuiasPage() {
               <p className="text-xs text-[var(--color-text-muted)] mt-1">
                 Carrega numeros de guias ja cadastradas pelo status selecionado.
               </p>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide">Mes de Referencia</label>
+              <select
+                value={mesReferencia}
+                onChange={(e) => setMesReferencia(e.target.value)}
+                disabled={loading || loadingPendentes}
+                className={cn(
+                  'w-full px-3 py-2 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)]',
+                  'text-sm text-[var(--color-text)]',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]',
+                  'disabled:opacity-50'
+                )}
+              >
+                <option value="todos">Todos os meses</option>
+                {generateAvailableMonthsWithNext().map((m) => (
+                  <option key={m} value={m}>{formatMonthDisplay(m)}</option>
+                ))}
+              </select>
             </div>
 
             <div className="flex flex-wrap gap-2">

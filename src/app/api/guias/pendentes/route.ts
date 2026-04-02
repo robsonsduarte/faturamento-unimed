@@ -29,11 +29,19 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Nenhum status valido informado' }, { status: 400 })
   }
 
-  const { data, error, count } = await supabase
+  const mes = searchParams.get('mes')
+
+  let query = supabase
     .from('guias')
     .select('guide_number', { count: 'exact' })
     .in('status', filteredStatuses)
     .order('updated_at', { ascending: true })
+
+  if (mes && mes !== 'todos') {
+    query = query.eq('mes_referencia', mes)
+  }
+
+  const { data, error, count } = await query
 
   if (error) {
     console.error('[pendentes] Supabase error:', error.message)
