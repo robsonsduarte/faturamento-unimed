@@ -4,7 +4,7 @@ import { requireAuth, isAuthError } from '@/lib/auth'
 import { rateLimit } from '@/lib/rate-limit'
 import { getSawClient } from '@/lib/saw/client'
 import type { SawCookie } from '@/lib/saw/client'
-import { fetchCproData, buscarAgreementsUnimed, buscarPatientCpro, buscarPatientByName, buscarExecucoesPendentes, marcarExecucaoRealizada } from '@/lib/saw/cpro-client'
+import { fetchCproData, buscarAgreementsUnimed, buscarPatientCpro, buscarPatientByName, buscarExecucoesPendentes, marcarExecucaoRealizada, deletarExecucoesPorGuia } from '@/lib/saw/cpro-client'
 import type { SawCredentials, CproConfig } from '@/lib/types'
 import { computeGuideStatus } from '@/lib/guide-status'
 import { classifyGuia } from '@/lib/carteira'
@@ -591,11 +591,25 @@ export async function POST(request: NextRequest) {
           // Agreement value per session (from CPro current or existing DB data)
           let agreementValuePerSession: number | null = null
 
-          // CANCELADA/NEGADA — limpar dados CPro (execucoes devem ser excluidas manualmente)
+          // CANCELADA/NEGADA — limpar dados CPro e deletar execucoes no CPro
           if (finalStatus === 'CANCELADA' || finalStatus === 'NEGADA') {
             guiaPayload.cpro_data = null
             guiaPayload.procedimentos_cadastrados = 0
             guiaPayload.valor_total = 0
+
+            // Deletar execucoes no CPro externo
+            if (cproConfig?.api_url && cproConfig?.api_key) {
+              try {
+                const cproCfg = { api_url: cproConfig.api_url, api_key: cproConfig.api_key, company: cproConfig.company ?? '1' }
+                const { deleted, errors } = await deletarExecucoesPorGuia(cproCfg, guideNumber)
+                if (deleted > 0 || errors > 0) {
+                  send('info', `Guia ${guideNumber}: ${deleted} execucao(oes) deletada(s) no CPro${errors > 0 ? `, ${errors} erro(s)` : ''}`, guideNumber)
+                }
+              } catch (delErr) {
+                send('info', `Guia ${guideNumber}: falha ao deletar execucoes CPro — ${delErr instanceof Error ? delErr.message : 'erro'}`, guideNumber)
+              }
+            }
+
             send('info', `Guia ${guideNumber}: status ${finalStatus} — dados CPro removidos`, guideNumber)
           }
           // Only overwrite CPro-derived fields when CPro returned data.

@@ -137,7 +137,7 @@ function cproPost(
   config: CproConfig,
   path: string,
   body: unknown,
-  method: 'POST' | 'PUT' = 'POST'
+  method: 'POST' | 'PUT' | 'DELETE' = 'POST'
 ): Promise<{ status: number; body: string } | null> {
   const url = `${config.api_url}${path}`
 
@@ -490,6 +490,58 @@ export async function marcarExecucaoRealizada(
   } catch {
     return { success: false, error: 'Erro ao parsear resposta' }
   }
+}
+
+/**
+ * Deletes a single execution from CPro via DELETE /executions/{id}.
+ */
+export async function deletarExecucaoCpro(
+  config: CproConfig,
+  executionId: number
+): Promise<{ success: boolean; error?: string }> {
+  const res = await cproPost(
+    config,
+    `/service/api/v1/executions/${executionId}?company=${config.company}`,
+    {},
+    'DELETE'
+  )
+
+  if (!res) return { success: false, error: 'Sem resposta do CPro' }
+
+  try {
+    const json = JSON.parse(res.body)
+    if (res.status >= 400) {
+      return { success: false, error: json?.message ?? json?.error ?? `HTTP ${res.status}` }
+    }
+    return { success: true }
+  } catch {
+    return { success: res.status >= 200 && res.status < 300 }
+  }
+}
+
+/**
+ * Deletes all CPro executions for a guide number.
+ * Fetches pending executions, then deletes each one.
+ */
+export async function deletarExecucoesPorGuia(
+  config: CproConfig,
+  guideNumber: string
+): Promise<{ deleted: number; errors: number }> {
+  const pendentes = await buscarExecucoesPendentes(config, guideNumber)
+  let deleted = 0
+  let errors = 0
+
+  for (const exec of pendentes) {
+    const res = await deletarExecucaoCpro(config, exec.id)
+    if (res.success) {
+      deleted++
+    } else {
+      console.error(`[CPRO] Falha ao deletar execucao ${exec.id}: ${res.error}`)
+      errors++
+    }
+  }
+
+  return { deleted, errors }
 }
 
 /**
