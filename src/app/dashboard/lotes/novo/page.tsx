@@ -7,12 +7,10 @@ import { ArrowLeft, Plus, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useQueryClient } from '@tanstack/react-query'
 import { useGuias } from '@/hooks/use-guias'
-import { StatusBadge } from '@/components/shared/status-badge'
 import { MonthSelect } from '@/components/shared/month-select'
 import { PageHeader } from '@/components/shared/page-header'
 import { formatCurrency, cn } from '@/lib/utils'
 import { getCurrentMonth } from '@/lib/month-utils'
-import type { GuideStatus } from '@/lib/constants'
 
 interface LoteForm {
   numero_lote: string
@@ -26,6 +24,8 @@ export default function NovoLotePage() {
   const queryClient = useQueryClient()
   const [selectedGuias, setSelectedGuias] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(false)
+  // Override de valor unitario por guia (guia.id -> valor unitario)
+  const [valorOverrides, setValorOverrides] = useState<Record<string, number>>({})
   const [form, setForm] = useState<LoteForm>({
     numero_lote: '',
     tipo: 'Local',
@@ -39,6 +39,33 @@ export default function NovoLotePage() {
   const { data: guiasData } = useGuias({ status: 'COMPLETA', tipo_guia: tipoGuiaFilter, sem_lote: true, pageSize: 100 })
   const guias = guiasData?.data ?? []
 
+  // Helpers para extrair dados do procedimento
+  function getCodigoProc(g: (typeof guias)[number]): string {
+    const sawData = g.saw_data as Record<string, unknown> | null
+    return (sawData?.['codigoProcedimentoSolicitado'] as string) ?? '—'
+  }
+
+  function getValorUnitario(g: (typeof guias)[number]): number {
+    if (valorOverrides[g.id] != null) return valorOverrides[g.id]
+    const qtd = g.quantidade_autorizada ?? g.procedimentos_realizados ?? 1
+    return qtd > 0 ? Math.round((g.valor_total / qtd) * 100) / 100 : g.valor_total
+  }
+
+  function getValorTotal(g: (typeof guias)[number]): number {
+    if (valorOverrides[g.id] != null) {
+      const qtd = g.quantidade_autorizada ?? g.procedimentos_realizados ?? 1
+      return Math.round(valorOverrides[g.id] * qtd * 100) / 100
+    }
+    return g.valor_total
+  }
+
+  function handleValorUnitarioChange(guiaId: string, qtd: number, newVal: string) {
+    const parsed = parseFloat(newVal.replace(',', '.'))
+    if (!isNaN(parsed) && parsed >= 0) {
+      setValorOverrides((prev) => ({ ...prev, [guiaId]: parsed }))
+    }
+  }
+
   function toggleGuia(id: string) {
     setSelectedGuias((prev) => {
       const next = new Set(prev)
@@ -50,7 +77,7 @@ export default function NovoLotePage() {
 
   const totalSelecionado = guias
     .filter((g) => selectedGuias.has(g.id))
-    .reduce((acc, g) => acc + g.valor_total, 0)
+    .reduce((acc, g) => acc + getValorTotal(g), 0)
 
   function validate(): boolean {
     const errs: Partial<Record<keyof LoteForm, string>> = {}
@@ -68,6 +95,20 @@ export default function NovoLotePage() {
     }
     setLoading(true)
     try {
+      // Atualizar valor_total das guias que tiveram override de valor unitario
+      const overrideEntries = Object.entries(valorOverrides).filter(([id]) => selectedGuias.has(id))
+      for (const [guiaId, valorUnit] of overrideEntries) {
+        const g = guias.find((x) => x.id === guiaId)
+        if (!g) continue
+        const qtd = g.quantidade_autorizada ?? g.procedimentos_realizados ?? 1
+        const novoTotal = Math.round(valorUnit * qtd * 100) / 100
+        await fetch(`/api/guias/${guiaId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ valor_total: novoTotal }),
+        })
+      }
+
       const response = await fetch('/api/lotes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -225,7 +266,7 @@ export default function NovoLotePage() {
                           className="rounded"
                         />
                       </th>
-                      {['Numero Guia', 'Paciente', 'Tipo', 'Status', 'Valor'].map((h) => (
+                      {['Numero Guia', 'Paciente', 'Proc.', 'V. Unit', 'Qtd', 'Valor Total'].map((h) => (
                         <th key={h} className="px-4 py-2.5 text-left font-medium text-[var(--color-text-muted)]">{h}</th>
                       ))}
                     </tr>
@@ -250,17 +291,26 @@ export default function NovoLotePage() {
                           />
                         </td>
                         <td className="px-4 py-2.5 font-mono">{g.guide_number}</td>
-                        <td className="px-4 py-2.5">{g.paciente ?? '—'}</td>
-                        <td className="px-4 py-2.5">
-                          <span className={cn(
-                            'px-1.5 py-0.5 rounded text-xs font-medium',
-                            g.tipo_guia === 'Local' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-purple-500/20 text-purple-400'
-                          )}>
-                            {g.tipo_guia ?? '—'}
-                          </span>
+                        <td className="px-4 py-2.5 max-w-[180px] truncate">{g.paciente ?? '—'}</td>
+                        <td className="px-4 py-2.5 font-mono text-[var(--color-text-muted)]">{getCodigoProc(g)}</td>
+                        <td className="px-4 py-2.5" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            value={getValorUnitario(g).toFixed(2).replace('.', ',')}
+                            onChange={(e) => handleValorUnitarioChange(g.id, g.quantidade_autorizada ?? 1, e.target.value)}
+                            className={cn(
+                              'w-[80px] px-2 py-1 rounded text-xs font-mono text-right',
+                              'bg-[var(--color-surface)] border text-[var(--color-text)]',
+                              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]',
+                              valorOverrides[g.id] != null
+                                ? 'border-[var(--color-primary)]'
+                                : 'border-[var(--color-border)]'
+                            )}
+                          />
                         </td>
-                        <td className="px-4 py-2.5"><StatusBadge status={g.status as GuideStatus} /></td>
-                        <td className="px-4 py-2.5 font-mono">{formatCurrency(g.valor_total)}</td>
+                        <td className="px-4 py-2.5 font-mono text-center">{g.quantidade_autorizada ?? '—'}</td>
+                        <td className="px-4 py-2.5 font-mono">{formatCurrency(getValorTotal(g))}</td>
                       </tr>
                     ))}
                   </tbody>

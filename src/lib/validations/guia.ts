@@ -18,6 +18,7 @@ export const guiaUpdateSchema = z.object({
   indicacao_acidente: z.string().optional(),
   lote_id: z.string().uuid().nullable().optional(),
   mes_referencia: z.string().regex(/^\d{4}-\d{2}$/).optional(),
+  valor_total: z.number().min(0).optional(),
 })
 
 export type GuiaUpdateInput = z.infer<typeof guiaUpdateSchema>
