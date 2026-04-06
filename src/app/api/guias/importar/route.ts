@@ -591,10 +591,17 @@ export async function POST(request: NextRequest) {
           // Agreement value per session (from CPro current or existing DB data)
           let agreementValuePerSession: number | null = null
 
+          // CANCELADA/NEGADA — limpar dados CPro (execucoes devem ser excluidas manualmente)
+          if (finalStatus === 'CANCELADA' || finalStatus === 'NEGADA') {
+            guiaPayload.cpro_data = null
+            guiaPayload.procedimentos_cadastrados = 0
+            guiaPayload.valor_total = 0
+            send('info', `Guia ${guideNumber}: status ${finalStatus} — dados CPro removidos`, guideNumber)
+          }
           // Only overwrite CPro-derived fields when CPro returned data.
           // On reimport, if CPro API fails/returns null, preserve existing cpro_data,
           // valor_total and procedimentos_cadastrados already stored in the DB.
-          if (cproData !== null) {
+          else if (cproData !== null) {
             guiaPayload.cpro_data = cproData
             guiaPayload.procedimentos_cadastrados = procedimentosCadastrados ?? 0
 
