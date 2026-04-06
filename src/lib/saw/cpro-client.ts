@@ -508,12 +508,14 @@ export async function deletarExecucaoCpro(
 
   if (!res) return { success: false, error: 'Sem resposta do CPro' }
 
+  console.log(`[CPRO] DELETE /executions/${executionId} => status=${res.status} body=${res.body?.slice(0, 200)}`)
+
   try {
     const json = JSON.parse(res.body)
     if (res.status >= 400) {
-      return { success: false, error: json?.message ?? json?.error ?? `HTTP ${res.status}` }
+      return { success: false, error: json?.message ?? json?.error?.code ?? `HTTP ${res.status}` }
     }
-    return { success: true }
+    return { success: json?.success === true }
   } catch {
     return { success: res.status >= 200 && res.status < 300 }
   }
@@ -521,22 +523,43 @@ export async function deletarExecucaoCpro(
 
 /**
  * Deletes all CPro executions for a guide number.
- * Fetches pending executions, then deletes each one.
+ * Uses /executions/by-guide-number to get attendance IDs (app_executions.id).
  */
 export async function deletarExecucoesPorGuia(
   config: CproConfig,
   guideNumber: string
 ): Promise<{ deleted: number; errors: number }> {
-  const pendentes = await buscarExecucoesPendentes(config, guideNumber)
+  // Buscar attendances via by-guide-number (retorna IDs de app_executions)
+  const res = await cproGet(
+    config,
+    `/service/api/v1/executions/by-guide-number/${guideNumber}?company=${config.company}`
+  )
+
+  if (!res || res.status >= 400) {
+    console.error(`[CPRO] deletarExecucoesPorGuia: nao encontrou guia ${guideNumber} (status=${res?.status ?? 'null'})`)
+    return { deleted: 0, errors: 0 }
+  }
+
+  let attendances: Array<{ id: number }> = []
+  try {
+    const json = JSON.parse(res.body)
+    attendances = json?.data?.attendances ?? []
+    if (!Array.isArray(attendances)) attendances = []
+  } catch {
+    return { deleted: 0, errors: 0 }
+  }
+
   let deleted = 0
   let errors = 0
 
-  for (const exec of pendentes) {
-    const res = await deletarExecucaoCpro(config, exec.id)
-    if (res.success) {
+  for (const att of attendances) {
+    if (typeof att.id !== 'number') continue
+    console.log(`[CPRO] Deletando execucao ${att.id} da guia ${guideNumber}...`)
+    const delRes = await deletarExecucaoCpro(config, att.id)
+    if (delRes.success) {
       deleted++
     } else {
-      console.error(`[CPRO] Falha ao deletar execucao ${exec.id}: ${res.error}`)
+      console.error(`[CPRO] Falha ao deletar execucao ${att.id}: ${delRes.error}`)
       errors++
     }
   }
