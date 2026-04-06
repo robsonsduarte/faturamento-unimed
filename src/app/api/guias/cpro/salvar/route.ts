@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { requireAuth, isAuthError } from '@/lib/auth'
-import { buscarPatientByName, criarExecucaoCpro } from '@/lib/saw/cpro-client'
+import { buscarPatientCpro, buscarPatientByName, criarExecucaoCpro } from '@/lib/saw/cpro-client'
 import type { CproConfig, Guia } from '@/lib/types'
 
 function getServiceClient() {
@@ -248,10 +248,14 @@ export async function POST(request: NextRequest) {
 
   const config = cproInteg.config as CproConfig
 
-  // Find patient
+  // Find patient — prioriza busca por carteira (documento), fallback por nome
   const cd = g.cpro_data as Record<string, unknown> | null
   let patientId = typeof cd?.patient_id === 'number' ? cd.patient_id : null
 
+  if (!patientId && g.numero_carteira) {
+    const patient = await buscarPatientCpro(config, g.numero_carteira)
+    patientId = patient?.id ?? null
+  }
   if (!patientId && g.paciente) {
     const patient = await buscarPatientByName(config, g.paciente)
     patientId = patient?.id ?? null

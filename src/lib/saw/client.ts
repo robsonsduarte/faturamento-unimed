@@ -1758,7 +1758,7 @@ class SawClient {
       indicacaoClinica: string
     },
     onProgress?: (step: string, message: string) => void,
-  ): Promise<{ success: boolean; guideNumber?: string; paciente?: string; error?: string }> {
+  ): Promise<{ success: boolean; guideNumber?: string; paciente?: string; formData?: Record<string, unknown>; error?: string }> {
     return this.withLock(userId, async () => {
       let page: Page | null = null
       let nomeBeneficiario = ''
@@ -2074,6 +2074,35 @@ class SawClient {
           if (tel) tel.value = '999999999'
         })
 
+        // ─── Step 14b: Capture form data BEFORE submit (readGuide may hit token page) ──
+        const preSubmitFormData = await page.evaluate(() => {
+          const val = (sel: string): string | null => {
+            const el = document.querySelector(sel) as HTMLInputElement | HTMLSelectElement | null
+            return el?.value?.trim() || null
+          }
+          const txt = (sel: string): string | null => {
+            const el = document.querySelector(sel) as HTMLElement | null
+            return el?.textContent?.trim() || null
+          }
+          return {
+            senha: val('input[name*="senha"]'),
+            dataAutorizacao: val('input[name*="dataDeAutorizacao"]'),
+            dataValidadeSenha: val('input[name*="validadeDaSenha"]'),
+            dataSolicitacao: val('input[name*="dataDaSolicitacao"]'),
+            nomeProfissional: val('input[name*="profissionalSolicitante.nome"]'),
+            numeroCarteira: val('input[name*="beneficiario.codigo"]') || val('input[name*="numeroDaCarteira"]'),
+            codigoPrestador: val('input[name*="contratadoSolicitante.codigo"]'),
+            cnes: val('input[name*="codigoCNES"]'),
+            nomeBeneficiario: txt('#nomeBeneficiario') || val('input[name*="nomeDoBeneficiario"]'),
+            quantidadeSolicitada: Number(val('input[name*="quantidadeSolicitada"]')) || 0,
+            quantidadeAutorizada: Number(val('input[name*="quantidadeAutorizada"]')) || 0,
+            codigoProcedimentoSolicitado: val('input[name*="procedimentosSolicitados"][name*="codigo"]')
+              || val('input[name*="codigoDoProcedimento"]'),
+          }
+        }).catch(() => null)
+
+        sawLog(`createGuide: formData pre-submit capturado: ${JSON.stringify(preSubmitFormData ?? {}).substring(0, 200)}`)
+
         // ─── Step 15: Response interceptor before gravarGuia ────
         onProgress?.('9', 'Gravando guia no SAW...')
         let guideNumber = ''
@@ -2201,7 +2230,7 @@ class SawClient {
         if (guideNumber) {
           sawLog(`createGuide: numero da guia capturado: ${guideNumber}`)
           onProgress?.('10', `Guia criada com sucesso: ${guideNumber}`)
-          return { success: true, guideNumber, paciente: nomeBeneficiario || undefined }
+          return { success: true, guideNumber, paciente: nomeBeneficiario || undefined, formData: preSubmitFormData ?? undefined }
         }
 
         // Se nao encontrou numero mas nao houve alerts de erro — provavelmente criou
@@ -2214,7 +2243,7 @@ class SawClient {
         if (hasSenha) {
           sawLog('createGuide: guia gravada (senha encontrada) mas numero nao capturado')
           onProgress?.('10', 'Guia gravada com sucesso (numero sera capturado na importacao)')
-          return { success: true, guideNumber: undefined, paciente: nomeBeneficiario || undefined }
+          return { success: true, guideNumber: undefined, paciente: nomeBeneficiario || undefined, formData: preSubmitFormData ?? undefined }
         }
 
         // Verificar se o SAW ficou no form vazio (erro real) ou se recarregou com dados

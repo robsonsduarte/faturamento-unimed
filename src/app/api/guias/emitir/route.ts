@@ -208,6 +208,7 @@ export async function POST(request: NextRequest) {
               type: 'result',
               guideNumber: result.guideNumber ?? null,
               paciente: result.paciente ?? null,
+              formData: result.formData ?? null,
               timestamp: timestamp(),
             })}\n\n`,
           ),

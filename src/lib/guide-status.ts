@@ -31,8 +31,12 @@ export function computeGuideStatus(
   }
 
   // 1. TOKEN — paciente precisa fazer check-in biometrico
+  //    Porem, se CPro ja tem procedimentos cadastrados, nao travar em TOKEN
   if (tokenMessage === 'Realize o check-in do Paciente') {
-    return 'TOKEN'
+    if (procedimentosCadastrados == null || procedimentosCadastrados === 0) {
+      return 'TOKEN'
+    }
+    // Com CPro, cai para as verificacoes COMPLETA/PENDENTE abaixo
   }
 
   // 2. CPRO — guia nao encontrada no ConsultorioPro

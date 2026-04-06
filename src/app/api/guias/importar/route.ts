@@ -4,7 +4,7 @@ import { requireAuth, isAuthError } from '@/lib/auth'
 import { rateLimit } from '@/lib/rate-limit'
 import { getSawClient } from '@/lib/saw/client'
 import type { SawCookie } from '@/lib/saw/client'
-import { fetchCproData, buscarAgreementsUnimed, buscarPatientByName, buscarExecucoesPendentes, marcarExecucaoRealizada } from '@/lib/saw/cpro-client'
+import { fetchCproData, buscarAgreementsUnimed, buscarPatientCpro, buscarPatientByName, buscarExecucoesPendentes, marcarExecucaoRealizada } from '@/lib/saw/cpro-client'
 import type { SawCredentials, CproConfig } from '@/lib/types'
 import { computeGuideStatus } from '@/lib/guide-status'
 import { classifyGuia } from '@/lib/carteira'
@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
   }
   const { user, supabase } = auth
 
-  const body = await request.json().catch(() => ({})) as { guide_numbers?: string[]; mes_referencia?: string }
+  const body = await request.json().catch(() => ({})) as { guide_numbers?: string[]; mes_referencia?: string; emission_form_data?: Record<string, unknown> }
   const guideNumbers: string[] = Array.isArray(body.guide_numbers)
     ? body.guide_numbers.filter(Boolean)
     : []
@@ -405,10 +405,16 @@ export async function POST(request: NextRequest) {
                 const rawNome = sawData?.['nomeBeneficiario']
                 const pacienteNome = (typeof rawNome === 'string' && rawNome.trim() !== '' ? rawNome.trim() : null) as string | null
 
-                const [agreements, patient] = await Promise.all([
+                // Buscar paciente — priorizar carteira (documento) sobre nome para evitar homonimos
+                const rawCarteira = sawData?.['numeroCarteira']
+                const carteiraBusca = (typeof rawCarteira === 'string' && rawCarteira.trim() !== '' ? rawCarteira.trim() : null) as string | null
+
+                const [agreements, patientByDoc, patientByName] = await Promise.all([
                   buscarAgreementsUnimed(cproCfg),
+                  carteiraBusca ? buscarPatientCpro(cproCfg, carteiraBusca) : Promise.resolve(null),
                   pacienteNome ? buscarPatientByName(cproCfg, pacienteNome) : Promise.resolve(null),
                 ])
+                const patient = patientByDoc ?? patientByName
 
                 // Match agreement by procedure code
                 const matchedAg = codigoProc
@@ -480,6 +486,33 @@ export async function POST(request: NextRequest) {
           const tokenMessage = typeof sawData?.['tokenMessage'] === 'string'
             ? sawData['tokenMessage'] as string
             : ''
+
+          // Fallback: when readGuide hit token page, use emission form data
+          const efd = body.emission_form_data
+          if (tokenMessage === 'Realize o check-in do Paciente' && efd && sawData) {
+            const fallback = (sawKey: string, efdKey: string) => {
+              if (!sawData[sawKey] && efd[efdKey]) {
+                ;(sawData as Record<string, unknown>)[sawKey] = efd[efdKey]
+              }
+            }
+            fallback('senha', 'senha')
+            fallback('dataAutorizacao', 'dataAutorizacao')
+            fallback('dataValidadeSenha', 'dataValidadeSenha')
+            fallback('dataSolicitacao', 'dataSolicitacao')
+            fallback('nomeProfissional', 'nomeProfissional')
+            fallback('numeroCarteira', 'numeroCarteira')
+            fallback('codigoPrestador', 'codigoPrestador')
+            fallback('cnes', 'cnes')
+            fallback('nomeBeneficiario', 'nomeBeneficiario')
+            fallback('codigoProcedimentoSolicitado', 'codigoProcedimentoSolicitado')
+            if (!sawData['quantidadeSolicitada'] && efd.quantidadeSolicitada) {
+              ;(sawData as Record<string, unknown>)['quantidadeSolicitada'] = efd.quantidadeSolicitada
+            }
+            if (!sawData['quantidadeAutorizada'] && efd.quantidadeAutorizada) {
+              ;(sawData as Record<string, unknown>)['quantidadeAutorizada'] = efd.quantidadeAutorizada
+            }
+            send('info', `Guia ${guideNumber}: usando dados da emissao como fallback (token page)`, guideNumber)
+          }
 
           // Senha e data_autorizacao for status computation
           const senhaRaw = typeof sawData?.['senha'] === 'string' ? sawData['senha'] as string : null

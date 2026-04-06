@@ -57,7 +57,7 @@ export default function EmitirGuiaPage() {
   const [cproAtendimentos, setCproAtendimentos] = useState<Array<{ date: string; hour_start: string }>>([{ date: '', hour_start: '' }])
 
   // Pipeline state
-  const [pipelineStep, setPipelineStep] = useState<'idle' | 'emitindo' | 'importando' | 'cpro' | 'done'>('idle')
+  const [pipelineStep, setPipelineStep] = useState<'idle' | 'emitindo' | 'importando' | 'cpro' | 'verificando' | 'done'>('idle')
   const [logs, setLogs] = useState<ImportLog[]>([])
   const logEndRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
@@ -168,10 +168,11 @@ export default function EmitirGuiaPage() {
 
     let guideNumber = ''
     let guiaId = ''
+    let emissionFormData: Record<string, unknown> | null = null
 
     try {
       // ─── Step 1: Emit guide on SAW ───
-      appendLog({ type: 'processing', message: 'Passo 1/3: Emitindo guia no SAW...', timestamp: nowTs() })
+      appendLog({ type: 'processing', message: 'Passo 1/4: Emitindo guia no SAW...', timestamp: nowTs() })
 
       const emitRes = await fetch('/api/guias/emitir', {
         method: 'POST',
@@ -200,6 +201,7 @@ export default function EmitirGuiaPage() {
       await readSSE(emitRes, (evt) => {
         if (evt.type === 'result') {
           guideNumber = (evt.guideNumber ?? evt.guide_number ?? '') as string
+          emissionFormData = (evt.formData ?? null) as Record<string, unknown> | null
           appendLog({ type: 'success', message: `Guia ${guideNumber} emitida com sucesso!`, timestamp: nowTs() })
         } else {
           appendLog({ type: evt.type as ImportLog['type'], message: evt.message as string, timestamp: evt.timestamp as string })
@@ -210,12 +212,12 @@ export default function EmitirGuiaPage() {
 
       // ─── Step 2: Import guide from SAW ───
       setPipelineStep('importando')
-      appendLog({ type: 'processing', message: `Passo 2/3: Importando guia ${guideNumber} do SAW...`, timestamp: nowTs() })
+      appendLog({ type: 'processing', message: `Passo 2/4: Importando guia ${guideNumber} do SAW...`, timestamp: nowTs() })
 
       const importRes = await fetch('/api/guias/importar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ guide_numbers: [guideNumber], mes_referencia: mesReferencia }),
+        body: JSON.stringify({ guide_numbers: [guideNumber], mes_referencia: mesReferencia, emission_form_data: emissionFormData }),
         signal: abort.signal,
       })
 
@@ -233,7 +235,7 @@ export default function EmitirGuiaPage() {
 
       // ─── Step 3: Register in CPro ───
       setPipelineStep('cpro')
-      appendLog({ type: 'processing', message: 'Passo 3/3: Cadastrando cobranças no CPro...', timestamp: nowTs() })
+      appendLog({ type: 'processing', message: 'Passo 3/4: Cadastrando cobranças no CPro...', timestamp: nowTs() })
 
       const cproRes = await fetch('/api/guias/cpro/salvar', {
         method: 'POST',
@@ -258,18 +260,35 @@ export default function EmitirGuiaPage() {
         appendLog({ type: 'error', message: `CPro: ${cproData.error ?? 'Erro desconhecido'}`, timestamp: nowTs() })
       }
 
-      // Persist CPro config
-      fetch('/api/guias/cpro/salvar-config', {
+      // ─── Step 4: Verify CPro registration + persist config ───
+      setPipelineStep('verificando')
+      appendLog({ type: 'processing', message: 'Passo 4/4: Verificando cadastro no CPro...', timestamp: nowTs() })
+
+      const verifyRes = await fetch('/api/guias/cpro/verificar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           guia_id: guiaId,
+          guide_number: guideNumber,
           agreement_id: selectedAgreement,
           agreement_value: agreement?.value ?? 0,
           agreement_title: agreement?.title ?? '',
           user_id: selectedProf,
         }),
-      }).catch(() => {})
+        signal: abort.signal,
+      })
+
+      const verifyData = await verifyRes.json() as { success?: boolean; status?: string; procedimentos_cadastrados?: number; error?: string }
+
+      if (verifyData.success) {
+        appendLog({
+          type: 'success',
+          message: `Verificacao OK: ${verifyData.procedimentos_cadastrados ?? 0} execucao(oes) no CPro, status: ${verifyData.status}`,
+          timestamp: nowTs(),
+        })
+      } else {
+        appendLog({ type: 'error', message: `Verificacao CPro: ${verifyData.error ?? 'Erro desconhecido'}`, timestamp: nowTs() })
+      }
 
       // ─── Done ───
       setPipelineStep('done')
