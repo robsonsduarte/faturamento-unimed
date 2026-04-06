@@ -549,6 +549,9 @@ export async function POST(request: NextRequest) {
             guiaPayload.mes_referencia = mesReferencia
           }
 
+          // Agreement value per session (from CPro current or existing DB data)
+          let agreementValuePerSession: number | null = null
+
           // Only overwrite CPro-derived fields when CPro returned data.
           // On reimport, if CPro API fails/returns null, preserve existing cpro_data,
           // valor_total and procedimentos_cadastrados already stored in the DB.
@@ -561,8 +564,22 @@ export async function POST(request: NextRequest) {
             const qtdAut = quantidadeAutorizada ?? 0
             if (agValue && agValue > 0 && qtdAut > 0) {
               guiaPayload.valor_total = agValue * qtdAut
+              agreementValuePerSession = agValue
             } else {
               guiaPayload.valor_total = typeof cproData['valorTotal'] === 'number' ? cproData['valorTotal'] : null
+            }
+          } else {
+            // CPro failed — try to recover agreement value from existing DB data
+            const { data: existingCpro } = await db
+              .from('guias')
+              .select('cpro_data')
+              .eq('guide_number', guideNumber)
+              .single()
+            const existingAg = typeof (existingCpro?.cpro_data as Record<string, unknown> | null)?.['agreement_value'] === 'number'
+              ? (existingCpro?.cpro_data as Record<string, unknown>)['agreement_value'] as number
+              : null
+            if (existingAg && existingAg > 0) {
+              agreementValuePerSession = existingAg
             }
           }
 
@@ -650,8 +667,8 @@ export async function POST(request: NextRequest) {
               via_acesso: p.via || null,
               tecnica_utilizada: p.tecnica || null,
               reducao_acrescimo: p.reducaoAcrescimo || 1,
-              valor_unitario: p.valorUnitario || null,
-              valor_total: p.valorTotal || null,
+              valor_unitario: agreementValuePerSession ?? p.valorUnitario ?? null,
+              valor_total: agreementValuePerSession ?? p.valorTotal ?? null,
               nome_profissional: profNome,
               conselho: profConselho,
               numero_conselho: profNumConselho,

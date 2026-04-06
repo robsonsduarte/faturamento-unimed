@@ -375,6 +375,11 @@ export async function POST(request: NextRequest) {
 
           const procedimentosCadastrados = guiaAtual?.procedimentos_cadastrados ?? 0
 
+          // Agreement value per session from CPro data (for correct procedure pricing)
+          const cproDataExisting = guiaAtual?.cpro_data as Record<string, unknown> | null
+          const agreementValuePerSession = typeof cproDataExisting?.['agreement_value'] === 'number'
+            ? cproDataExisting['agreement_value'] as number : null
+
           const status = computeGuideStatus(
             procedimentosCadastrados,
             procedimentosRealizados,
@@ -443,8 +448,8 @@ export async function POST(request: NextRequest) {
               via_acesso: p.via || null,
               tecnica_utilizada: p.tecnica || null,
               reducao_acrescimo: parseFloat(p.reducaoAcrescimo ?? '1') || 1,
-              valor_unitario: p.valorUnitario ? parseFloat(p.valorUnitario) : null,
-              valor_total: p.valorTotal ? parseFloat(p.valorTotal) : null,
+              valor_unitario: agreementValuePerSession ?? (p.valorUnitario ? parseFloat(p.valorUnitario) : null),
+              valor_total: agreementValuePerSession ?? (p.valorTotal ? parseFloat(p.valorTotal) : null),
               nome_profissional: profNome,
               conselho: profConselho,
               numero_conselho: profNumConselho,
