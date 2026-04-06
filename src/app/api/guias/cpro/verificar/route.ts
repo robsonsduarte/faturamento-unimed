@@ -52,28 +52,24 @@ export async function POST(request: NextRequest) {
 
   const config = cproInteg.config as CproConfig
 
-  // Query CPro for fresh data
-  const cproResult = await fetchCproData(body.guide_number as string, config)
-
-  if (!cproResult) {
-    return NextResponse.json({
-      success: false,
-      error: 'CPro nao retornou dados para esta guia',
-      status: guia.status,
-      procedimentos_cadastrados: 0,
-    })
+  // Query CPro for fresh data (retry 1x apos 2s — CPro pode demorar a indexar)
+  let cproResult = await fetchCproData(body.guide_number as string, config)
+  if (!cproResult || cproResult.procedimentosCadastrados === 0) {
+    await new Promise((r) => setTimeout(r, 2000))
+    cproResult = await fetchCproData(body.guide_number as string, config)
   }
 
   // Merge cpro_data: existing + fresh CPro result + optional config overrides
   const existingCpro = (guia.cpro_data ?? {}) as Record<string, unknown>
-  const updatedCpro: Record<string, unknown> = {
-    ...existingCpro,
-    procedimentosCadastrados: cproResult.procedimentosCadastrados,
-    valorTotal: cproResult.valorTotal,
-    valorTotalFormatado: cproResult.valorTotalFormatado,
-    profissional: cproResult.profissional,
+  const updatedCpro: Record<string, unknown> = { ...existingCpro }
+
+  if (cproResult) {
+    updatedCpro.procedimentosCadastrados = cproResult.procedimentosCadastrados
+    updatedCpro.valorTotal = cproResult.valorTotal
+    updatedCpro.valorTotalFormatado = cproResult.valorTotalFormatado
+    updatedCpro.profissional = cproResult.profissional
+    if (cproResult.userId) updatedCpro.user_id = Number(cproResult.userId)
   }
-  if (cproResult.userId) updatedCpro.user_id = Number(cproResult.userId)
 
   // Merge optional config fields from request (agreement, user, patient)
   if (body.agreement_id != null) updatedCpro.agreement_id = body.agreement_id
@@ -89,8 +85,10 @@ export async function POST(request: NextRequest) {
   const dataAutorizacaoRaw = typeof sawData.dataAutorizacao === 'string' ? sawData.dataAutorizacao : (guia.data_autorizacao ?? null)
   const sawStatus = typeof sawData.status === 'string' ? sawData.status : null
 
+  const procedimentosCadastrados = cproResult?.procedimentosCadastrados ?? (typeof existingCpro.procedimentosCadastrados === 'number' ? existingCpro.procedimentosCadastrados : null)
+
   const newStatus = computeGuideStatus(
-    cproResult.procedimentosCadastrados,
+    procedimentosCadastrados,
     guia.procedimentos_realizados ?? 0,
     guia.quantidade_autorizada ?? null,
     tokenMessage,
@@ -116,6 +114,6 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({
     success: true,
     status: finalStatus,
-    procedimentos_cadastrados: cproResult.procedimentosCadastrados,
+    procedimentos_cadastrados: procedimentosCadastrados ?? 0,
   })
 }

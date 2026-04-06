@@ -407,7 +407,10 @@ export async function POST(request: NextRequest) {
 
                 // Buscar paciente — priorizar carteira (documento) sobre nome para evitar homonimos
                 const rawCarteira = sawData?.['numeroCarteira']
-                const carteiraBusca = (typeof rawCarteira === 'string' && rawCarteira.trim() !== '' ? rawCarteira.trim() : null) as string | null
+                // CPro espera carteira sem prefixo 865/0865
+                const carteiraBusca = (typeof rawCarteira === 'string' && rawCarteira.trim() !== ''
+                  ? rawCarteira.trim().replace(/^0?865/, '')
+                  : null) as string | null
 
                 const [agreements, patientByDoc, patientByName] = await Promise.all([
                   buscarAgreementsUnimed(cproCfg),

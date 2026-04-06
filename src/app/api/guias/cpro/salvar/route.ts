@@ -253,7 +253,9 @@ export async function POST(request: NextRequest) {
   let patientId = typeof cd?.patient_id === 'number' ? cd.patient_id : null
 
   if (!patientId && g.numero_carteira) {
-    const patient = await buscarPatientCpro(config, g.numero_carteira)
+    // CPro espera carteira sem prefixo 865/0865
+    const carteiraCpro = g.numero_carteira.replace(/^0?865/, '')
+    const patient = await buscarPatientCpro(config, carteiraCpro)
     patientId = patient?.id ?? null
   }
   if (!patientId && g.paciente) {
