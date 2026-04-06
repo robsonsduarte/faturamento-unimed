@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { requireAuth, isAuthError } from '@/lib/auth'
-import { fetchCproData } from '@/lib/saw/cpro-client'
+import { fetchCproData, buscarPatientCpro, buscarPatientByName, buscarAgreementsUnimed } from '@/lib/saw/cpro-client'
 import { computeGuideStatus } from '@/lib/guide-status'
 import type { CproConfig } from '@/lib/types'
 
@@ -77,6 +77,33 @@ export async function POST(request: NextRequest) {
   if (body.agreement_title != null) updatedCpro.agreement_title = body.agreement_title
   if (body.user_id != null) updatedCpro.user_id = body.user_id
   if (body.patient_id != null) updatedCpro.patient_id = body.patient_id
+
+  // Enrich patient_id if missing — busca por carteira primeiro, fallback por nome
+  if (!updatedCpro.patient_id) {
+    const cproCfg = { api_url: config.api_url, api_key: config.api_key, company: config.company ?? '1' }
+    const carteira = guia.numero_carteira ? String(guia.numero_carteira).replace(/^0?865/, '') : null
+    const patient = (carteira ? await buscarPatientCpro(cproCfg, carteira) : null)
+      ?? (guia.paciente ? await buscarPatientByName(cproCfg, guia.paciente) : null)
+    if (patient) {
+      updatedCpro.patient_id = patient.id
+      updatedCpro.patient_name = patient.name
+    }
+  }
+
+  // Enrich agreement if missing
+  if (!updatedCpro.agreement_id) {
+    const cproCfg = { api_url: config.api_url, api_key: config.api_key, company: config.company ?? '1' }
+    const procCode = guia.saw_data?.codigoProcedimentoSolicitado as string | undefined
+    if (procCode) {
+      const agreements = await buscarAgreementsUnimed(cproCfg)
+      const match = agreements.find((ag) => ag.title.startsWith(procCode))
+      if (match) {
+        updatedCpro.agreement_id = match.id
+        updatedCpro.agreement_value = match.value
+        updatedCpro.agreement_title = match.title
+      }
+    }
+  }
 
   // Recompute status with fresh CPro data
   const sawData = (guia.saw_data ?? {}) as Record<string, unknown>

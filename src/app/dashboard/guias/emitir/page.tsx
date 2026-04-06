@@ -19,18 +19,37 @@ const COUNCIL_MAP: Record<string, string> = {
   '9': '08', '09': '08', // CPro uses 9 for CRP, SAW uses 08
 }
 
+/** Detect log source from message content for color coding */
+function detectSource(msg: string): 'saw' | 'cpro' | 'system' {
+  const lower = msg.toLowerCase()
+  if (lower.includes('saw') || lower.includes('sessao') || lower.includes('biometr') || lower.includes('xml')) return 'saw'
+  if (lower.includes('cpro') || lower.includes('execu') || lower.includes('agreement') || lower.includes('verificac')) return 'cpro'
+  return 'system'
+}
+
 function LogLine({ log }: { log: ImportLog }) {
-  const colorMap: Record<ImportLog['type'], string> = {
-    info: 'text-[#a0a0a0]', processing: 'text-[#f0c040]', success: 'text-[#4ade80]', error: 'text-[#f87171]',
-  }
+  const isError = log.type === 'error'
+  const source = detectSource(log.message)
+
+  // Cores por fonte: SAW=verde, CPro=azul, Sistema=amarelo, Erro=vermelho
+  const sourceColor = isError
+    ? 'text-[#f87171]'
+    : source === 'saw'
+      ? 'text-[#4ade80]'
+      : source === 'cpro'
+        ? 'text-[#60a5fa]'
+        : 'text-[#f0c040]'
+
   const prefixMap: Record<ImportLog['type'], string> = {
-    info: '  ', processing: '~ ', success: '+ ', error: '- ',
+    info: '  ', processing: '~ ', success: '+ ', error: '! ',
   }
+  const tsColor = isError ? 'text-[#f87171]' : 'text-[#6b7280]'
+
   return (
     <div className="flex gap-2 leading-5">
-      <span className="shrink-0 text-[#4ade80] select-none">[{log.timestamp}]</span>
-      <span className={cn('shrink-0 select-none', colorMap[log.type])}>{prefixMap[log.type]}</span>
-      <span className={colorMap[log.type]}>{log.message}</span>
+      <span className={cn('shrink-0 select-none', tsColor)}>[{log.timestamp}]</span>
+      <span className={cn('shrink-0 select-none', sourceColor)}>{prefixMap[log.type]}</span>
+      <span className={sourceColor}>{log.message}</span>
     </div>
   )
 }
@@ -172,7 +191,7 @@ export default function EmitirGuiaPage() {
 
     try {
       // ─── Step 1: Emit guide on SAW ───
-      appendLog({ type: 'processing', message: 'Passo 1/4: Emitindo guia no SAW...', timestamp: nowTs() })
+      appendLog({ type: 'processing', message: '[SAW] Passo 1/4: Emitindo guia no SAW...', timestamp: nowTs() })
 
       const emitRes = await fetch('/api/guias/emitir', {
         method: 'POST',
@@ -202,7 +221,7 @@ export default function EmitirGuiaPage() {
         if (evt.type === 'result') {
           guideNumber = (evt.guideNumber ?? evt.guide_number ?? '') as string
           emissionFormData = (evt.formData ?? null) as Record<string, unknown> | null
-          appendLog({ type: 'success', message: `Guia ${guideNumber} emitida com sucesso!`, timestamp: nowTs() })
+          appendLog({ type: 'success', message: `[SAW] Guia ${guideNumber} emitida com sucesso!`, timestamp: nowTs() })
         } else {
           appendLog({ type: evt.type as ImportLog['type'], message: evt.message as string, timestamp: evt.timestamp as string })
         }
@@ -212,12 +231,12 @@ export default function EmitirGuiaPage() {
 
       // ─── Step 2: Import guide from SAW ───
       setPipelineStep('importando')
-      appendLog({ type: 'processing', message: `Passo 2/4: Importando guia ${guideNumber} do SAW...`, timestamp: nowTs() })
+      appendLog({ type: 'processing', message: `[SAW] Passo 2/4: Importando guia ${guideNumber} do SAW...`, timestamp: nowTs() })
 
       const importRes = await fetch('/api/guias/importar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ guide_numbers: [guideNumber], mes_referencia: mesReferencia, emission_form_data: emissionFormData }),
+        body: JSON.stringify({ guide_numbers: [guideNumber], mes_referencia: mesReferencia, emission_form_data: emissionFormData, skip_cpro: true }),
         signal: abort.signal,
       })
 
@@ -235,7 +254,7 @@ export default function EmitirGuiaPage() {
 
       // ─── Step 3: Register in CPro ───
       setPipelineStep('cpro')
-      appendLog({ type: 'processing', message: 'Passo 3/4: Cadastrando cobranças no CPro...', timestamp: nowTs() })
+      appendLog({ type: 'processing', message: '[CPro] Passo 3/4: Cadastrando execucoes no CPro...', timestamp: nowTs() })
 
       const cproRes = await fetch('/api/guias/cpro/salvar', {
         method: 'POST',
@@ -255,14 +274,14 @@ export default function EmitirGuiaPage() {
       const cproData = await cproRes.json() as { success?: boolean; created?: number; error?: string }
 
       if (cproData.success) {
-        appendLog({ type: 'success', message: `${cproData.created ?? 0} execucao(oes) criada(s) no CPro!`, timestamp: nowTs() })
+        appendLog({ type: 'success', message: `[CPro] ${cproData.created ?? 0} execucao(oes) criada(s) no CPro!`, timestamp: nowTs() })
       } else {
-        appendLog({ type: 'error', message: `CPro: ${cproData.error ?? 'Erro desconhecido'}`, timestamp: nowTs() })
+        appendLog({ type: 'error', message: `[CPro] ${cproData.error ?? 'Erro desconhecido'}`, timestamp: nowTs() })
       }
 
       // ─── Step 4: Verify CPro registration + persist config ───
       setPipelineStep('verificando')
-      appendLog({ type: 'processing', message: 'Passo 4/4: Verificando cadastro no CPro...', timestamp: nowTs() })
+      appendLog({ type: 'processing', message: '[CPro] Passo 4/4: Verificando execucoes no CPro...', timestamp: nowTs() })
 
       const verifyRes = await fetch('/api/guias/cpro/verificar', {
         method: 'POST',
@@ -283,11 +302,11 @@ export default function EmitirGuiaPage() {
       if (verifyData.success) {
         appendLog({
           type: 'success',
-          message: `Verificacao OK: ${verifyData.procedimentos_cadastrados ?? 0} execucao(oes) no CPro, status: ${verifyData.status}`,
+          message: `[CPro] Verificacao OK: ${verifyData.procedimentos_cadastrados ?? 0} execucao(oes), status: ${verifyData.status}`,
           timestamp: nowTs(),
         })
       } else {
-        appendLog({ type: 'error', message: `Verificacao CPro: ${verifyData.error ?? 'Erro desconhecido'}`, timestamp: nowTs() })
+        appendLog({ type: 'error', message: `[CPro] Verificacao: ${verifyData.error ?? 'Erro desconhecido'}`, timestamp: nowTs() })
       }
 
       // ─── Done ───

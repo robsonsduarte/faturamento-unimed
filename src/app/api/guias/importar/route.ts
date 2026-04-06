@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
   }
   const { user, supabase } = auth
 
-  const body = await request.json().catch(() => ({})) as { guide_numbers?: string[]; mes_referencia?: string; emission_form_data?: Record<string, unknown> }
+  const body = await request.json().catch(() => ({})) as { guide_numbers?: string[]; mes_referencia?: string; emission_form_data?: Record<string, unknown>; skip_cpro?: boolean }
   const guideNumbers: string[] = Array.isArray(body.guide_numbers)
     ? body.guide_numbers.filter(Boolean)
     : []
@@ -373,9 +373,12 @@ export async function POST(request: NextRequest) {
           if (!sawSuccess) continue
 
           // Try CPro for additional data — failure is non-fatal
+          // skip_cpro: pipeline de emissao pula esta consulta (CPro sera consultado apos cadastro no step 4)
           let cproData: Record<string, unknown> | null = null
 
-          if (!cproConfig?.api_url || !cproConfig?.api_key) {
+          if (body.skip_cpro) {
+            send('info', `Guia ${guideNumber}: consulta CPro sera feita apos cadastro (step 4)`, guideNumber)
+          } else if (!cproConfig?.api_url || !cproConfig?.api_key) {
             if (i === 0) {
               send('info', 'CPro nao configurado — pulando busca de procedimentos cadastrados.')
             }
