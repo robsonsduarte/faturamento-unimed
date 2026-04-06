@@ -190,8 +190,8 @@ function buildProcedimento(proc: Procedimento, index: number, fb: ProfFallback, 
     [ans('viaAcesso')]: '1',
     [ans('tecnicaUtilizada')]: '1',
     [ans('reducaoAcrescimo')]: '1.0',
-    [ans('valorUnitario')]: (proc.valor_unitario ?? valorPerProc ?? 0).toFixed(2),
-    [ans('valorTotal')]: (proc.valor_total ?? valorPerProc ?? 0).toFixed(2),
+    [ans('valorUnitario')]: (valorPerProc || proc.valor_unitario || 0).toFixed(2),
+    [ans('valorTotal')]: (valorPerProc || proc.valor_total || 0).toFixed(2),
     [ans('equipeSadt')]: buildEquipeSadt(
       proc.nome_profissional ? (fb.cpf) : fb.cpf,
       sanitize(proc.nome_profissional ?? fb.nome),
@@ -230,14 +230,18 @@ function buildProcedimentoFromXml(
 ) {
   const eq = proc.equipeSadt
 
-  // SAW XML is authoritative for structure; DB is authoritative for values
-  // Fallback chain: SAW XML → DB procedure → guia.valor_total / proc_count
-  const valorUnit = hasValue(proc.valorUnitario)
-    ? proc.valorUnitario
-    : formatDecimal2(dbProc?.valor_unitario, valorPerProc ?? 0)
-  const valorTot = hasValue(proc.valorTotal)
-    ? proc.valorTotal
-    : formatDecimal2(dbProc?.valor_total, valorPerProc ?? 0)
+  // guia.valor_total / proc_count is authoritative (reflects agreement/contract value)
+  // Fallback: DB procedure → SAW XML
+  const valorUnit = valorPerProc
+    ? valorPerProc.toFixed(2)
+    : hasValue(proc.valorUnitario)
+      ? proc.valorUnitario
+      : formatDecimal2(dbProc?.valor_unitario, 0)
+  const valorTot = valorPerProc
+    ? valorPerProc.toFixed(2)
+    : hasValue(proc.valorTotal)
+      ? proc.valorTotal
+      : formatDecimal2(dbProc?.valor_total, 0)
   const reducao = hasValue(proc.reducaoAcrescimo)
     ? parseFloat(proc.reducaoAcrescimo).toFixed(1)
     : (dbProc?.reducao_acrescimo?.toFixed(1) ?? '1.0')
@@ -302,9 +306,8 @@ function buildGuiaContent(guia: Guia) {
     ? xml.procedimentosExecutados.map((p, i) => buildProcedimentoFromXml(p, i, profFallback, procedimentos[i], valorPerProc))
     : procedimentos.map((p, i) => buildProcedimento(p, i, profFallback, valorPerProc))
 
-  // Sum procedure values for valorTotal section — prefer DB values, fallback to guia total
-  const dbValorSum = procedimentos.reduce((sum, p) => sum + (p.valor_total ?? 0), 0)
-  const valorProcedimentos = dbValorSum > 0 ? dbValorSum : (guia.valor_total ?? 0)
+  // Sum procedure values for valorTotal section — prefer guia.valor_total (contract value)
+  const valorProcedimentos = guia.valor_total > 0 ? guia.valor_total : procedimentos.reduce((sum, p) => sum + (p.valor_total ?? 0), 0)
 
   // Resolve solicitante professional fields — saw_xml_data with padding, then fallback
   const solNome = xml?.dadosSolicitante.profissionalSolicitante.nomeProfissional || profFallback.nome
