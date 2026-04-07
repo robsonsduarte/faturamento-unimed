@@ -2,7 +2,7 @@
 
 import { use, useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, RefreshCw, CheckCircle, XCircle, X, RotateCw, Camera, Loader2, Send, Smartphone, MessageSquare, FilePlus, Link2, Database } from 'lucide-react'
+import { ArrowLeft, RefreshCw, CheckCircle, XCircle, X, RotateCw, Camera, Loader2, Send, Smartphone, MessageSquare, FilePlus, Link2, Database, Trash2 } from 'lucide-react'
 import { useGuia, useUpdateGuiaStatus } from '@/hooks/use-guias'
 import { useProfile } from '@/hooks/use-profile'
 import { StatusBadge } from '@/components/shared/status-badge'
@@ -720,6 +720,33 @@ export default function GuiaDetailPage({ params }: Props) {
                 Emitir Nova Guia
               </button>
             )}
+            <button
+              onClick={() => {
+                setConfirmModal({
+                  show: true,
+                  message: `Tem certeza que deseja excluir a guia ${guia.guide_number}? Esta acao nao pode ser desfeita.`,
+                  onConfirm: async () => {
+                    setConfirmModal({ show: false, message: '', onConfirm: () => {} })
+                    try {
+                      const res = await fetch(`/api/guias/${guia.id}`, { method: 'DELETE' })
+                      if (!res.ok) throw new Error('Falha ao excluir')
+                      toast.success('Guia excluida com sucesso')
+                      window.location.href = '/dashboard/guias'
+                    } catch {
+                      toast.error('Erro ao excluir guia')
+                    }
+                  },
+                })
+              }}
+              className={cn(
+                'inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm',
+                'bg-[var(--color-card)] border border-red-500/30 text-red-400 hover:bg-red-500/10 hover:text-red-300',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500'
+              )}
+            >
+              <Trash2 className="w-4 h-4" />
+              Excluir
+            </button>
             <Link
               href="/dashboard/guias"
               className={cn(
