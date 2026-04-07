@@ -634,7 +634,10 @@ export async function POST(request: NextRequest) {
               guiaPayload.valor_total = typeof cproData['valorTotal'] === 'number' ? cproData['valorTotal'] : null
             }
           } else {
-            // CPro failed — try to recover agreement value from existing DB data
+            // CPro retornou null — guia nao encontrada no CPro. Limpar dados locais.
+            guiaPayload.cpro_data = null
+            guiaPayload.procedimentos_cadastrados = 0
+            // Preservar valor_total do agreement existente para calculo de lote
             const { data: existingCpro } = await db
               .from('guias')
               .select('cpro_data')

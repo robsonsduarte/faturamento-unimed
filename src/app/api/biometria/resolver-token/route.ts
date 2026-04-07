@@ -336,7 +336,7 @@ export async function POST(request: NextRequest) {
               updated_at: new Date().toISOString(),
             }
 
-            // CPro data
+            // CPro data — sempre sincronizar (limpar se null)
             if (cproData !== null) {
               guiaPayload.cpro_data = cproData
               guiaPayload.procedimentos_cadastrados = procedimentosCadastrados ?? 0
@@ -347,6 +347,9 @@ export async function POST(request: NextRequest) {
               } else {
                 guiaPayload.valor_total = typeof cproData['valorTotal'] === 'number' ? cproData['valorTotal'] : null
               }
+            } else {
+              guiaPayload.cpro_data = null
+              guiaPayload.procedimentos_cadastrados = 0
             }
 
             // 6. Upsert
