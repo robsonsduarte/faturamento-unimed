@@ -24,6 +24,7 @@ interface SalvarBody {
   multiplicador?: number // 1 or 2 (default 2)
   agreement_id: number
   agreement_value: number
+  patient_id?: number // ID do paciente no CPro (prioridade maxima)
 }
 
 // ─── Holidays (mirrors CPro HolidayHelper.php) ───
@@ -261,24 +262,44 @@ export async function POST(request: NextRequest) {
 
   const config = configEarly
 
-  // Find patient — prioriza busca por carteira (documento), fallback por nome
+  // Find patient — cascata de prioridade:
+  // 1. body.patient_id (frontend envia direto)
+  // 2. cpro_data.patient_id (importacao anterior)
+  // 3. busca por carteira (document)
+  // 4. busca por nome completo
+  // 5. busca por primeiro+segundo nome (fallback para divergencia de grafia)
   const cd = g.cpro_data as Record<string, unknown> | null
-  let patientId = typeof cd?.patient_id === 'number' ? cd.patient_id : null
+  let patientId: number | null = typeof body.patient_id === 'number' ? body.patient_id : null
+
+  if (!patientId) {
+    patientId = typeof cd?.patient_id === 'number' ? cd.patient_id : null
+  }
 
   if (!patientId && g.numero_carteira) {
-    // CPro espera carteira sem prefixo 865/0865
     const carteiraCpro = g.numero_carteira.replace(/^0?865/, '')
     const patient = await buscarPatientCpro(config, carteiraCpro)
     patientId = patient?.id ?? null
   }
+
   if (!patientId && g.paciente) {
+    // Tentar nome completo
     const patient = await buscarPatientByName(config, g.paciente)
     patientId = patient?.id ?? null
+
+    // Fallback: primeiro + segundo nome (SAW pode ter sobrenome extra)
+    if (!patientId) {
+      const parts = g.paciente.trim().split(/\s+/)
+      if (parts.length >= 2) {
+        const shortName = `${parts[0]} ${parts[1]}`
+        const patientShort = await buscarPatientByName(config, shortName)
+        patientId = patientShort?.id ?? null
+      }
+    }
   }
 
   if (!patientId) {
     return NextResponse.json(
-      { success: false, error: `Paciente "${g.paciente}" nao encontrado no CPro` },
+      { success: false, error: `Paciente "${g.paciente}" nao encontrado no CPro. Informe o ID do paciente manualmente.` },
       { status: 422 }
     )
   }

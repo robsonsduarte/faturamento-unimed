@@ -438,6 +438,7 @@ export default function GuiaDetailPage({ params }: Props) {
           multiplicador: cproMultiplicador,
           agreement_id: cproAgreement,
           agreement_value: cproAgreements.find((a) => a.id === cproAgreement)?.value ?? 0,
+          patient_id: (guia.cpro_data as Record<string, unknown> | null)?.patient_id ?? undefined,
         }),
       })
       const data = await res.json()
