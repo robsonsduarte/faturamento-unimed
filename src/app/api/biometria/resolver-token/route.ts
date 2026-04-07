@@ -7,9 +7,8 @@ import { buscarFotoBase64, buscarFotoBase64PorSequence } from '@/lib/services/bi
 import { getSawClient } from '@/lib/saw/client'
 import type { SawCookie } from '@/lib/saw/client'
 import type { SawCredentials } from '@/lib/types'
-import { fetchCproData, buscarAgreementsUnimed, buscarPatientCpro, buscarPatientByName } from '@/lib/saw/cpro-client'
-import { computeGuideStatus } from '@/lib/guide-status'
-import { classifyGuia } from '@/lib/carteira'
+import { importarGuia } from '@/lib/services/importar-guia'
+import type { CproConfig } from '@/lib/types'
 
 function getServiceClient() {
   return createAdminClient(
@@ -223,137 +222,28 @@ export async function POST(request: NextRequest) {
             .eq('sequence', chosenSequence)
         }
 
-        // Reimportar guia: SAW readGuide + CPro fetch + DB save (inline)
+        // Reimportar guia via funcao compartilhada
         send('processing', '[9/9] Reimportando guia (SAW + CPro)...')
         try {
-          // 1. Ler guia do SAW
           const readResult = await getSawClient().readGuide(user.id, cookies, guia.guide_number)
           if (!readResult.success || !readResult.data) {
             send('info', `Reimportacao SAW falhou (${readResult.error}). Reimporte manualmente.`)
           } else {
-            const sawData = readResult.data as Record<string, unknown>
-            send('info', `SAW lido: ${typeof sawData['procedimentosRealizados'] === 'number' ? sawData['procedimentosRealizados'] : 0} procedimentos realizados`)
-
-            // 2. Buscar CPro
-            let cproData: Record<string, unknown> | null = null
             const { data: integ } = await db.from('integracoes').select('config, ativo').eq('slug', 'cpro').single()
-            const cproConfig = integ?.ativo ? (integ.config as Record<string, string>) : null
+            const cproCfg = integ?.ativo ? (integ.config as CproConfig) : null
 
-            if (cproConfig?.api_url && cproConfig?.api_key) {
-              try {
-                send('processing', 'Buscando dados CPro...')
-                const cproCfg = { api_url: cproConfig.api_url, api_key: cproConfig.api_key, company: cproConfig.company ?? '1' }
-                const cproResult = await fetchCproData(guia.guide_number, cproCfg)
+            const result = await importarGuia({
+              sawData: readResult.data as Record<string, unknown>,
+              guideNumber: guia.guide_number,
+              cproConfig: cproCfg,
+              forceTokenBiometrico: true,
+              log: (type, message) => send(type === 'error' ? 'error' : type === 'success' ? 'success' : 'info', message),
+            })
 
-                if (cproResult) {
-                  cproData = {
-                    procedimentosCadastrados: cproResult.procedimentosCadastrados,
-                    userId: cproResult.userId,
-                    valorTotal: cproResult.valorTotal,
-                    valorTotalFormatado: cproResult.valorTotalFormatado,
-                    profissional: cproResult.profissional,
-                  }
-
-                  const codigoProc = typeof sawData['codigoProcedimentoSolicitado'] === 'string' ? sawData['codigoProcedimentoSolicitado'] as string : ''
-                  const rawNome = sawData['nomeBeneficiario']
-                  const pacienteNome = (typeof rawNome === 'string' && rawNome.trim() !== '' ? rawNome.trim() : null) as string | null
-                  const rawCarteira = sawData['numeroCarteira']
-                  const carteiraBusca = (typeof rawCarteira === 'string' && rawCarteira.trim() !== '' ? rawCarteira.trim().replace(/^0?865/, '') : null) as string | null
-
-                  const [agreements, patientByDoc, patientByName] = await Promise.all([
-                    buscarAgreementsUnimed(cproCfg),
-                    carteiraBusca ? buscarPatientCpro(cproCfg, carteiraBusca) : Promise.resolve(null),
-                    pacienteNome ? buscarPatientByName(cproCfg, pacienteNome) : Promise.resolve(null),
-                  ])
-                  const patient = patientByDoc ?? patientByName
-                  const matchedAg = codigoProc ? agreements.find((ag) => ag.title.startsWith(codigoProc)) : null
-
-                  if (matchedAg) { cproData.agreement_id = matchedAg.id; cproData.agreement_value = matchedAg.value; cproData.agreement_title = matchedAg.title }
-                  if (patient) { cproData.patient_id = patient.id; cproData.patient_name = patient.name }
-                  if (cproResult.userId) { cproData.user_id = Number(cproResult.userId) }
-                  send('info', `CPro: ${cproResult.procedimentosCadastrados} procedimento(s) cadastrado(s)`)
-                } else {
-                  send('info', 'CPro: guia nao encontrada na API')
-                }
-              } catch (cproErr) {
-                send('info', `CPro falhou (${cproErr instanceof Error ? cproErr.message : 'erro'}) — continuando sem CPro`)
-              }
-            }
-
-            // 3. Helpers
-            const orNull = (v: unknown): unknown => typeof v === 'string' && v.trim() === '' ? null : (v ?? null)
-            const parseDate = (v: unknown): string | null => {
-              if (typeof v !== 'string' || !v.trim()) return null
-              const match = v.match(/^(\d{2})\/(\d{2})\/(\d{4})/)
-              return match ? `${match[3]}-${match[2]}-${match[1]}` : null
-            }
-
-            // 4. Compute status
-            const procedimentosRealizados = typeof sawData['procedimentosRealizados'] === 'number' ? sawData['procedimentosRealizados'] as number : 0
-            const quantidadeAutorizada = typeof sawData['quantidadeAutorizada'] === 'number' ? sawData['quantidadeAutorizada'] as number : null
-            const procedimentosCadastrados = typeof cproData?.['procedimentosCadastrados'] === 'number' ? cproData['procedimentosCadastrados'] as number : null
-            const tokenMessage = typeof sawData['tokenMessage'] === 'string' ? sawData['tokenMessage'] as string : ''
-            const senhaRaw = typeof sawData['senha'] === 'string' ? sawData['senha'] as string : null
-            const dataAutorizacaoRaw = typeof sawData['dataAutorizacao'] === 'string' ? sawData['dataAutorizacao'] as string : null
-            const sawStatus = typeof sawData['status'] === 'string' ? sawData['status'] as string : null
-
-            const status = computeGuideStatus(procedimentosCadastrados, procedimentosRealizados, quantidadeAutorizada, tokenMessage, senhaRaw, dataAutorizacaoRaw, sawStatus)
-
-            // Preserve FATURADA/PROCESSADA
-            const PRESERVED = ['FATURADA', 'PROCESSADA']
-            const { data: existingGuia } = await db.from('guias').select('status').eq('guide_number', guia.guide_number).single()
-            const finalStatus = existingGuia && PRESERVED.includes(existingGuia.status) ? existingGuia.status : status
-
-            const numeroCarteira = orNull(sawData['numeroCarteira']) as string | null
-
-            // 5. Build payload
-            const guiaPayload: Record<string, unknown> = {
-              guide_number: guia.guide_number,
-              guide_number_prestador: orNull(sawData['numeroGuiaPrestador']),
-              paciente: orNull(sawData['nomeBeneficiario']) ?? null,
-              numero_carteira: numeroCarteira,
-              senha: orNull(sawData['senha']),
-              data_autorizacao: parseDate(sawData['dataAutorizacao']),
-              data_validade_senha: parseDate(sawData['dataValidadeSenha']),
-              data_solicitacao: parseDate(sawData['dataSolicitacao']),
-              quantidade_solicitada: typeof sawData['quantidadeSolicitada'] === 'number' ? sawData['quantidadeSolicitada'] : null,
-              quantidade_autorizada: quantidadeAutorizada,
-              procedimentos_realizados: procedimentosRealizados,
-              codigo_prestador: orNull(sawData['codigoPrestador']),
-              nome_profissional: orNull(sawData['nomeProfissional']),
-              cnes: orNull(sawData['cnes']),
-              tipo_atendimento: orNull(sawData['tipoAtendimento']),
-              indicacao_acidente: orNull(sawData['indicacaoAcidente']),
-              indicacao_clinica: orNull(sawData['indicacaoClinica']),
-              tipo_guia: classifyGuia(numeroCarteira),
-              token_biometrico: true,
-              saw_data: sawData,
-              status: finalStatus,
-              updated_at: new Date().toISOString(),
-            }
-
-            // CPro data — sempre sincronizar (limpar se null)
-            if (cproData !== null) {
-              guiaPayload.cpro_data = cproData
-              guiaPayload.procedimentos_cadastrados = procedimentosCadastrados ?? 0
-              const agValue = typeof cproData['agreement_value'] === 'number' ? cproData['agreement_value'] as number : null
-              const qtdAut = quantidadeAutorizada ?? 0
-              if (agValue && agValue > 0 && qtdAut > 0) {
-                guiaPayload.valor_total = agValue * qtdAut
-              } else {
-                guiaPayload.valor_total = typeof cproData['valorTotal'] === 'number' ? cproData['valorTotal'] : null
-              }
+            if (result.success) {
+              send('success', `[9/9] Guia reimportada! Status: ${result.status}`)
             } else {
-              guiaPayload.cpro_data = null
-              guiaPayload.procedimentos_cadastrados = 0
-            }
-
-            // 6. Upsert
-            const { error: upsertErr } = await db.from('guias').upsert(guiaPayload, { onConflict: 'guide_number' }).select('id').single()
-            if (upsertErr) {
-              send('error', `Falha ao salvar: ${upsertErr.message}`)
-            } else {
-              send('success', `[9/9] Guia reimportada com sucesso! Status: ${finalStatus}`)
+              send('error', `Reimportacao falhou: ${result.error}`)
             }
           }
         } catch (importErr) {
