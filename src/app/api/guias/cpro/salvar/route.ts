@@ -352,6 +352,7 @@ export async function POST(request: NextRequest) {
     success: true,
     created,
     total: execDates.length,
+    patient_id: patientId,
     errors: errors.length > 0 ? errors : undefined,
   })
 }

@@ -441,13 +441,13 @@ export default function GuiaDetailPage({ params }: Props) {
           patient_id: (guia.cpro_data as Record<string, unknown> | null)?.patient_id ?? undefined,
         }),
       })
-      const data = await res.json()
+      const data = await res.json() as { success?: boolean; created?: number; patient_id?: number; error?: string | { message?: string } }
       if (data.success) {
         toast.success(`${data.created ?? 1} execucao(oes) criada(s) no CPro!`)
-        // Persist selection to cpro_data for future use
+        // Persist selection + patient_id to cpro_data
         const selAg = cproAgreements.find((a) => a.id === cproAgreement)
         if (guia) {
-          fetch(`/api/guias/cpro/salvar-config`, {
+          await fetch(`/api/guias/cpro/salvar-config`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -456,11 +456,21 @@ export default function GuiaDetailPage({ params }: Props) {
               agreement_value: selAg?.value ?? 0,
               agreement_title: selAg?.title ?? '',
               user_id: cproUser,
-              patient_id: null,
+              patient_id: data.patient_id ?? (guia.cpro_data as Record<string, unknown> | null)?.patient_id ?? null,
             }),
           }).catch(() => {})
+          // Reimportar guia para atualizar procedimentos_cadastrados e status
+          toast.info('Reimportando guia para atualizar dados...')
+          try {
+            await fetch('/api/guias/importar', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ guide_numbers: [guia.guide_number] }),
+            })
+          } catch { /* silencioso */ }
         }
         setCproModalOpen(false)
+        await refetch()
       } else {
         const errMsg = typeof data.error === 'string' ? data.error : (data.error?.message ?? JSON.stringify(data.error) ?? 'Erro ao salvar no CPro')
         toast.error(errMsg)
