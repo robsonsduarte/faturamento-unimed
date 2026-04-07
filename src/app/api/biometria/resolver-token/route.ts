@@ -208,14 +208,50 @@ export async function POST(request: NextRequest) {
           })
           .eq('id', guia.id)
 
-        // Reimportar guia automaticamente
-        send('processing', '[9/9] Reimportando guia...')
-        const readResult = await getSawClient().readGuide(user.id, cookies, guia.guide_number)
+        // Reimportar guia via /api/guias/importar (busca SAW + CPro + salva no banco)
+        send('processing', '[9/9] Reimportando guia (SAW + CPro)...')
+        try {
+          const importUrl = new URL('/api/guias/importar', request.url)
+          const importRes = await fetch(importUrl.toString(), {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Cookie: request.headers.get('cookie') ?? '',
+            },
+            body: JSON.stringify({ guide_numbers: [guia.guide_number] }),
+          })
 
-        if (readResult.success) {
-          send('success', '[9/9] Guia reimportada com sucesso!')
-        } else {
-          send('info', `Reimportacao falhou (${readResult.error}). Reimporte manualmente.`)
+          if (importRes.ok && importRes.body) {
+            const reader = importRes.body.getReader()
+            const decoder = new TextDecoder()
+            let lastStatus = ''
+            while (true) {
+              const { done, value } = await reader.read()
+              if (done) break
+              const chunk = decoder.decode(value, { stream: true })
+              // Parse SSE events from import stream and forward relevant ones
+              for (const line of chunk.split('\n')) {
+                if (!line.startsWith('data: ')) continue
+                try {
+                  const evt = JSON.parse(line.slice(6)) as { type?: string; message?: string }
+                  if (evt.message) {
+                    send(evt.type === 'error' ? 'error' : 'info', `  ${evt.message}`)
+                    if (evt.type === 'error' || evt.type === 'success') lastStatus = evt.type
+                  }
+                } catch { /* ignore malformed SSE */ }
+              }
+            }
+            if (lastStatus === 'error') {
+              send('info', 'Reimportacao teve erros. Verifique os logs acima.')
+            } else {
+              send('success', '[9/9] Guia reimportada com sucesso (SAW + CPro)!')
+            }
+          } else {
+            send('info', `Reimportacao retornou status ${importRes.status}. Reimporte manualmente.`)
+          }
+        } catch (importErr) {
+          const importMsg = importErr instanceof Error ? importErr.message : 'Erro desconhecido'
+          send('info', `Reimportacao falhou (${importMsg}). Reimporte manualmente.`)
         }
 
         send('success', 'Processo concluido!')
