@@ -17,6 +17,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Stethoscope,
+  HelpCircle,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { Profile } from '@/lib/types'
@@ -33,6 +34,7 @@ const allNavItems = [
   { href: '/dashboard/tokens', icon: Fingerprint, label: 'Tokens', roles: ['admin', 'operador'] as UserRole[] },
   { href: '/dashboard/relatorios', icon: BarChart3, label: 'Relatorios', roles: ['admin', 'operador'] as UserRole[] },
   { href: '/dashboard/configuracoes', icon: Settings, label: 'Configuracoes', roles: ['admin'] as UserRole[] },
+  { href: '/dashboard/ajuda', icon: HelpCircle, label: 'Ajuda', roles: ['admin', 'operador', 'visualizador'] as UserRole[] },
 ]
 
 export function Sidebar({ role = 'visualizador' }: { role?: UserRole }) {
