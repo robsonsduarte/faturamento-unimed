@@ -459,18 +459,10 @@ export default function GuiaDetailPage({ params }: Props) {
               patient_id: data.patient_id ?? (guia.cpro_data as Record<string, unknown> | null)?.patient_id ?? null,
             }),
           }).catch(() => {})
-          // Reimportar guia para atualizar procedimentos_cadastrados e status
-          toast.info('Reimportando guia para atualizar dados...')
-          try {
-            await fetch('/api/guias/importar', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ guide_numbers: [guia.guide_number] }),
-            })
-          } catch { /* silencioso */ }
         }
         setCproModalOpen(false)
-        await refetch()
+        // Reimportar guia com logs visiveis (usa mesma logica do "Atualizar dados")
+        await handleReimport()
       } else {
         const errMsg = typeof data.error === 'string' ? data.error : (data.error?.message ?? JSON.stringify(data.error) ?? 'Erro ao salvar no CPro')
         toast.error(errMsg)
