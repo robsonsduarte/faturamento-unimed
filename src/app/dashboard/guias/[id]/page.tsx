@@ -36,11 +36,12 @@ export default function GuiaDetailPage({ params }: Props) {
   })
 
   // Biometria states
-  const [patientPhotos, setPatientPhotos] = useState<Array<{ sequence: number; url: string }>>([])
+  const [patientPhotos, setPatientPhotos] = useState<Array<{ sequence: number; url: string; token_used_at?: string | null }>>([])
   const [captureSlot, setCaptureSlot] = useState<number | null>(null)
   const [bioLoading, setBioLoading] = useState(false)
   const [bioResolving, setBioResolving] = useState(false)
   const [bioLogs, setBioLogs] = useState<ImportLog[]>([])
+  const [selectedPhotoSeq, setSelectedPhotoSeq] = useState<number | null>(null)
 
   // Token WhatsApp states
   const [tokenMode, setTokenMode] = useState<'none' | 'biometria' | 'whatsapp'>('none')
@@ -112,16 +113,20 @@ export default function GuiaDetailPage({ params }: Props) {
   function fetchPhotos(carteira: string) {
     fetch(`/api/biometria/foto/${encodeURIComponent(carteira)}`)
       .then((r) => r.json())
-      .then((data: { exists: boolean; fotos?: Array<{ sequence: number; url: string }> }) => {
+      .then((data: { exists: boolean; fotos?: Array<{ sequence: number; url: string; token_used_at?: string | null }> }) => {
         if (data.exists && data.fotos) {
           setPatientPhotos(data.fotos)
           setCobrarHasFoto(data.fotos.length > 0)
+          // Auto-selecionar se so tem 1 foto
+          if (data.fotos.length === 1) setSelectedPhotoSeq(data.fotos[0].sequence)
+          else setSelectedPhotoSeq(null)
         } else {
           setPatientPhotos([])
           setCobrarHasFoto(false)
+          setSelectedPhotoSeq(null)
         }
       })
-      .catch(() => { setPatientPhotos([]); setCobrarHasFoto(false) })
+      .catch(() => { setPatientPhotos([]); setCobrarHasFoto(false); setSelectedPhotoSeq(null) })
   }
 
   useEffect(() => {
@@ -155,13 +160,19 @@ export default function GuiaDetailPage({ params }: Props) {
 
   async function handleResolverToken() {
     if (!guia) return
+    if (patientPhotos.length > 1 && !selectedPhotoSeq) {
+      toast.error('Selecione uma foto clicando nela antes de resolver o token')
+      return
+    }
     setBioResolving(true)
     setBioLogs([])
     try {
+      const payload: Record<string, unknown> = { guia_id: guia.id }
+      if (selectedPhotoSeq) payload.photo_sequence = selectedPhotoSeq
       const res = await fetch('/api/biometria/resolver-token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ guia_id: guia.id }),
+        body: JSON.stringify(payload),
       })
       const reader = res.body?.getReader()
       if (!reader) throw new Error('Stream nao disponivel')
@@ -1046,18 +1057,42 @@ export default function GuiaDetailPage({ params }: Props) {
                     <div className="grid grid-cols-5 gap-2">
                       {[1, 2, 3, 4, 5].map((seq) => {
                         const photo = patientPhotos.find((p) => p.sequence === seq)
+                        const isSelected = selectedPhotoSeq === seq
+                        const tokenMonth = photo?.token_used_at
+                          ? `T-${new Date(photo.token_used_at).toLocaleString('pt-BR', { month: 'short' }).replace('.', '').toUpperCase()}`
+                          : null
                         return (
                           <div
                             key={seq}
-                            className="aspect-video rounded-lg border overflow-hidden relative"
-                            style={{ borderColor: 'var(--color-border)', background: 'var(--color-surface)' }}
+                            className={cn(
+                              'aspect-video rounded-lg border-2 overflow-hidden relative cursor-pointer transition-all',
+                              photo && isSelected
+                                ? 'border-[var(--color-primary)] ring-2 ring-[var(--color-primary)]/30'
+                                : 'border-[var(--color-border)]'
+                            )}
+                            style={{ background: 'var(--color-surface)' }}
+                            onClick={() => { if (photo) setSelectedPhotoSeq(isSelected ? null : seq) }}
                           >
                             {photo ? (
                               <>
                                 {/* eslint-disable-next-line @next/next/no-img-element */}
                                 <img src={photo.url} alt={`Foto ${seq}`} className="w-full h-full object-cover" />
+                                {tokenMonth && (
+                                  <span
+                                    className="absolute top-1 left-1 px-1.5 py-0.5 rounded text-[10px] font-bold text-white"
+                                    style={{ background: 'rgba(139,92,246,0.85)' }}
+                                    title={`Usada para token em ${new Date(photo.token_used_at!).toLocaleDateString('pt-BR')}`}
+                                  >
+                                    {tokenMonth}
+                                  </span>
+                                )}
+                                {isSelected && (
+                                  <div className="absolute inset-0 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.25)' }}>
+                                    <CheckCircle className="w-6 h-6 text-white drop-shadow-lg" />
+                                  </div>
+                                )}
                                 <button
-                                  onClick={() => { setCaptureSlot(seq) }}
+                                  onClick={(e) => { e.stopPropagation(); setCaptureSlot(seq) }}
                                   title="Refazer foto"
                                   className="absolute bottom-1 right-1 flex items-center justify-center rounded p-0.5"
                                   style={{ background: 'rgba(0,0,0,0.55)', color: 'var(--color-text-muted)' }}

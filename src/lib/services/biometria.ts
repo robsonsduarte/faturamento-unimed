@@ -110,12 +110,12 @@ export async function salvarFotoBiometria(
  */
 export async function buscarFotosPorCarteira(
   numeroCarteira: string
-): Promise<{ exists: boolean; fotos?: Array<{ sequence: number; url: string; created_at: string }>; paciente_nome?: string }> {
+): Promise<{ exists: boolean; fotos?: Array<{ sequence: number; url: string; created_at: string; token_used_at: string | null }>; paciente_nome?: string }> {
   const db = getServiceClient()
 
   const { data: fotos } = await db
     .from('biometria_fotos')
-    .select('photo_path, paciente_nome, sequence, created_at')
+    .select('photo_path, paciente_nome, sequence, created_at, token_used_at')
     .eq('numero_carteira', numeroCarteira)
     .order('sequence')
 
@@ -124,7 +124,7 @@ export async function buscarFotosPorCarteira(
   }
 
   const fotosComUrl = await Promise.all(
-    fotos.map(async (foto: { photo_path: string; sequence: number; created_at: string; paciente_nome: string }) => {
+    fotos.map(async (foto: { photo_path: string; sequence: number; created_at: string; paciente_nome: string; token_used_at: string | null }) => {
       const { data: signedUrl } = await db.storage
         .from('biometria')
         .createSignedUrl(foto.photo_path, 3600)
@@ -132,6 +132,7 @@ export async function buscarFotosPorCarteira(
         sequence: foto.sequence,
         url: signedUrl?.signedUrl ?? '',
         created_at: foto.created_at,
+        token_used_at: foto.token_used_at ?? null,
       }
     })
   )

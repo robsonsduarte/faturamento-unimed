@@ -3,7 +3,7 @@ import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { requireAuth, isAuthError } from '@/lib/auth'
 import { rateLimit } from '@/lib/rate-limit'
 import { resolverTokenSchema } from '@/lib/validations/biometria'
-import { buscarFotoBase64 } from '@/lib/services/biometria'
+import { buscarFotoBase64, buscarFotoBase64PorSequence } from '@/lib/services/biometria'
 import { getSawClient } from '@/lib/saw/client'
 import type { SawCookie } from '@/lib/saw/client'
 import type { SawCredentials } from '@/lib/types'
@@ -78,9 +78,12 @@ export async function POST(request: NextRequest) {
           return
         }
 
-        // Buscar foto do paciente
-        send('processing', '[1/9] Buscando foto do paciente...')
-        const photoBase64 = await buscarFotoBase64(guia.numero_carteira)
+        // Buscar foto do paciente (pela sequence escolhida ou aleatoria)
+        const chosenSequence = parsed.data.photo_sequence ?? null
+        send('processing', `[1/9] Buscando foto do paciente${chosenSequence ? ` (foto ${chosenSequence})` : ''}...`)
+        const photoBase64 = chosenSequence
+          ? await buscarFotoBase64PorSequence(guia.numero_carteira, chosenSequence)
+          : await buscarFotoBase64(guia.numero_carteira)
 
         if (!photoBase64) {
           send('error', 'Foto do paciente nao encontrada. Capture a foto primeiro.')
@@ -207,6 +210,15 @@ export async function POST(request: NextRequest) {
             updated_at: new Date().toISOString(),
           })
           .eq('id', guia.id)
+
+        // Marcar foto usada com token_used_at
+        if (chosenSequence) {
+          await db
+            .from('biometria_fotos')
+            .update({ token_used_at: new Date().toISOString() })
+            .eq('numero_carteira', guia.numero_carteira)
+            .eq('sequence', chosenSequence)
+        }
 
         // Reimportar guia via /api/guias/importar (busca SAW + CPro + salva no banco)
         send('processing', '[9/9] Reimportando guia (SAW + CPro)...')
