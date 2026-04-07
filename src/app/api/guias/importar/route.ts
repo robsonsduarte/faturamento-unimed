@@ -479,7 +479,7 @@ export async function POST(request: NextRequest) {
           const quantidadeAutorizada = typeof sawData?.['quantidadeAutorizada'] === 'number'
             ? sawData['quantidadeAutorizada'] as number
             : null
-          let procedimentosRealizados = typeof sawData?.['procedimentosRealizados'] === 'number'
+          const procedimentosRealizados = typeof sawData?.['procedimentosRealizados'] === 'number'
             ? sawData['procedimentosRealizados'] as number
             : 0
 
@@ -487,11 +487,6 @@ export async function POST(request: NextRequest) {
           const procedimentosCadastrados = typeof cproData?.['procedimentosCadastrados'] === 'number'
             ? cproData['procedimentosCadastrados'] as number
             : null
-
-          // Se SAW retornou 0 realizados mas CPro tem cadastrados, usar CPro como realizados
-          if (procedimentosRealizados === 0 && procedimentosCadastrados && procedimentosCadastrados > 0) {
-            procedimentosRealizados = procedimentosCadastrados
-          }
 
           // Token message from SAW for status computation
           const tokenMessage = typeof sawData?.['tokenMessage'] === 'string'
