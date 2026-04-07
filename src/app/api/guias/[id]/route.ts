@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { requireAuth, isAuthError } from '@/lib/auth'
 import { guiaUpdateSchema } from '@/lib/validations/guia'
 import { auditLog } from '@/lib/audit'
+import { deletarExecucoesPorGuia } from '@/lib/saw/cpro-client'
+import type { CproConfig } from '@/lib/types'
 
 interface Params {
   params: Promise<{ id: string }>
@@ -69,6 +72,21 @@ export async function DELETE(_request: NextRequest, { params }: Params) {
     } = await supabase.auth.getUser()
 
     if (!user) return NextResponse.json({ error: 'Nao autenticado' }, { status: 401 })
+
+    // Buscar guide_number antes de excluir para deletar execucoes CPro
+    const { data: guia } = await supabase.from('guias').select('guide_number').eq('id', id).single()
+
+    // Deletar execucoes no CPro (fire-and-forget, nao bloqueia exclusao)
+    if (guia?.guide_number) {
+      try {
+        const db = createAdminClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
+        const { data: cproInteg } = await db.from('integracoes').select('config, ativo').eq('slug', 'cpro').single()
+        if (cproInteg?.ativo) {
+          const cfg = cproInteg.config as CproConfig
+          await deletarExecucoesPorGuia(cfg, guia.guide_number)
+        }
+      } catch { /* nao impedir exclusao se CPro falhar */ }
+    }
 
     const { error } = await supabase.from('guias').delete().eq('id', id)
     if (error) return NextResponse.json({ error: error.message }, { status: 400 })

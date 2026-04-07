@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { requireAuth, isAuthError } from '@/lib/auth'
-import { buscarPatientCpro, buscarPatientByName, criarExecucaoCpro } from '@/lib/saw/cpro-client'
+import { buscarPatientCpro, buscarPatientByName, criarExecucaoCpro, fetchCproData } from '@/lib/saw/cpro-client'
 import type { CproConfig, Guia } from '@/lib/types'
 
 function getServiceClient() {
@@ -187,13 +187,32 @@ export async function POST(request: NextRequest) {
   const g = guia as Guia
 
   // ─── RULE 1: Never exceed quantidade_autorizada (existing + new) ───
+  // Buscar contagem REAL do CPro (nao confiar no banco local que pode estar desatualizado)
   const qtdAutorizada = g.quantidade_autorizada ?? 0
-  const jaCadastradas = g.procedimentos_cadastrados ?? 0
+
+  // Fetch CPro config antecipadamente para validacao
+  const { data: cproIntegEarly } = await db
+    .from('integracoes')
+    .select('config, ativo')
+    .eq('slug', 'cpro')
+    .single()
+  const configEarly = cproIntegEarly?.ativo ? (cproIntegEarly.config as CproConfig) : null
+
+  let jaCadastradas = g.procedimentos_cadastrados ?? 0
+  if (configEarly && g.guide_number) {
+    try {
+      const cproReal = await fetchCproData(g.guide_number, configEarly)
+      if (cproReal) {
+        jaCadastradas = cproReal.procedimentosCadastrados
+      }
+    } catch { /* fallback para banco local */ }
+  }
+
   const novasExecucoes = body.atendimentos.length * multiplicador
   if (qtdAutorizada > 0 && (jaCadastradas + novasExecucoes) > qtdAutorizada) {
     const restante = Math.max(0, qtdAutorizada - jaCadastradas)
     return NextResponse.json(
-      { error: `Ja existem ${jaCadastradas} cobrancas cadastradas. Maximo autorizado: ${qtdAutorizada}. Restam ${restante} vaga(s).` },
+      { error: `Ja existem ${jaCadastradas} cobrancas cadastradas no CPro. Maximo autorizado: ${qtdAutorizada}. Restam ${restante} vaga(s).` },
       { status: 400 }
     )
   }
@@ -235,18 +254,12 @@ export async function POST(request: NextRequest) {
     seen.add(key)
   }
 
-  // Fetch CPro config
-  const { data: cproInteg } = await db
-    .from('integracoes')
-    .select('config, ativo')
-    .eq('slug', 'cpro')
-    .single()
-
-  if (!cproInteg?.ativo) {
+  // Reutilizar CPro config ja buscada na validacao
+  if (!configEarly) {
     return NextResponse.json({ error: 'CPro nao configurado ou inativo' }, { status: 500 })
   }
 
-  const config = cproInteg.config as CproConfig
+  const config = configEarly
 
   // Find patient — prioriza busca por carteira (documento), fallback por nome
   const cd = g.cpro_data as Record<string, unknown> | null
