@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { ArrowLeft, Send, Loader2, CheckCircle, X, TerminalSquare, Database } from 'lucide-react'
 import { toast } from 'sonner'
 import { PageHeader } from '@/components/shared/page-header'
+import { CidAutocomplete } from '@/components/shared/cid-autocomplete'
 import { cn } from '@/lib/utils'
 import { generateAvailableMonthsWithNext, formatMonthDisplay, getCurrentMonth } from '@/lib/month-utils'
 import type { ImportLog } from '@/lib/types'
@@ -450,8 +451,8 @@ export default function EmitirGuiaPage() {
           {/* Indicacao Clinica */}
           <div className="space-y-1.5">
             <label className={labelCls}>Indicacao Clinica <span className="normal-case font-normal">(opcional)</span></label>
-            <input type="text" value={indicacaoClinica} onChange={(e) => setIndicacaoClinica(e.target.value)}
-              placeholder="Descreva..." disabled={loading} className={inputCls} />
+            <CidAutocomplete value={indicacaoClinica} onChange={setIndicacaoClinica}
+              disabled={loading} className={inputCls} />
           </div>
 
           {/* CPro Section */}

@@ -44,9 +44,9 @@ export async function POST(request: NextRequest) {
   }
 
   // Validate required fields
-  if (!body.carteira || !body.profissional?.nome || !body.procedimento_codigo || !body.quantidade || !body.indicacao_clinica) {
+  if (!body.carteira || !body.profissional?.nome || !body.procedimento_codigo || !body.quantidade) {
     return new Response(
-      JSON.stringify({ error: 'Campos obrigatorios: carteira, profissional.nome, procedimento_codigo, quantidade, indicacao_clinica' }),
+      JSON.stringify({ error: 'Campos obrigatorios: carteira, profissional.nome, procedimento_codigo, quantidade' }),
       { status: 400, headers: { 'Content-Type': 'application/json' } },
     )
   }
@@ -186,7 +186,7 @@ export async function POST(request: NextRequest) {
             profissional: body.profissional!,
             procedimentoCodigo: body.procedimento_codigo!,
             quantidade: body.quantidade!,
-            indicacaoClinica: body.indicacao_clinica!,
+            indicacaoClinica: body.indicacao_clinica || undefined,
           },
           (step, msg) => send('processing', `[${step}] ${msg}`),
         )

@@ -1755,7 +1755,7 @@ class SawClient {
       }
       procedimentoCodigo: string
       quantidade: number
-      indicacaoClinica: string
+      indicacaoClinica?: string
     },
     onProgress?: (step: string, message: string) => void,
   ): Promise<{ success: boolean; guideNumber?: string; paciente?: string; formData?: Record<string, unknown>; error?: string }> {
@@ -1968,10 +1968,12 @@ class SawClient {
         })
 
         // ─── Step 11: Fill indicacao clinica + data solicitacao ──
-        await page.evaluate((indicacao: string) => {
-          const el = document.querySelector('textarea[name*="indicacaoClinica"], input[name*="indicacaoClinica"]') as HTMLInputElement | HTMLTextAreaElement | null
-          if (el) el.value = indicacao
-        }, data.indicacaoClinica)
+        if (data.indicacaoClinica) {
+          await page.evaluate((indicacao: string) => {
+            const el = document.querySelector('textarea[name*="indicacaoClinica"], input[name*="indicacaoClinica"]') as HTMLInputElement | HTMLTextAreaElement | null
+            if (el) el.value = indicacao
+          }, data.indicacaoClinica)
+        }
 
         const hoje = new Date()
         const dd = String(hoje.getDate()).padStart(2, '0')
