@@ -2003,16 +2003,15 @@ class SawClient {
         await page.click('body')
         await page.waitForTimeout(500)
 
-        // Mapear código conselho CPro → SAW (CPro usa IDs internos, SAW usa códigos TISS)
+        // CPro council codes = TISS/SAW codes (pad to 2 digits)
+        // SAW: 04=CREFONO, 05=CREFITO, 06=CRM, 07=CRN, 09=CRP, 13=CREF
         const conselhoMap: Record<string, string> = {
-          '9': '08',   // CRP (Psicologia)
-          '08': '08',  // CRP já no formato SAW
-          '6': '06',   // CRM (Medicina)
-          '06': '06',  // CRM já no formato SAW
-          '7': '07',   // CREFONO (Fonoaudiologia)
-          '07': '07',  // CREFONO já no formato SAW
-          '5': '04',   // CRN (Nutrição)
-          '04': '04',  // CRN já no formato SAW
+          '4': '04',  '04': '04',  // CREFONO (Fonoaudiologia)
+          '5': '05',  '05': '05',  // CREFITO (Fisio/TO/Psicomotricidade)
+          '6': '06',  '06': '06',  // CRM (Medicina)
+          '7': '07',  '07': '07',  // CRN (Nutrição)
+          '9': '09',  '09': '09',  // CRP (Psicologia/Psicopedagogia)
+          '13': '13',              // CREF (Educação Física)
         }
         const conselhoSaw = conselhoMap[data.profissional.conselho] ?? data.profissional.conselho
 
@@ -2038,18 +2037,32 @@ class SawClient {
               for (const opt of cboSelect.options) {
                 if (opt.value === prof.cbo) { cboSelect.value = opt.value; found = true; break }
               }
-              // Tentar por texto (ex: "psicólogo clínico")
+              // Tentar por texto (ex: "psicólogo clínico") — preferir match exato de palavra
               if (!found) {
-                const cboRegex = new RegExp(prof.cbo, 'i')
+                const cboLower = prof.cbo.toLowerCase()
+                // Primeiro: match exato (texto começa com o termo ou é igual)
                 for (const opt of cboSelect.options) {
-                  if (cboRegex.test(opt.text) || cboRegex.test(opt.value)) { cboSelect.value = opt.value; found = true; break }
+                  const txt = opt.text.toLowerCase().trim()
+                  if (txt === cboLower || txt.startsWith(cboLower + ' ') || txt.startsWith(cboLower + ',')) {
+                    cboSelect.value = opt.value; found = true; break
+                  }
+                }
+                // Depois: match parcial via regex (pode pegar substrings)
+                if (!found) {
+                  const cboRegex = new RegExp(prof.cbo, 'i')
+                  for (const opt of cboSelect.options) {
+                    if (cboRegex.test(opt.text) || cboRegex.test(opt.value)) { cboSelect.value = opt.value; found = true; break }
+                  }
                 }
               }
               // Fallback: mapear codigos numericos conhecidos para texto
               if (!found) {
                 const cboMap: Record<string, string> = {
-                  '251510': 'psicólogo', '251505': 'psicólogo', '223810': 'fonoaudiólogo',
-                  '223710': 'nutricionista', '226310': 'arteterapeuta', '251605': 'assistente social',
+                  '251510': 'psicólogo clínico', '251505': 'psicólogo',
+                  '223810': 'fonoaudiólogo', '223710': 'nutricionista',
+                  '226305': 'musicoterapeut', '223915': 'psicomotricist',
+                  '239425': 'psicopedagog', '239440': 'neuropsicopedag',
+                  '226310': 'arteterapeut', '251605': 'assistente social',
                 }
                 const mapped = cboMap[prof.cbo]
                 if (mapped) {

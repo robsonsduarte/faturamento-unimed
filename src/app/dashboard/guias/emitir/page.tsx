@@ -13,12 +13,26 @@ import type { ImportLog } from '@/lib/types'
 import type { CproProfissional } from '@/lib/saw/cpro-client'
 
 /** CPro council code → SAW conselho code mapping */
+/** CPro council codes = TISS/SAW codes (pad to 2 digits)
+ * SAW: 04=CREFONO, 05=CREFITO, 06=CRM, 07=CRN, 09=CRP, 13=CREF */
 const COUNCIL_MAP: Record<string, string> = {
-  '6': '06', '06': '06', // CRM
-  '7': '07', '07': '07', // CREFONO
-  '8': '08', '08': '08', // CRP
-  '9': '08', '09': '08', // CPro uses 9 for CRP, SAW uses 08
+  '4': '04', '04': '04', // CREFONO (Fonoaudiologia)
+  '5': '05', '05': '05', // CREFITO (Fisio/TO/Psicomotricidade)
+  '6': '06', '06': '06', // CRM (Medicina)
+  '7': '07', '07': '07', // CRN (Nutrição)
+  '9': '09', '09': '09', // CRP (Psicologia/Psicopedagogia)
+  '13': '13',             // CREF (Educação Física)
 }
+
+/** CBOs das especialidades atendidas na clínica */
+const CBO_OPTIONS = [
+  { code: '251510', label: 'Psicólogo Clínico' },
+  { code: '239425', label: 'Psicopedagogo' },
+  { code: '223810', label: 'Fonoaudiólogo' },
+  { code: '223710', label: 'Nutricionista' },
+  { code: '226305', label: 'Musicoterapeuta' },
+  { code: '223915', label: 'Psicomotricista' },
+] as const
 
 /** Detect log source from message content for color coding */
 function detectSource(msg: string): 'saw' | 'cpro' | 'system' {
@@ -71,6 +85,7 @@ export default function EmitirGuiaPage() {
   const [cproProfissionais, setCproProfissionais] = useState<CproProfissional[]>([])
   const [cproAgreements, setCproAgreements] = useState<Array<{ id: number; title: string; value: number | null }>>([])
   const [selectedProf, setSelectedProf] = useState<number | ''>('')
+  const [selectedCbo, setSelectedCbo] = useState('')
   const [selectedProfAttendant, setSelectedProfAttendant] = useState<number | ''>('')
   const [selectedAgreement, setSelectedAgreement] = useState<number | ''>('')
   const [cproMultiplicador, setCproMultiplicador] = useState<1 | 2>(2)
@@ -85,6 +100,19 @@ export default function EmitirGuiaPage() {
   const loading = pipelineStep !== 'idle' && pipelineStep !== 'done'
 
   const prof = typeof selectedProf === 'number' ? cproProfissionais.find((p) => p.id === selectedProf) : null
+
+  // Auto-selecionar CBO quando profissional muda
+  useEffect(() => {
+    if (!prof) { setSelectedCbo(''); return }
+    const cbos = prof.cbos?.trim() ?? ''
+    // Se o CBO do CPro bate com algum da lista, selecionar
+    const match = CBO_OPTIONS.find((o) => o.code === cbos)
+    if (match) { setSelectedCbo(match.code); return }
+    // Tentar por occupation_name
+    const occLower = (prof.occupation_name ?? '').toLowerCase()
+    const byName = CBO_OPTIONS.find((o) => occLower.includes(o.label.toLowerCase().slice(0, 6)))
+    setSelectedCbo(byName?.code ?? cbos)
+  }, [prof])
   const agreement = typeof selectedAgreement === 'number' ? cproAgreements.find((a) => a.id === selectedAgreement) : null
   // Extract procedure code from agreement title (e.g. "50000470 - Sessao...")
   const procedimentoCodigo = agreement?.title.match(/^(\d+)/)?.[1] ?? ''
@@ -178,7 +206,8 @@ export default function EmitirGuiaPage() {
 
     const carteira = carteiraSuffix.trim()
     const sawConselho = COUNCIL_MAP[prof.council_code ?? ''] ?? prof.council_code ?? '08'
-    const sawCbo = prof.occupation_name ?? prof.cbos ?? ''
+    const cboToSend = selectedCbo || prof.occupation_name || prof.cbos || ''
+    const sawCbo = CBO_OPTIONS.find((o) => o.code === cboToSend)?.label ?? cboToSend
 
     setLogs([])
     setPipelineStep('emitindo')
@@ -407,11 +436,24 @@ export default function EmitirGuiaPage() {
                 <span>Conselho: {prof.council_code ?? '—'}</span>
                 <span>Numero: {prof.council_number ?? '—'}</span>
                 <span>UF: {prof.council_uf ?? '—'}</span>
-                <span>CBO: {prof.cbos ?? '—'}</span>
-                {prof.occupation_name && <span>({prof.occupation_name})</span>}
               </div>
             )}
           </div>
+
+          {/* CBOS */}
+          {prof && (
+            <div className="space-y-1.5">
+              <label className={labelCls}>CBOS</label>
+              <select value={selectedCbo}
+                onChange={(e) => setSelectedCbo(e.target.value)}
+                disabled={loading} className={inputCls}>
+                <option value="">Selecione...</option>
+                {CBO_OPTIONS.map((o) => (
+                  <option key={o.code} value={o.code}>{o.code} — {o.label}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* Quem Atende */}
           <div className="space-y-1.5">
