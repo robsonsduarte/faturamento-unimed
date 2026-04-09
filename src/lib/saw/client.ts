@@ -1968,12 +1968,12 @@ class SawClient {
         })
 
         // ─── Step 11: Fill indicacao clinica + data solicitacao ──
-        if (data.indicacaoClinica) {
-          await page.evaluate((indicacao: string) => {
-            const el = document.querySelector('textarea[name*="indicacaoClinica"], input[name*="indicacaoClinica"]') as HTMLInputElement | HTMLTextAreaElement | null
-            if (el) el.value = indicacao
-          }, data.indicacaoClinica)
-        }
+        // SAW exige minimo 2 palavras — usar fallback baseado no procedimento
+        const indicacaoTexto = data.indicacaoClinica?.trim() || 'Tratamento clinico'
+        await page.evaluate((indicacao: string) => {
+          const el = document.querySelector('textarea[name*="indicacaoClinica"], input[name*="indicacaoClinica"]') as HTMLInputElement | HTMLTextAreaElement | null
+          if (el) el.value = indicacao
+        }, indicacaoTexto)
 
         const hoje = new Date()
         const dd = String(hoje.getDate()).padStart(2, '0')
