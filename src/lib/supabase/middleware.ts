@@ -58,13 +58,6 @@ export async function updateSession(request: NextRequest) {
     if (profile?.role === 'visualizador') {
       const path = request.nextUrl.pathname
 
-      // Block bulk import page for visualizador
-      if (path === '/dashboard/guias/importar') {
-        const url = request.nextUrl.clone()
-        url.pathname = '/dashboard/guias'
-        return NextResponse.redirect(url)
-      }
-
       const allowed = path === '/dashboard/guias' || path.startsWith('/dashboard/guias/')
       if (!allowed) {
         const url = request.nextUrl.clone()

@@ -9,6 +9,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { PageHeader } from '@/components/shared/page-header'
 import { cn } from '@/lib/utils'
 import { generateAvailableMonthsWithNext, formatMonthDisplay, getCurrentMonth } from '@/lib/month-utils'
+import { useProfile } from '@/hooks/use-profile'
 import type { ImportLog } from '@/lib/types'
 
 interface ImportStats {
@@ -52,6 +53,8 @@ type ReimportStatus = (typeof REIMPORT_STATUSES)[number]['value']
 
 export default function ImportarGuiasPage() {
   const searchParams = useSearchParams()
+  const { data: profile } = useProfile()
+  const isVisualizador = profile?.role === 'visualizador'
   const [loading, setLoading] = useState(false)
   const [guideNumbers, setGuideNumbers] = useState('')
   const [logs, setLogs] = useState<ImportLog[]>([])
@@ -297,8 +300,8 @@ export default function ImportarGuiasPage() {
         {/* Left panel: input */}
         <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-6 space-y-4">
 
-          {/* Re-importar guias existentes */}
-          <div className="space-y-3 pb-4 border-b border-[var(--color-border)]">
+          {/* Re-importar guias existentes (oculto para visualizador) */}
+          {!isVisualizador && <div className="space-y-3 pb-4 border-b border-[var(--color-border)]">
             <div>
               <h2 className="text-sm font-semibold text-[var(--color-text)]">Re-importar guias existentes</h2>
               <p className="text-xs text-[var(--color-text-muted)] mt-1">
@@ -396,28 +399,49 @@ export default function ImportarGuiasPage() {
                 </span>
               )}
             </div>
-          </div>
+          </div>}
 
           <div>
-            <h2 className="text-sm font-semibold text-[var(--color-text)]">Numeros de guia</h2>
+            <h2 className="text-sm font-semibold text-[var(--color-text)]">
+              {isVisualizador ? 'Numero da guia' : 'Numeros de guia'}
+            </h2>
             <p className="text-xs text-[var(--color-text-muted)] mt-1">
-              Um numero por linha. Deixe em branco para buscar todas as pendentes.
+              {isVisualizador
+                ? 'Informe o numero da guia para importar.'
+                : 'Um numero por linha. Deixe em branco para buscar todas as pendentes.'}
             </p>
           </div>
 
-          <textarea
-            value={guideNumbers}
-            onChange={(e) => setGuideNumbers(e.target.value)}
-            placeholder={'123456789\n987654321\n...'}
-            rows={10}
-            disabled={loading}
-            className={cn(
-              'w-full px-3.5 py-2.5 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)]',
-              'text-sm font-mono text-[var(--color-text)] placeholder:text-[var(--color-text-muted)]',
-              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]',
-              'resize-none disabled:opacity-50'
-            )}
-          />
+          {isVisualizador ? (
+            <input
+              type="text"
+              inputMode="numeric"
+              value={guideNumbers}
+              onChange={(e) => setGuideNumbers(e.target.value.replace(/\D/g, ''))}
+              placeholder="123456789"
+              disabled={loading}
+              className={cn(
+                'w-full px-3.5 py-2.5 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)]',
+                'text-sm font-mono text-[var(--color-text)] placeholder:text-[var(--color-text-muted)]',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]',
+                'disabled:opacity-50'
+              )}
+            />
+          ) : (
+            <textarea
+              value={guideNumbers}
+              onChange={(e) => setGuideNumbers(e.target.value)}
+              placeholder={'123456789\n987654321\n...'}
+              rows={10}
+              disabled={loading}
+              className={cn(
+                'w-full px-3.5 py-2.5 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)]',
+                'text-sm font-mono text-[var(--color-text)] placeholder:text-[var(--color-text-muted)]',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]',
+                'resize-none disabled:opacity-50'
+              )}
+            />
+          )}
 
           {totalGuides > 0 && !loading && (
             <p className="text-xs text-[var(--color-text-muted)]">
