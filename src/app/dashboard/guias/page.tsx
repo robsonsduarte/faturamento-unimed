@@ -165,7 +165,7 @@ export default function GuiasPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[var(--color-border)]">
-                  {['Numero Guia', 'Paciente', 'Carteira', 'Tipo', 'Data Aut.', 'Status', 'Valor', ''].map((h) => (
+                  {['Numero Guia', 'Paciente', 'Login SAW', 'Carteira', 'Tipo', 'Data Aut.', 'Status', 'Valor', ''].map((h) => (
                     <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider">
                       {h}
                     </th>
@@ -182,6 +182,9 @@ export default function GuiasPage() {
                     </td>
                     <td className="px-4 py-3 text-[var(--color-text)] max-w-[200px] truncate">
                       <span className={cn(isCancelada && 'line-through')}>{guia.paciente ?? '—'}</span>
+                    </td>
+                    <td className="px-4 py-3 font-mono text-xs text-[var(--color-text-muted)] max-w-[140px] truncate" title={guia.saw_login ?? undefined}>
+                      {guia.saw_login ?? '—'}
                     </td>
                     <td className="px-4 py-3 font-mono text-xs text-[var(--color-text-muted)]">
                       {guia.numero_carteira ?? '—'}

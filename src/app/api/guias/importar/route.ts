@@ -377,6 +377,7 @@ export async function POST(request: NextRequest) {
             skipCpro: body.skip_cpro,
             mesReferencia: mesReferencia ?? null,
             emissionFormData: body.emission_form_data ?? null,
+            sawLogin: sawCredentials.usuario,
             log: (type, message) => send(type, message, guideNumber),
           })
 

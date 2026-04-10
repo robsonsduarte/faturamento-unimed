@@ -52,6 +52,7 @@ export interface Guia {
   cpro_data: Record<string, unknown> | null
   mes_referencia: string
   saw_xml_data: SawXmlData | null
+  saw_login: string | null
   created_at: string
   updated_at: string
   procedimentos?: Procedimento[]

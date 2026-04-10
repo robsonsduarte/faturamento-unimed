@@ -26,6 +26,8 @@ export interface ImportGuiaOptions {
   emissionFormData?: Record<string, unknown> | null
   /** Force token_biometrico = true (e.g. after resolver-token) */
   forceTokenBiometrico?: boolean
+  /** SAW login (username) usado na chamada corrente — persiste em guias.saw_login */
+  sawLogin?: string | null
   /** Logging callback (SSE or console) */
   log?: LogFn
 }
@@ -178,6 +180,10 @@ export async function importarGuia(opts: ImportGuiaOptions): Promise<ImportGuiaR
 
   if (opts.mesReferencia) {
     guiaPayload.mes_referencia = opts.mesReferencia
+  }
+
+  if (opts.sawLogin != null && opts.sawLogin !== '') {
+    guiaPayload.saw_login = opts.sawLogin
   }
 
   // ─── 5. CPro data → payload ───

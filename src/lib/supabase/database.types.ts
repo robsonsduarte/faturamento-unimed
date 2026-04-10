@@ -158,6 +158,7 @@ export interface Database {
           data_token: string | null
           saw_data: Json | null
           cpro_data: Json | null
+          saw_login: string | null
           created_at: string
           updated_at: string
         }
@@ -192,6 +193,7 @@ export interface Database {
           data_token?: string | null
           saw_data?: Json | null
           cpro_data?: Json | null
+          saw_login?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -226,6 +228,7 @@ export interface Database {
           data_token?: string | null
           saw_data?: Json | null
           cpro_data?: Json | null
+          saw_login?: string | null
           created_at?: string
           updated_at?: string
         }
