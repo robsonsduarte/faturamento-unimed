@@ -3,9 +3,10 @@ import type { GuideStatus } from '@/lib/constants'
 /**
  * Computes guide status based on SAW + CPro data.
  *
- * Rules:
+ * Rules (em ordem de prioridade):
  *   CANCELADA — SAW status contains "CANCELADA"
- *   TOKEN     — campo senha = "Realize o check-in do Paciente"
+ *   NEGADA    — SAW status contains "NEGADA"
+ *   TOKEN     — tokenMessage = "Realize o check-in do Paciente" E CPro ainda nao cadastrou nada
  *   CPRO      — guia nao encontrada no ConsultorioPro (cadastrados null/0)
  *   COMPLETA  — qtd_cadastrada == qtd_realizada OR qtd_autorizada == qtd_realizada
  *   PENDENTE  — tem senha + data_autorizacao mas realizados < cadastrados

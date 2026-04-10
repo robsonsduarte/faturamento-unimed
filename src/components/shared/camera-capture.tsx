@@ -57,7 +57,9 @@ export function CameraCapture({ onCapture, onCancel }: CameraCaptureProps) {
   }, [])
 
   useEffect(() => {
-    startCamera()
+    void (async () => {
+      await startCamera()
+    })()
     return () => stopCamera()
   }, [startCamera, stopCamera])
 

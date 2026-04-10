@@ -16,16 +16,16 @@ describe('computeGuideStatus', () => {
   })
 
   // ─── TOKEN ───
-  it('TOKEN: senha = "Realize o check-in do Paciente"', () => {
-    expect(computeGuideStatus(4, 4, 8, 'Realize o check-in do Paciente', '84759912', '04/01/2026')).toBe('TOKEN')
+  it('TOKEN: check-in sem CPro cadastrado retorna TOKEN', () => {
+    expect(computeGuideStatus(0, 0, 8, 'Realize o check-in do Paciente', '84759912', '04/01/2026')).toBe('TOKEN')
   })
 
   it('TOKEN: check-in mesmo sem CPro e sem autorizada', () => {
     expect(computeGuideStatus(null, 0, null, 'Realize o check-in do Paciente', null, null)).toBe('TOKEN')
   })
 
-  it('TOKEN: check-in tem prioridade sobre COMPLETA', () => {
-    expect(computeGuideStatus(4, 4, 4, 'Realize o check-in do Paciente', '123', '01/01/2026')).toBe('TOKEN')
+  it('COMPLETA: check-in cede prioridade quando CPro ja tem cadastrados == realizados', () => {
+    expect(computeGuideStatus(4, 4, 4, 'Realize o check-in do Paciente', '123', '01/01/2026')).toBe('COMPLETA')
   })
 
   // ─── COMPLETA ───
