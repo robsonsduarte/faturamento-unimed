@@ -143,7 +143,7 @@ export async function importarGuia(opts: ImportGuiaOptions): Promise<ImportGuiaR
   const status = computeGuideStatus(procedimentosCadastrados, procedimentosRealizados, quantidadeAutorizada, tokenMessage, senhaRaw, dataAutorizacaoRaw, sawStatus)
 
   const PRESERVED_STATUSES = ['FATURADA', 'PROCESSADA']
-  const { data: existingGuia } = await db.from('guias').select('status').eq('guide_number', guideNumber).single()
+  const { data: existingGuia } = await db.from('guias').select('status, saw_login').eq('guide_number', guideNumber).single()
   const finalStatus = existingGuia && PRESERVED_STATUSES.includes(existingGuia.status) ? existingGuia.status : status
 
   send('info', `Guia ${guideNumber}: status = ${finalStatus}${finalStatus !== status ? ` (preservado, calculado seria ${status})` : ''} (realiz=${procedimentosRealizados}, aut=${quantidadeAutorizada}, cpro=${procedimentosCadastrados})`)
@@ -182,7 +182,13 @@ export async function importarGuia(opts: ImportGuiaOptions): Promise<ImportGuiaR
     guiaPayload.mes_referencia = opts.mesReferencia
   }
 
-  if (opts.sawLogin != null && opts.sawLogin !== '') {
+  // saw_login: IMUTAVEL apos primeiro set. Representa quem ORIGINALMENTE emitiu a guia
+  // via nosso sistema (rota /api/guias/emitir). Importacoes passivas nao devem sobrescrever.
+  if (
+    opts.sawLogin != null &&
+    opts.sawLogin !== '' &&
+    !existingGuia?.saw_login
+  ) {
     guiaPayload.saw_login = opts.sawLogin
   }
 

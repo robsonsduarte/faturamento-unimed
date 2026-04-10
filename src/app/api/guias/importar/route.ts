@@ -370,6 +370,10 @@ export async function POST(request: NextRequest) {
           if (!sawSuccess) continue
 
           // Delegar logica core para funcao compartilhada
+          // saw_login so e setado quando body.emission_form_data esta presente (= pipeline
+          // de emissao via /api/guias/emitir). Importacoes passivas nao conhecem o criador
+          // original. O guard em importarGuia tambem impede sobrescrita de valor ja existente.
+          const isEmission = !!body.emission_form_data
           const result = await importarGuia({
             sawData: sawData!,
             guideNumber,
@@ -377,7 +381,7 @@ export async function POST(request: NextRequest) {
             skipCpro: body.skip_cpro,
             mesReferencia: mesReferencia ?? null,
             emissionFormData: body.emission_form_data ?? null,
-            sawLogin: sawCredentials.usuario,
+            sawLogin: isEmission ? sawCredentials.usuario : undefined,
             log: (type, message) => send(type, message, guideNumber),
           })
 
