@@ -98,6 +98,15 @@ export default function GuiaDetailPage({ params }: Props) {
   const [cobrarPendentes, setCobrarPendentes] = useState<Array<{ date: string; start: string; end: string; checked: boolean; photoSequence?: number; _showPhotoPicker?: boolean }>>([])
   const [cobrarLoadingPendentes, setCobrarLoadingPendentes] = useState(false)
 
+  // Excluir cobrancas states
+  const [excluindo, setExcluindo] = useState(false)
+  const [excluirLogs, setExcluirLogs] = useState<ImportLog[]>([])
+  const excluirEndRef = useRef<HTMLDivElement>(null)
+  const [excluirModalOpen, setExcluirModalOpen] = useState(false)
+  const [excluirLoadingLista, setExcluirLoadingLista] = useState(false)
+  const [excluirLista, setExcluirLista] = useState<Array<{ execucaoId: number; sequencia: number; data: string; horaInicio: string; horaFim: string; checked: boolean }>>([])
+  const [excluirConfirmAllOpen, setExcluirConfirmAllOpen] = useState(false)
+
   // CPro states
   const [cproModalOpen, setCproModalOpen] = useState(false)
   const [cproProfissionais, setCproProfissionais] = useState<Array<{ id: number; name: string }>>([])
@@ -382,6 +391,117 @@ export default function GuiaDetailPage({ params }: Props) {
     } finally {
       setCobrando(false)
     }
+  }
+
+  async function handleAbrirExcluirModal() {
+    if (!guia) return
+    setExcluirModalOpen(true)
+    setExcluirLoadingLista(true)
+    setExcluirLista([])
+    try {
+      // 1. Reimportar guia primeiro (pega execucaoId fresh do DOM do SAW)
+      toast.info('Reimportando guia para dados atualizados...')
+      const importRes = await fetch('/api/guias/importar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ guide_numbers: [guia.guide_number] }),
+      })
+      if (importRes.body) {
+        const reader = importRes.body.getReader()
+        while (true) {
+          const { done } = await reader.read()
+          if (done) break
+        }
+      }
+      const refreshed = await refetch()
+      const refreshedGuia = refreshed.data
+
+      // 2. Extrair lista de execucoes com execucaoId a partir de saw_data
+      const sawData = refreshedGuia?.saw_data as Record<string, unknown> | null
+      const detalhes = (sawData?.['procedimentosDetalhes'] ?? []) as Array<{
+        sequencia?: number
+        data?: string
+        horaInicio?: string
+        horaFim?: string
+        execucaoId?: number | null
+      }>
+
+      const lista = detalhes
+        .filter((d) => typeof d.execucaoId === 'number' && d.execucaoId > 0)
+        .map((d) => ({
+          execucaoId: d.execucaoId as number,
+          sequencia: d.sequencia ?? 0,
+          data: d.data ?? '',
+          horaInicio: d.horaInicio ?? '',
+          horaFim: d.horaFim ?? '',
+          checked: true,
+        }))
+
+      if (lista.length === 0) {
+        toast.info('Nenhuma cobranca encontrada para excluir.')
+        setExcluirModalOpen(false)
+      } else {
+        setExcluirLista(lista)
+      }
+    } catch {
+      toast.error('Erro ao buscar cobrancas para excluir')
+      setExcluirModalOpen(false)
+    } finally {
+      setExcluirLoadingLista(false)
+    }
+  }
+
+  async function streamExcluir(body: { guia_id: string; modo: 'all' | 'individual'; execucao_ids?: number[] }) {
+    setExcluindo(true)
+    setExcluirLogs([])
+    try {
+      const res = await fetch('/api/biometria/excluir-cobrancas', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      const reader = res.body?.getReader()
+      if (!reader) throw new Error('Stream nao disponivel')
+      const decoder = new TextDecoder()
+      let buffer = ''
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n\n')
+        buffer = lines.pop() ?? ''
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try { setExcluirLogs((prev) => [...prev, JSON.parse(line.slice(6)) as ImportLog]) } catch { /**/ }
+          }
+        }
+      }
+      await refetch()
+      toast.success('Exclusao concluida')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro na exclusao')
+    } finally {
+      setExcluindo(false)
+    }
+  }
+
+  async function handleExcluirSelecionadas() {
+    if (!guia) return
+    const selecionadas = excluirLista.filter((e) => e.checked)
+    if (selecionadas.length === 0) { toast.error('Selecione ao menos uma cobranca'); return }
+    setExcluirModalOpen(false)
+    await streamExcluir({
+      guia_id: guia.id,
+      modo: 'individual',
+      execucao_ids: selecionadas.map((e) => e.execucaoId),
+    })
+  }
+
+  async function handleConfirmarExcluirTodas() {
+    if (!guia) return
+    setExcluirConfirmAllOpen(false)
+    setExcluirModalOpen(false)
+    await streamExcluir({ guia_id: guia.id, modo: 'all' })
   }
 
   async function handleAbrirCproModal() {
@@ -1479,6 +1599,16 @@ export default function GuiaDetailPage({ params }: Props) {
                 {cobrando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                 {cobrando ? 'Cobrando...' : 'Cobrar Atendimentos'}
               </button>
+              <button
+                onClick={handleAbrirExcluirModal}
+                disabled={cobrando || excluindo || (guia.procedimentos_realizados ?? 0) === 0}
+                className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                style={{ background: 'var(--color-danger)' }}
+                title={(guia.procedimentos_realizados ?? 0) === 0 ? 'Nenhuma cobranca para excluir' : 'Excluir cobrancas ja efetuadas'}
+              >
+                {excluindo ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                {excluindo ? 'Excluindo...' : 'Excluir Cobrancas'}
+              </button>
             </div>
           </div>
 
@@ -1558,6 +1688,36 @@ export default function GuiaDetailPage({ params }: Props) {
                   </div>
                 )}
                 <div ref={cobrarEndRef} />
+              </div>
+            </div>
+          )}
+
+          {/* Pipeline de exclusao de cobrancas */}
+          {(excluindo || excluirLogs.length > 0) && (
+            <div className="border-t" style={{ borderColor: 'var(--color-border)' }}>
+              <div className="px-4 py-2" style={{ background: 'var(--color-surface)' }}>
+                <p className="text-xs font-semibold" style={{ color: 'var(--color-text-muted)' }}>
+                  Pipeline de Exclusao de Cobrancas
+                  {excluindo && <span className="ml-2 animate-pulse" style={{ color: 'var(--color-danger)' }}>em andamento...</span>}
+                </p>
+              </div>
+              <div className="p-3 max-h-64 overflow-y-auto space-y-1" style={{ background: '#0a0a0a' }}>
+                {excluirLogs.map((log, i) => {
+                  const colorMap = { success: '#4ade80', error: '#f87171', processing: '#f59e0b', info: '#94a3b8' }
+                  return (
+                    <div key={i} className="flex items-start gap-2 font-mono text-xs leading-5">
+                      <span className="shrink-0 select-none" style={{ color: '#6b7280' }}>{log.timestamp}</span>
+                      <span style={{ color: colorMap[log.type] }}>{log.message}</span>
+                    </div>
+                  )
+                })}
+                {excluindo && excluirLogs.length > 0 && (
+                  <div className="flex items-center gap-2 font-mono text-xs mt-1">
+                    <Loader2 className="w-3 h-3 animate-spin" style={{ color: '#f59e0b' }} />
+                    <span style={{ color: '#f59e0b' }}>Processando...</span>
+                  </div>
+                )}
+                <div ref={excluirEndRef} />
               </div>
             </div>
           )}
@@ -1711,6 +1871,170 @@ export default function GuiaDetailPage({ params }: Props) {
                   Cobrar {cobrarPendentes.filter((p) => p.checked).length} atendimento(s)
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de selecao de cobrancas para excluir */}
+      {excluirModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div
+            className="mx-4 w-full max-w-lg rounded-xl border shadow-2xl"
+            style={{ background: 'var(--color-card)', borderColor: 'var(--color-danger)' }}
+          >
+            <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: 'var(--color-border)' }}>
+              <div>
+                <h2 className="text-sm font-semibold" style={{ color: 'var(--color-danger)' }}>Selecionar Cobrancas para Excluir</h2>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
+                  Guia {guia.guide_number} — {guia.paciente}
+                </p>
+              </div>
+              <button onClick={() => setExcluirModalOpen(false)} className="p-1 rounded hover:bg-white/10">
+                <X className="w-4 h-4" style={{ color: 'var(--color-text-muted)' }} />
+              </button>
+            </div>
+
+            <div className="px-6 py-4 max-h-[400px] overflow-y-auto">
+              {excluirLoadingLista ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="w-5 h-5 animate-spin" style={{ color: 'var(--color-text-muted)' }} />
+                </div>
+              ) : excluirLista.length === 0 ? (
+                <p className="text-sm text-center py-6" style={{ color: 'var(--color-text-muted)' }}>
+                  Nenhuma cobranca encontrada.
+                </p>
+              ) : (
+                <div className="space-y-1">
+                  <label className="flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer hover:bg-[var(--color-surface)]">
+                    <input
+                      type="checkbox"
+                      checked={excluirLista.every((e) => e.checked)}
+                      onChange={(e) => setExcluirLista((prev) => prev.map((x) => ({ ...x, checked: e.target.checked })))}
+                      className="w-4 h-4 rounded accent-[var(--color-danger)]"
+                    />
+                    <span className="text-xs font-semibold" style={{ color: 'var(--color-text-muted)' }}>
+                      Selecionar todas ({excluirLista.length})
+                    </span>
+                  </label>
+
+                  <div className="border-t my-1" style={{ borderColor: 'var(--color-border)' }} />
+
+                  {excluirLista.map((e, i) => (
+                    <label
+                      key={e.execucaoId}
+                      className="flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer hover:bg-[var(--color-surface)] transition-colors"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={e.checked}
+                        onChange={() => setExcluirLista((prev) => prev.map((x, j) => j === i ? { ...x, checked: !x.checked } : x))}
+                        className="w-4 h-4 rounded accent-[var(--color-danger)] shrink-0"
+                      />
+                      <span className="text-xs font-mono shrink-0" style={{ color: 'var(--color-text-muted)', width: 24 }}>
+                        #{e.sequencia}
+                      </span>
+                      <span className="text-sm font-mono" style={{ color: 'var(--color-text)' }}>
+                        {e.data}
+                      </span>
+                      <span className="text-xs font-mono" style={{ color: 'var(--color-text-muted)' }}>
+                        {e.horaInicio}{e.horaFim ? ` - ${e.horaFim}` : ''}
+                      </span>
+                      <span className="ml-auto text-[10px] font-mono" style={{ color: 'var(--color-text-muted)' }}>
+                        id {e.execucaoId}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-between px-6 py-4 border-t" style={{ borderColor: 'var(--color-border)' }}>
+              <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                {excluirLista.filter((e) => e.checked).length} de {excluirLista.length} selecionada(s)
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setExcluirModalOpen(false)}
+                  className="rounded-lg border px-3 py-2 text-xs"
+                  style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-muted)' }}
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={() => setExcluirConfirmAllOpen(true)}
+                  disabled={excluirLista.length === 0}
+                  className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-semibold disabled:opacity-50"
+                  style={{ borderColor: 'var(--color-danger)', color: 'var(--color-danger)' }}
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  Excluir todas ({excluirLista.length})
+                </button>
+                <button
+                  onClick={handleExcluirSelecionadas}
+                  disabled={excluirLista.filter((e) => e.checked).length === 0}
+                  className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
+                  style={{ background: 'var(--color-danger)' }}
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  Excluir selecionadas ({excluirLista.filter((e) => e.checked).length})
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de confirmacao dupla — Excluir todas */}
+      {excluirConfirmAllOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 backdrop-blur-sm">
+          <div
+            className="mx-4 w-full max-w-md rounded-xl border shadow-2xl"
+            style={{ background: 'var(--color-card)', borderColor: 'var(--color-danger)' }}
+          >
+            <div className="px-6 py-5 border-b" style={{ borderColor: 'var(--color-border)' }}>
+              <div className="flex items-center gap-3">
+                <div
+                  className="flex h-10 w-10 items-center justify-center rounded-full"
+                  style={{ background: 'rgba(239, 68, 68, 0.15)' }}
+                >
+                  <Trash2 className="w-5 h-5" style={{ color: 'var(--color-danger)' }} />
+                </div>
+                <div>
+                  <h2 className="text-sm font-semibold" style={{ color: 'var(--color-danger)' }}>
+                    Confirmar exclusao de todas as cobrancas
+                  </h2>
+                  <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
+                    Esta acao nao pode ser desfeita
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="px-6 py-5">
+              <p className="text-sm" style={{ color: 'var(--color-text)' }}>
+                Voce esta prestes a remover <strong>{excluirLista.length}</strong> cobranca(s) da guia{' '}
+                <strong>{guia.guide_number}</strong> ({guia.paciente}) diretamente no SAW.
+              </p>
+              <p className="text-xs mt-2" style={{ color: 'var(--color-text-muted)' }}>
+                O sistema vai chamar <code>removerProcedimentosExecutados()</code> no SAW, verificar o resultado, e atualizar o banco de dados.
+              </p>
+            </div>
+            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t" style={{ borderColor: 'var(--color-border)' }}>
+              <button
+                onClick={() => setExcluirConfirmAllOpen(false)}
+                className="rounded-lg border px-4 py-2 text-sm"
+                style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-muted)' }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleConfirmarExcluirTodas}
+                className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white"
+                style={{ background: 'var(--color-danger)' }}
+              >
+                <Trash2 className="w-4 h-4" />
+                Sim, excluir todas
+              </button>
             </div>
           </div>
         </div>

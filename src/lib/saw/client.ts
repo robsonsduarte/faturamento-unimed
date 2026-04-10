@@ -534,6 +534,7 @@ class SawClient {
               reducaoAcrescimo: number
               valorUnitario: number
               valorTotal: number
+              execucaoId: number | null
             }> = []
 
             for (const tabela of todasTabelas) {
@@ -558,6 +559,11 @@ class SawClient {
                 const horaRaw = (td[1].textContent ?? '').trim()
                 const horaParts = horaRaw.split(/\s*à\s*/)
 
+                // execucaoId: extrair do onclick="excluirProcedimentoRealizado(NNN)" na linha
+                const rowHtml = (trs[i] as HTMLElement).innerHTML ?? ''
+                const execIdMatch = rowHtml.match(/excluirProcedimentoRealizado\((\d+)\)/)
+                const execucaoId = execIdMatch ? parseInt(execIdMatch[1], 10) : null
+
                 procedimentosDetalhes.push({
                   sequencia: seqMatch ? parseInt(seqMatch[1]) : i,
                   data: dataMatch ? dataMatch[1] : '',
@@ -572,6 +578,7 @@ class SawClient {
                   reducaoAcrescimo: parseFloat((td[9].textContent ?? '').replace(',', '.')) || 1,
                   valorUnitario: parseFloat((td[10].textContent ?? '').replace(/\./g, '').replace(',', '.')) || 0,
                   valorTotal: parseFloat((td[11].textContent ?? '').replace(/\./g, '').replace(',', '.')) || 0,
+                  execucaoId,
                 })
               }
               break
@@ -1190,6 +1197,195 @@ class SawClient {
           totalEsperado: procedimentos.length,
           execucoes,
           error: err instanceof Error ? err.message : 'Erro ao executar procedimentos',
+        }
+      } finally {
+        if (page) await page.close().catch(() => {})
+      }
+    })
+  }
+
+  // ─── Excluir execucoes (cobrancas) ───────────────────────────
+  /**
+   * Exclui execucoes/cobrancas no SAW.
+   *
+   * modo='all':       1 chamada a removerProcedimentosExecutados() (remove todos)
+   * modo='individual': loop chamando excluirProcedimentoRealizado(execucaoId) um a um
+   *
+   * Lida com SweetAlert2 confirm (DOM .swal2-confirm) + native dialog.
+   */
+  async excluirExecucoes(
+    userId: string,
+    cookies: SawCookie[],
+    numeroGuia: string,
+    modo: 'all' | 'individual',
+    execucaoIds: number[] | undefined,
+    onProgress?: (step: string, msg: string) => void,
+  ): Promise<{
+    success: boolean
+    totalExcluido: number
+    totalEsperado: number
+    resultados: Array<{ execucaoId: number | 'all'; success: boolean; error?: string }>
+    error?: string
+  }> {
+    return this.withLock(userId, async () => {
+      let page: Page | null = null
+      const resultados: Array<{ execucaoId: number | 'all'; success: boolean; error?: string }> = []
+      let totalExcluido = 0
+      const ids = modo === 'individual' ? (execucaoIds ?? []) : []
+      const totalEsperado = modo === 'all' ? 1 : ids.length
+
+      try {
+        const context = await this.getContext(userId, cookies)
+        page = await context.newPage()
+        page.setDefaultTimeout(30_000)
+
+        // Auto-accept native dialogs (confirm/alert)
+        page.on('dialog', async (dialog) => {
+          sawLog(`excluir: dialog native: ${dialog.message().substring(0, 80)}`)
+          await dialog.accept().catch(() => {})
+        })
+
+        const guiaUrl = `${SAW_BASE}/saw/tiss/SolicitacaoDeSPSADT40.do?method=consultarGuiaDeSPSADT&manterTISSSPSADT40DTO.tissSolicitacaoDeSPSADTDTO.numeroDaGuia=${encodeURIComponent(numeroGuia)}&manterTISSSPSADT40DTO.tissSolicitacaoDeSPSADTDTO.isConsultaNaGuia=true`
+
+        onProgress?.('1', `Navegando para guia ${numeroGuia}...`)
+        await page.goto(guiaUrl, { waitUntil: 'networkidle', timeout: 30_000 })
+        await page.waitForTimeout(1500)
+
+        // Verificar sessao
+        const hasLogin = await page.evaluate(() => {
+          const u = document.querySelector('input[id="login"]')
+          const p = document.querySelector('input[type="password"]')
+          return !!(u && p)
+        }).catch(() => false)
+
+        if (hasLogin) {
+          return { success: false, totalExcluido: 0, totalEsperado, resultados, error: 'Sessao SAW expirou.' }
+        }
+
+        /**
+         * Aguarda e confirma um SweetAlert2 confirm se aparecer.
+         * Retorna true se clicou em confirm, false se nao apareceu.
+         */
+        const confirmSweetAlertIfPresent = async (p: Page, timeoutMs = 4000): Promise<boolean> => {
+          try {
+            const confirmBtn = await p.waitForSelector('button.swal2-confirm:not([disabled])', { timeout: timeoutMs, state: 'visible' })
+            if (confirmBtn) {
+              await confirmBtn.click()
+              sawLog(`excluir: swal2-confirm clicado`)
+              await p.waitForTimeout(500)
+              // Alguns fluxos disparam um segundo swal (sucesso) — confirmar tambem
+              try {
+                const secondBtn = await p.waitForSelector('button.swal2-confirm:not([disabled])', { timeout: 2000, state: 'visible' })
+                if (secondBtn) {
+                  await secondBtn.click()
+                  sawLog(`excluir: swal2-confirm (sucesso) clicado`)
+                }
+              } catch { /* nao tem segundo */ }
+              return true
+            }
+          } catch { /* swal nao apareceu — provavelmente usou native dialog, ja tratado */ }
+          return false
+        }
+
+        if (modo === 'all') {
+          onProgress?.('1', `Removendo todas as execucoes...`)
+          try {
+            await page.evaluate(() => {
+              const fn = (window as unknown as Record<string, unknown>).removerProcedimentosExecutados
+              if (typeof fn === 'function') {
+                (fn as () => void)()
+              } else {
+                // Fallback: clicar no link
+                const link = document.querySelector('#linkRemoverExecucao a') as HTMLAnchorElement | null
+                if (link) link.click()
+              }
+            })
+
+            await confirmSweetAlertIfPresent(page, 5000)
+            await page.waitForTimeout(2500)
+            await page.reload({ waitUntil: 'networkidle' }).catch(() => {})
+            await page.waitForTimeout(1000)
+
+            totalExcluido = 1
+            resultados.push({ execucaoId: 'all', success: true })
+            onProgress?.('1', `Todas as execucoes removidas!`)
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : 'Erro desconhecido'
+            onProgress?.('1', `Erro ao remover todas: ${msg}`)
+            resultados.push({ execucaoId: 'all', success: false, error: msg })
+          }
+        } else {
+          // modo individual
+          for (let i = 0; i < ids.length; i++) {
+            const execId = ids[i]
+            const stepLabel = `${i + 1}/${ids.length}`
+            onProgress?.(stepLabel, `Excluindo execucao ${execId}...`)
+
+            try {
+              const existsBefore = await page.evaluate((id: number) => {
+                const html = document.body?.innerHTML ?? ''
+                return html.includes(`excluirProcedimentoRealizado(${id})`)
+              }, execId)
+
+              if (!existsBefore) {
+                onProgress?.(stepLabel, `Execucao ${execId} nao encontrada na pagina (ja removida?).`)
+                resultados.push({ execucaoId: execId, success: false, error: 'Nao encontrada no DOM' })
+                continue
+              }
+
+              await page.evaluate((id: number) => {
+                const fn = (window as unknown as Record<string, unknown>).excluirProcedimentoRealizado
+                if (typeof fn === 'function') {
+                  (fn as (x: number) => void)(id)
+                }
+              }, execId)
+
+              await confirmSweetAlertIfPresent(page, 5000)
+              await page.waitForTimeout(2000)
+              await page.reload({ waitUntil: 'networkidle' }).catch(() => {})
+              await page.waitForTimeout(800)
+
+              // Verificar se o id saiu do DOM
+              const stillExists = await page.evaluate((id: number) => {
+                const html = document.body?.innerHTML ?? ''
+                return html.includes(`excluirProcedimentoRealizado(${id})`)
+              }, execId)
+
+              if (stillExists) {
+                onProgress?.(stepLabel, `Execucao ${execId} ainda presente apos exclusao.`)
+                resultados.push({ execucaoId: execId, success: false, error: 'Ainda presente no DOM' })
+              } else {
+                totalExcluido++
+                resultados.push({ execucaoId: execId, success: true })
+                onProgress?.(stepLabel, `Execucao ${execId} removida!`)
+              }
+            } catch (err) {
+              const msg = err instanceof Error ? err.message : 'Erro desconhecido'
+              onProgress?.(stepLabel, `Erro ao excluir ${execId}: ${msg}`)
+              resultados.push({ execucaoId: execId, success: false, error: msg })
+
+              // Tentar voltar para a guia para continuar
+              try {
+                await page.goto(guiaUrl, { waitUntil: 'networkidle', timeout: 30_000 })
+                await page.waitForTimeout(1500)
+              } catch { /* */ }
+            }
+          }
+        }
+
+        return {
+          success: totalExcluido > 0,
+          totalExcluido,
+          totalEsperado,
+          resultados,
+        }
+      } catch (err) {
+        return {
+          success: false,
+          totalExcluido,
+          totalEsperado,
+          resultados,
+          error: err instanceof Error ? err.message : 'Erro ao excluir execucoes',
         }
       } finally {
         if (page) await page.close().catch(() => {})
