@@ -220,6 +220,22 @@ export async function POST(request: NextRequest) {
           return
         }
 
+        // 5.5 Se metodos nao detectados (SAW em estado "aguardando token" de tentativa anterior),
+        // fechar sessao e reabrir do zero
+        if (result.methods && !result.methods.aplicativo && !result.methods.sms) {
+          routeLog(`methods=false/false — SAW em estado residual, reabrindo do zero`)
+          send({ type: 'processing', message: 'SAW em estado anterior. Reiniciando...' })
+          if (result.sessionId) await getSawClient().closeTokenSession(result.sessionId)
+          result = await getSawClient().openTokenPage(user.id, cookies, guia.guide_number, dataNascimento)
+          routeLog(`retry openTokenPage: success=${result.success} methods=${JSON.stringify(result.methods)} sessionId=${result.sessionId}`)
+
+          if (!result.success) {
+            send({ type: 'error', message: result.error ?? 'Erro ao reabrir token' })
+            controller.close()
+            return
+          }
+        }
+
         // 6. Token ja resolvido (BioFace ou outra via) — atualizar guia e finalizar
         if (result.tokenAlreadyResolved) {
           send({ type: 'success', message: 'Token ja validado! Reimportando guia...' })
@@ -252,16 +268,21 @@ export async function POST(request: NextRequest) {
           const entry = getSawClient().getTokenSession(result.sessionId!)
           if (entry) {
             // Clicar radio SMS pelo texto (nao selectTokenMethod que clica Enviar)
-            await entry.page.evaluate(() => {
+            const clicked = await entry.page.evaluate(() => {
               const radios = document.querySelectorAll('input[type="radio"]')
               for (const radio of radios) {
                 const parent = radio.closest('td, div, label')
                 if (parent && /sms/i.test(parent.textContent ?? '')) {
                   (radio as HTMLInputElement).click()
-                  break
+                  return true
                 }
               }
-            }).catch(() => {})
+              return false
+            }).catch(() => false)
+
+            if (!clicked) {
+              routeLog(`SMS radio nao encontrado — pagina pode estar em estado residual`)
+            }
 
             // Esperar select de telefones aparecer (getTokenPagePhones tem retry proprio)
             await new Promise((r) => setTimeout(r, 2000))
