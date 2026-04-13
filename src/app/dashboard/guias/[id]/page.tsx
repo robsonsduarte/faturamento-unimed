@@ -533,15 +533,27 @@ export default function GuiaDetailPage({ params }: Props) {
       setCproAgreement(cd.agreement_id)
     }
 
-    // Pre-fill professional
+    // Pre-fill professional — match by most words in common
     if (cd && typeof cd.user_id === 'number') {
       setCproUser(cd.user_id)
       setCproUserAttendant(cd.user_id)
     } else if (guia?.nome_profissional && data.profissionais) {
-      const match = (data.profissionais as Array<{ id: number; name: string }>).find((p) =>
-        p.name.toLowerCase().includes(guia.nome_profissional!.split(' ')[0].toLowerCase())
-      )
-      if (match) { setCproUser(match.id); setCproUserAttendant(match.id) }
+      const profs = data.profissionais as Array<{ id: number; name: string }>
+      const guiaProf = guia.nome_profissional.toLowerCase().trim()
+      const exact = profs.find((p) => p.name.toLowerCase().trim() === guiaProf)
+      if (exact) {
+        setCproUser(exact.id); setCproUserAttendant(exact.id)
+      } else {
+        const words = guiaProf.split(/\s+/)
+        let best: { id: number; name: string } | null = null
+        let bestScore = 0
+        for (const p of profs) {
+          const pLower = p.name.toLowerCase()
+          const score = words.filter((w) => pLower.includes(w)).length
+          if (score > bestScore) { best = p; bestScore = score }
+        }
+        if (best && bestScore >= 2) { setCproUser(best.id); setCproUserAttendant(best.id) }
+      }
     }
 
     // Fetch CPro patients and auto-select by guide patient name
