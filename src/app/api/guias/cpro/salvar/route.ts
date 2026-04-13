@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { requireAuth, isAuthError } from '@/lib/auth'
-import { buscarPatientCpro, buscarPatientByName, criarExecucaoCpro, fetchCproData } from '@/lib/saw/cpro-client'
+import { buscarPatientByName, criarExecucaoCpro, fetchCproData } from '@/lib/saw/cpro-client'
 import type { CproConfig, Guia } from '@/lib/types'
 
 function getServiceClient() {
@@ -262,12 +262,7 @@ export async function POST(request: NextRequest) {
 
   const config = configEarly
 
-  // Find patient — cascata de prioridade:
-  // 1. body.patient_id (frontend envia direto)
-  // 2. cpro_data.patient_id (importacao anterior)
-  // 3. busca por carteira (document)
-  // 4. busca por nome completo
-  // 5. busca por primeiro+segundo nome (fallback para divergencia de grafia)
+  // Find patient — prioridade: frontend > cpro_data > busca por nome (safety net)
   const cd = g.cpro_data as Record<string, unknown> | null
   let patientId: number | null = typeof body.patient_id === 'number' ? body.patient_id : null
 
@@ -275,26 +270,11 @@ export async function POST(request: NextRequest) {
     patientId = typeof cd?.patient_id === 'number' ? cd.patient_id : null
   }
 
-  if (!patientId && g.numero_carteira) {
-    const carteiraCpro = g.numero_carteira.replace(/^0?865/, '')
-    const patient = await buscarPatientCpro(config, carteiraCpro)
-    patientId = patient?.id ?? null
-  }
-
+  // Safety net: busca automatica por nome (quando frontend nao enviou patient_id)
   if (!patientId && g.paciente) {
-    // Tentar nome completo
+    console.warn(`[CPRO] patient_id nao informado para guia ${g.guide_number}, buscando por nome "${g.paciente}" (fallback)`)
     const patient = await buscarPatientByName(config, g.paciente)
     patientId = patient?.id ?? null
-
-    // Fallback: primeiro + segundo nome (SAW pode ter sobrenome extra)
-    if (!patientId) {
-      const parts = g.paciente.trim().split(/\s+/)
-      if (parts.length >= 2) {
-        const shortName = `${parts[0]} ${parts[1]}`
-        const patientShort = await buscarPatientByName(config, shortName)
-        patientId = patientShort?.id ?? null
-      }
-    }
   }
 
   if (!patientId) {

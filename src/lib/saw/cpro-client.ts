@@ -341,27 +341,40 @@ export async function buscarPatientByName(
   config: CproConfig,
   nome: string
 ): Promise<{ id: number; name: string } | null> {
+  const results = await buscarPatientsCpro(config, nome)
+  return results.length > 0 ? results[0] : null
+}
+
+/**
+ * Searches for patients by name in CPro — returns ALL matches (up to limit).
+ */
+export async function buscarPatientsCpro(
+  config: CproConfig,
+  nome: string,
+  limit = 10
+): Promise<Array<{ id: number; name: string }>> {
   const res = await cproGet(
     config,
-    `/service/api/v1/patients/search?company=${config.company}&query=${encodeURIComponent(nome)}&limit=5`
+    `/service/api/v1/patients/search?company=${config.company}&query=${encodeURIComponent(nome)}&limit=${limit}`
   )
 
   if (!res || res.status >= 400) {
-    console.error(`[CPRO] buscarPatientByName status ${res?.status ?? 'null'} (nome=${nome})`)
-    return null
+    console.error(`[CPRO] buscarPatientsCpro status ${res?.status ?? 'null'} (nome=${nome})`)
+    return []
   }
 
   try {
     const json = JSON.parse(res.body)
     const patients = json?.data?.patients ?? json?.patients ?? []
-    if (!Array.isArray(patients) || patients.length === 0) return null
+    if (!Array.isArray(patients) || patients.length === 0) return []
 
-    const p = patients[0]
-    const name = [p.first_name, p.last_name].filter(Boolean).join(' ') || p.name || ''
-    return { id: Number(p.id), name }
+    return patients.map((p: Record<string, unknown>) => {
+      const name = [p.first_name, p.last_name].filter(Boolean).join(' ') || (p.name as string) || ''
+      return { id: Number(p.id), name }
+    })
   } catch (err) {
-    console.error('[CPRO] Erro ao parsear paciente por nome:', err)
-    return null
+    console.error('[CPRO] Erro ao parsear pacientes:', err)
+    return []
   }
 }
 

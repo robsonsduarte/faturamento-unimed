@@ -39,6 +39,7 @@ export async function POST(request: NextRequest) {
     agreement_title: body.agreement_title ?? existing.agreement_title,
     user_id: body.user_id ?? existing.user_id,
     patient_id: body.patient_id ?? existing.patient_id,
+    patient_name: body.patient_name ?? existing.patient_name,
   }
 
   await db
