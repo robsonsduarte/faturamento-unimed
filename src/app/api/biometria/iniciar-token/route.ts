@@ -263,16 +263,8 @@ export async function POST(request: NextRequest) {
               }
             }).catch(() => {})
 
-            // Esperar select de telefones aparecer
-            for (let i = 0; i < 5; i++) {
-              await new Promise((r) => setTimeout(r, 1500))
-              const hasSelect = await entry.page.evaluate(() => {
-                const sel = document.getElementById('tokenDeAtendimento.telefoneDeEnvio.numero')
-                  ?? document.querySelector('select[name*="telefoneDeEnvio"]')
-                return sel ? (sel as HTMLSelectElement).options.length > 1 : false
-              }).catch(() => false)
-              if (hasSelect) break
-            }
+            // Esperar select de telefones aparecer (getTokenPagePhones tem retry proprio)
+            await new Promise((r) => setTimeout(r, 2000))
           }
 
           send({ type: 'processing', message: 'Extraindo telefones do SAW...' })
