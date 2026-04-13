@@ -147,16 +147,31 @@ export async function POST(request: NextRequest) {
 
           send({ type: 'processing', message: 'Selecionando SMS no SAW...' })
 
-          // Clicar radio SMS via locator.nth(2)
+          // Clicar radio SMS pelo texto (nao por posicao fixa — a ordem pode mudar)
           const entry = getSawClient().getTokenSession(result.sessionId!)
           if (entry) {
             try {
-              const radioCount = await entry.page.locator('input[type="radio"]').count()
-              if (radioCount >= 3) {
-                await entry.page.locator('input[type="radio"]').nth(2).click()
-              }
+              await entry.page.evaluate(() => {
+                const radios = document.querySelectorAll('input[type="radio"]')
+                for (const radio of radios) {
+                  const parent = radio.closest('td, div, label')
+                  if (parent && /sms/i.test(parent.textContent ?? '')) {
+                    (radio as HTMLInputElement).click()
+                    break
+                  }
+                }
+              })
             } catch { /* */ }
-            await new Promise((r) => setTimeout(r, 3000))
+            // Esperar select de telefones aparecer (SAW pode demorar)
+            for (let i = 0; i < 5; i++) {
+              await new Promise((r) => setTimeout(r, 1500))
+              const hasSelect = await entry.page.evaluate(() => {
+                const sel = document.getElementById('tokenDeAtendimento.telefoneDeEnvio.numero')
+                  ?? document.querySelector('select[name*="telefoneDeEnvio"]')
+                return sel ? (sel as HTMLSelectElement).options.length > 1 : false
+              }).catch(() => false)
+              if (hasSelect) break
+            }
           }
 
           send({ type: 'processing', message: 'Extraindo telefones do SAW...' })
