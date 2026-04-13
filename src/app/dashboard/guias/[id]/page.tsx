@@ -118,14 +118,10 @@ export default function GuiaDetailPage({ params }: Props) {
   const [cproMultiplicador, setCproMultiplicador] = useState<1 | 2>(2)
   const [cproSaving, setCproSaving] = useState(false)
   // CPro patient selection
-  const [cproPatientId, setCproPatientId] = useState<number | null>(null)
+  const [cproPatientId, setCproPatientId] = useState<number | ''>('')
   const [cproPatientName, setCproPatientName] = useState('')
-  const [cproPatientQuery, setCproPatientQuery] = useState('')
-  const [cproPatientResults, setCproPatientResults] = useState<Array<{ id: number; name: string }>>([])
-  const [cproPatientOpen, setCproPatientOpen] = useState(false)
+  const [cproPatients, setCproPatients] = useState<Array<{ id: number; name: string }>>([])
   const [cproPatientLoading, setCproPatientLoading] = useState(false)
-  const cproPatientDebounce = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const cproPatientWrapperRef = useRef<HTMLDivElement>(null)
 
   // Buscar fotos existentes quando guia com numero_carteira carrega
   function fetchPhotos(carteira: string) {
@@ -154,17 +150,6 @@ export default function GuiaDetailPage({ params }: Props) {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [guia?.status, guia?.numero_carteira])
-
-  // Close CPro patient dropdown on outside click
-  useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (cproPatientWrapperRef.current && !cproPatientWrapperRef.current.contains(e.target as Node)) {
-        setCproPatientOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', handleClick)
-    return () => document.removeEventListener('mousedown', handleClick)
-  }, [])
 
   async function handleCapturarFoto(base64: string) {
     if (!guia) return
@@ -559,29 +544,41 @@ export default function GuiaDetailPage({ params }: Props) {
       if (match) { setCproUser(match.id); setCproUserAttendant(match.id) }
     }
 
-    // Pre-fill patient from cpro_data or trigger search
-    if (cd && typeof cd.patient_id === 'number') {
-      setCproPatientId(cd.patient_id)
-      setCproPatientName(typeof cd.patient_name === 'string' ? cd.patient_name : (guia?.paciente ?? ''))
-      setCproPatientQuery(typeof cd.patient_name === 'string' ? cd.patient_name : (guia?.paciente ?? ''))
-    } else {
-      setCproPatientId(null)
-      setCproPatientName('')
-      setCproPatientQuery(guia?.paciente ?? '')
-      // Auto-search with patient name
-      if (guia?.paciente) {
-        setCproPatientLoading(true)
-        fetch(`/api/guias/cpro/buscar-paciente?q=${encodeURIComponent(guia.paciente)}`)
-          .then((r) => r.json())
-          .then((d) => {
-            if (d.patients?.length > 0) {
-              setCproPatientResults(d.patients)
-              setCproPatientOpen(true)
+    // Fetch CPro patients and auto-select by guide patient name
+    setCproPatientId('')
+    setCproPatientName('')
+    setCproPatients([])
+    if (guia?.paciente) {
+      setCproPatientLoading(true)
+      fetch(`/api/guias/cpro/buscar-paciente?q=${encodeURIComponent(guia.paciente)}`)
+        .then((r) => r.json())
+        .then((d) => {
+          const pts = (d.patients ?? []) as Array<{ id: number; name: string }>
+          setCproPatients(pts)
+          if (pts.length > 0) {
+            // Auto-select: exact name match first, then best partial match
+            const guiaNome = guia.paciente!.toLowerCase().trim()
+            const exact = pts.find((p) => p.name.toLowerCase().trim() === guiaNome)
+            if (exact) {
+              setCproPatientId(exact.id)
+              setCproPatientName(exact.name)
+            } else {
+              // Score by how many words from the guide name appear in patient name
+              let best = pts[0]
+              let bestScore = 0
+              const guiaWords = guiaNome.split(/\s+/)
+              for (const p of pts) {
+                const pLower = p.name.toLowerCase()
+                const score = guiaWords.filter((w) => pLower.includes(w)).length
+                if (score > bestScore) { best = p; bestScore = score }
+              }
+              setCproPatientId(best.id)
+              setCproPatientName(best.name)
             }
-          })
-          .catch(() => {})
-          .finally(() => setCproPatientLoading(false))
-      }
+          }
+        })
+        .catch(() => {})
+        .finally(() => setCproPatientLoading(false))
     }
   }
 
@@ -2237,65 +2234,28 @@ export default function GuiaDetailPage({ params }: Props) {
                 </button>
               </div>
 
-              {/* Paciente — autocomplete CPro */}
+              {/* Paciente — select CPro */}
               <div className="space-y-1">
                 <label className="text-xs font-medium" style={{ color: 'var(--color-text-muted)' }}>
-                  Paciente {cproPatientId ? `(#${cproPatientId})` : ''}
+                  Paciente
                 </label>
-                <div ref={cproPatientWrapperRef} className="relative">
-                  <input
-                    type="text"
-                    value={cproPatientQuery}
-                    onChange={(e) => {
-                      const v = e.target.value
-                      setCproPatientQuery(v)
-                      if (cproPatientId) { setCproPatientId(null); setCproPatientName('') }
-                      if (cproPatientDebounce.current) clearTimeout(cproPatientDebounce.current)
-                      if (v.trim().length < 2) { setCproPatientResults([]); setCproPatientOpen(false); return }
-                      cproPatientDebounce.current = setTimeout(() => {
-                        setCproPatientLoading(true)
-                        fetch(`/api/guias/cpro/buscar-paciente?q=${encodeURIComponent(v.trim())}`)
-                          .then((r) => r.json())
-                          .then((d) => { setCproPatientResults(d.patients ?? []); setCproPatientOpen((d.patients ?? []).length > 0) })
-                          .catch(() => {})
-                          .finally(() => setCproPatientLoading(false))
-                      }, 300)
-                    }}
-                    onFocus={() => { if (cproPatientResults.length > 0 && !cproPatientId) setCproPatientOpen(true) }}
-                    placeholder="Digite o nome do paciente..."
-                    autoComplete="off"
-                    className="w-full rounded-lg border px-3 py-2 text-sm"
-                    style={{ background: 'var(--color-surface)', borderColor: cproPatientId ? 'var(--color-primary)' : 'var(--color-border)', color: 'var(--color-text)' }}
-                  />
-                  {cproPatientLoading && (
-                    <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" style={{ color: 'var(--color-text-muted)' }} />
-                    </div>
-                  )}
-                  {cproPatientOpen && cproPatientResults.length > 0 && (
-                    <ul className="absolute z-50 mt-1 w-full max-h-48 overflow-y-auto rounded-lg border shadow-lg" style={{ background: 'var(--color-card)', borderColor: 'var(--color-border)' }}>
-                      {cproPatientResults.map((p) => (
-                        <li
-                          key={p.id}
-                          onMouseDown={() => {
-                            setCproPatientId(p.id)
-                            setCproPatientName(p.name)
-                            setCproPatientQuery(p.name)
-                            setCproPatientOpen(false)
-                          }}
-                          className="flex items-center gap-2 px-3 py-2 cursor-pointer text-sm hover:bg-[var(--color-surface)]"
-                        >
-                          <span className="font-mono text-xs font-semibold shrink-0" style={{ color: 'var(--color-primary)' }}>
-                            #{p.id}
-                          </span>
-                          <span className="truncate" style={{ color: 'var(--color-text)' }}>
-                            {p.name}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
+                <select
+                  value={cproPatientId}
+                  onChange={(e) => {
+                    const val = e.target.value === '' ? '' as const : Number(e.target.value)
+                    setCproPatientId(val)
+                    const found = cproPatients.find((p) => p.id === val)
+                    setCproPatientName(found?.name ?? '')
+                  }}
+                  disabled={cproPatientLoading}
+                  className="w-full rounded-lg border px-3 py-2 text-sm"
+                  style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+                >
+                  <option value="">{cproPatientLoading ? 'Buscando...' : 'Selecione...'}</option>
+                  {cproPatients.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
               </div>
 
               {/* Atendimentos */}
