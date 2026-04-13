@@ -1503,13 +1503,14 @@ class SawClient {
           if (bioFaceUrl && bioFaceUrl.includes('bioface')) {
             // ═══ FLUXO A: BioFace — abrir em pagina separada, pular, confirmar ═══
             sawLog(`openTokenPage: ROTA BioFace`)
-
-            // Detectar se é atendimento TEA pelo texto/tooltip na página da guia
-            const isTEA = await page.evaluate(() => {
-              const body = document.body?.innerHTML ?? ''
-              return /atendimento\s*TEA/i.test(body) || /TEA/i.test(document.querySelector('[title*="TEA"]')?.getAttribute('title') ?? '')
-            }).catch(() => false)
-            sawLog(`openTokenPage: isTEA=${isTEA}`)
+            let age = 99 // default = adulto = Recusou
+            if (dataNascimento && dataNascimento !== '0000-00-00') {
+              const born = new Date(dataNascimento + 'T12:00:00Z')
+              const today = new Date()
+              age = today.getFullYear() - born.getFullYear()
+              if (today.getMonth() < born.getMonth() || (today.getMonth() === born.getMonth() && today.getDate() < born.getDate())) age--
+            }
+            sawLog(`openTokenPage: dataNascimento=${dataNascimento}, idade=${age}, justificativa=${age <= 14 ? 'TEA' : 'Recusou'}`)
 
             const bioPage = await context.newPage()
             bioPage.setDefaultTimeout(30_000)
@@ -1528,8 +1529,8 @@ class SawClient {
             })
             await bioPage.waitForTimeout(2000)
 
-            // Selecionar justificativa: TEA se SAW indica atendimento TEA, senao Recusou
-            const selectValue = isTEA ? '2' : '5'
+            // Selecionar justificativa: TEA se <= 14 anos, senao Recusou
+            const selectValue = age <= 14 ? '2' : '5'
             sawLog(`openTokenPage: [A2] justificativa=${selectValue === '2' ? 'TEA' : 'Recusou'}...`)
             await bioPage.evaluate((val) => {
               const sel = document.getElementById('idSelectMotivo') as HTMLSelectElement
