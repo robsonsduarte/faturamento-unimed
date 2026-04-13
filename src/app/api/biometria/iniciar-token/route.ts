@@ -246,10 +246,34 @@ export async function POST(request: NextRequest) {
 
         // 7. Ramificar pelo metodo escolhido
         if (body.method === 'sms') {
-          // SMS: clicar radio SMS, aguardar, extrair telefones — envio ocorre depois via selecionar-metodo
+          // SMS: clicar APENAS o radio SMS (nao o botao Enviar) e extrair telefones
           send({ type: 'processing', message: 'Selecionando SMS no SAW...' })
-          await getSawClient().selectTokenMethod(result.sessionId!, 'sms')
-          await new Promise((r) => setTimeout(r, 2000))
+
+          const entry = getSawClient().getTokenSession(result.sessionId!)
+          if (entry) {
+            // Clicar radio SMS pelo texto (nao selectTokenMethod que clica Enviar)
+            await entry.page.evaluate(() => {
+              const radios = document.querySelectorAll('input[type="radio"]')
+              for (const radio of radios) {
+                const parent = radio.closest('td, div, label')
+                if (parent && /sms/i.test(parent.textContent ?? '')) {
+                  (radio as HTMLInputElement).click()
+                  break
+                }
+              }
+            }).catch(() => {})
+
+            // Esperar select de telefones aparecer
+            for (let i = 0; i < 5; i++) {
+              await new Promise((r) => setTimeout(r, 1500))
+              const hasSelect = await entry.page.evaluate(() => {
+                const sel = document.getElementById('tokenDeAtendimento.telefoneDeEnvio.numero')
+                  ?? document.querySelector('select[name*="telefoneDeEnvio"]')
+                return sel ? (sel as HTMLSelectElement).options.length > 1 : false
+              }).catch(() => false)
+              if (hasSelect) break
+            }
+          }
 
           send({ type: 'processing', message: 'Extraindo telefones do SAW...' })
           const phones = await getSawClient().getTokenPagePhones(result.sessionId!)
