@@ -51,6 +51,15 @@ export async function POST(request: NextRequest) {
     )
   }
 
+  // Procedimentos que o SAW limita a quantidade = 1
+  const PROCEDIMENTOS_QTD_1 = ['50000462', '50000586']
+  if (PROCEDIMENTOS_QTD_1.includes(body.procedimento_codigo) && body.quantidade > 1) {
+    return new Response(
+      JSON.stringify({ error: `O procedimento ${body.procedimento_codigo} permite no maximo 1 sessao por guia. Altere a quantidade ou o procedimento.` }),
+      { status: 422, headers: { 'Content-Type': 'application/json' } },
+    )
+  }
+
   const stream = new ReadableStream({
     async start(controller) {
       const enc = new TextEncoder()
