@@ -3,10 +3,10 @@
 import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { LogOut, User, Bell, Settings, Eye, EyeOff, Save, Loader2, X } from 'lucide-react'
+import { LogOut, User, Settings, Eye, EyeOff, Save, Loader2, X } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import type { Profile } from '@/lib/types'
-import { cn } from '@/lib/utils'
+import { NotificationsBell } from './notifications-bell'
 
 interface HeaderProps {
   profile: Profile | null
@@ -54,14 +54,7 @@ export function Header({ profile }: HeaderProps) {
         <div />
 
         <div className="flex items-center gap-3">
-          <button
-            className={cn(
-              'p-2 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-card)] transition-colors',
-            )}
-            aria-label="Notificacoes"
-          >
-            <Bell className="w-4 h-4" />
-          </button>
+          {profile?.id && <NotificationsBell userId={profile.id} />}
 
           <div className="relative flex items-center gap-2.5 pl-3 border-l border-[var(--color-border)]" ref={menuRef}>
             <button

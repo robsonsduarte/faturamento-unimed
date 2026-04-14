@@ -213,6 +213,33 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: result.error }, { status })
     }
 
+    // Notificar o operador dono da guia (best-effort, nao bloqueia resposta)
+    try {
+      const { data: guia } = await db
+        .from('guias')
+        .select('id, user_id, paciente, guide_number, numero_carteira')
+        .eq('id', guia_id)
+        .single<{ id: string; user_id: string | null; paciente: string | null; guide_number: string | null; numero_carteira: string | null }>()
+
+      if (guia?.user_id) {
+        await db.from('notifications').insert({
+          user_id: guia.user_id,
+          type: 'bioface_foto_recebida',
+          title: 'Foto bioface recebida',
+          body: `${guia.paciente ?? 'Paciente'} enviou a foto (guia ${guia.guide_number ?? ''})`.trim(),
+          guia_id: guia.id,
+          data: {
+            numero_carteira: guia.numero_carteira,
+            paciente: guia.paciente,
+            guide_number: guia.guide_number,
+            photo_sequence: result.sequence,
+          },
+        })
+      }
+    } catch (err) {
+      console.error('[bioface-publico] falha ao criar notification:', err)
+    }
+
     return NextResponse.json({ success: true }, { status: 201 })
   } catch (err) {
     return NextResponse.json(

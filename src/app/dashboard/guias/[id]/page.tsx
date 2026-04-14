@@ -98,11 +98,6 @@ export default function GuiaDetailPage({ params }: Props) {
   const [cobrarPendentes, setCobrarPendentes] = useState<Array<{ date: string; start: string; end: string; checked: boolean; photoSequence?: number; _showPhotoPicker?: boolean }>>([])
   const [cobrarLoadingPendentes, setCobrarLoadingPendentes] = useState(false)
 
-  // Bioface public link polling
-  const [biofaceWaiting, setBiofaceWaiting] = useState(false)
-  const biofaceBaselineRef = useRef<number>(0)
-  const biofacePollRef = useRef<ReturnType<typeof setInterval> | null>(null)
-
   // Excluir cobrancas states
   const [excluindo, setExcluindo] = useState(false)
   const [excluirLogs, setExcluirLogs] = useState<ImportLog[]>([])
@@ -159,42 +154,6 @@ export default function GuiaDetailPage({ params }: Props) {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [guia?.status, guia?.numero_carteira])
-
-  // Polling apos envio do link bioface: detecta quando a foto do paciente chega
-  useEffect(() => {
-    if (!biofaceWaiting || !guia?.numero_carteira) return
-
-    const carteira = guia.numero_carteira
-    let stopped = false
-
-    biofacePollRef.current = setInterval(async () => {
-      if (stopped) return
-      const count = await fetchPhotos(carteira)
-      if (count > biofaceBaselineRef.current) {
-        stopped = true
-        if (biofacePollRef.current) clearInterval(biofacePollRef.current)
-        biofacePollRef.current = null
-        setBiofaceWaiting(false)
-        toast.success('Foto recebida do paciente!')
-      }
-    }, 3000)
-
-    // Timeout de 5 min para evitar polling infinito
-    const timeoutId = setTimeout(() => {
-      stopped = true
-      if (biofacePollRef.current) clearInterval(biofacePollRef.current)
-      biofacePollRef.current = null
-      setBiofaceWaiting(false)
-    }, 5 * 60 * 1000)
-
-    return () => {
-      stopped = true
-      if (biofacePollRef.current) clearInterval(biofacePollRef.current)
-      biofacePollRef.current = null
-      clearTimeout(timeoutId)
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [biofaceWaiting, guia?.numero_carteira])
 
   async function handleCapturarFoto(base64: string) {
     if (!guia) return
@@ -1209,9 +1168,6 @@ export default function GuiaDetailPage({ params }: Props) {
                   if (data.url) {
                     await navigator.clipboard.writeText(data.url)
                     toast.success('Link copiado! Envie ao paciente via WhatsApp.')
-                    // Inicia polling: registra contagem atual como baseline e aguarda nova foto
-                    biofaceBaselineRef.current = patientPhotos.length
-                    setBiofaceWaiting(true)
                   }
                 } catch (err) {
                   toast.error(err instanceof Error ? err.message : 'Erro ao gerar link')
@@ -1225,7 +1181,7 @@ export default function GuiaDetailPage({ params }: Props) {
               )}
             >
               <Link2 className="w-4 h-4" />
-              {biofaceWaiting ? 'Aguardando foto...' : 'Enviar LINK Bioface'}
+              Enviar LINK Bioface
             </button>
           </div>
 
