@@ -62,7 +62,7 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: 'Guia sem numero de carteira' }, { status: 422 })
       }
 
-      const token = gerarTokenBioface(guia.id as string, guia.numero_carteira as string)
+      const token = gerarTokenBioface(guia.id as string, guia.numero_carteira as string, auth.user.id)
       const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://faturamento.consultoriopro.com.br'
       const url = `${appUrl}/bioface/${guia.id}?t=${token}`
 
@@ -213,7 +213,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: result.error }, { status })
     }
 
-    // Notificar o operador dono da guia (best-effort, nao bloqueia resposta)
+    // Notificar destinatario (best-effort, nao bloqueia resposta)
     try {
       const { data: guia } = await db
         .from('guias')
@@ -221,20 +221,33 @@ export async function POST(request: NextRequest) {
         .eq('id', guia_id)
         .single<{ id: string; user_id: string | null; paciente: string | null; guide_number: string | null; numero_carteira: string | null }>()
 
-      if (guia?.user_id) {
-        await db.from('notifications').insert({
-          user_id: guia.user_id,
+      // Destinatarios: operador do JWT > guia.user_id > todos admins/operadores
+      let recipients: string[] = []
+      if (payload.operator_id) recipients = [payload.operator_id]
+      else if (guia?.user_id) recipients = [guia.user_id]
+      else {
+        const { data: profs } = await db
+          .from('profiles')
+          .select('id')
+          .in('role', ['admin', 'operador'])
+        recipients = (profs ?? []).map((p: { id: string }) => p.id)
+      }
+
+      if (recipients.length > 0) {
+        const rows = recipients.map((uid) => ({
+          user_id: uid,
           type: 'bioface_foto_recebida',
           title: 'Foto bioface recebida',
-          body: `${guia.paciente ?? 'Paciente'} enviou a foto (guia ${guia.guide_number ?? ''})`.trim(),
-          guia_id: guia.id,
+          body: `${guia?.paciente ?? 'Paciente'} enviou a foto (guia ${guia?.guide_number ?? ''})`.trim(),
+          guia_id: guia_id,
           data: {
-            numero_carteira: guia.numero_carteira,
-            paciente: guia.paciente,
-            guide_number: guia.guide_number,
+            numero_carteira: guia?.numero_carteira,
+            paciente: guia?.paciente,
+            guide_number: guia?.guide_number,
             photo_sequence: result.sequence,
           },
-        })
+        }))
+        await db.from('notifications').insert(rows)
       }
     } catch (err) {
       console.error('[bioface-publico] falha ao criar notification:', err)

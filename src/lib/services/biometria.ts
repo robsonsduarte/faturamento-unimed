@@ -237,6 +237,7 @@ interface BiofaceTokenPayload {
   guia_id: string
   numero_carteira: string
   sub: string
+  operator_id?: string
 }
 
 function getBiofaceSecret(): string {
@@ -247,11 +248,11 @@ function getBiofaceSecret(): string {
 
 /**
  * Gera JWT para captura publica de bioface (expira em 24h).
- * Token payload: { guia_id, numero_carteira, sub: 'bioface' }
+ * Token payload: { guia_id, numero_carteira, operator_id?, sub: 'bioface' }
  */
-export function gerarTokenBioface(guiaId: string, numeroCarteira: string): string {
+export function gerarTokenBioface(guiaId: string, numeroCarteira: string, operatorId?: string): string {
   return jwt.sign(
-    { guia_id: guiaId, numero_carteira: numeroCarteira, sub: 'bioface' },
+    { guia_id: guiaId, numero_carteira: numeroCarteira, operator_id: operatorId, sub: 'bioface' },
     getBiofaceSecret(),
     { expiresIn: '24h' }
   )
@@ -259,15 +260,15 @@ export function gerarTokenBioface(guiaId: string, numeroCarteira: string): strin
 
 /**
  * Valida JWT de bioface.
- * Retorna payload com guia_id e numero_carteira, ou null se invalido/expirado.
+ * Retorna payload com guia_id, numero_carteira e operator_id (opcional).
  */
 export function validarTokenBioface(
   token: string
-): { guia_id: string; numero_carteira: string } | null {
+): { guia_id: string; numero_carteira: string; operator_id?: string } | null {
   try {
     const payload = jwt.verify(token, getBiofaceSecret()) as BiofaceTokenPayload
     if (payload.sub !== 'bioface') return null
-    return { guia_id: payload.guia_id, numero_carteira: payload.numero_carteira }
+    return { guia_id: payload.guia_id, numero_carteira: payload.numero_carteira, operator_id: payload.operator_id }
   } catch {
     return null
   }
