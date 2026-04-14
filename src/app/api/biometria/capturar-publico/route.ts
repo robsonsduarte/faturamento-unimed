@@ -205,8 +205,8 @@ export async function POST(request: NextRequest) {
       .update({ lgpd_consent_at: lgpdConsentAt, lgpd_ip: ip })
       .eq('id', guia_id)
 
-    // 'bioface-publico' como userId para rastreabilidade de capturas publicas
-    const result = await salvarFotoBiometria(guia_id, photo_base64, 'bioface-publico')
+    // Captura publica: sem usuario autenticado, captured_by fica NULL
+    const result = await salvarFotoBiometria(guia_id, photo_base64, null)
 
     if (!result.success) {
       const status = result.error === 'Limite de 5 fotos atingido' ? 422 : 400

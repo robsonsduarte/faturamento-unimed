@@ -15,7 +15,7 @@ function getServiceClient() {
 export async function salvarFotoBiometria(
   guiaId: string,
   photoBase64: string,
-  userId: string,
+  userId: string | null,
   sequence?: number
 ): Promise<{ success: boolean; photo_path?: string; sequence?: number; error?: string }> {
   const db = getServiceClient()
