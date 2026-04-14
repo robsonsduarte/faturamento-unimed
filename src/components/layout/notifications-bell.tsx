@@ -50,38 +50,48 @@ export function NotificationsBell({ userId }: NotificationsBellProps) {
     if (!userId) return
     const supabase = createClient()
     let active = true
+    let channel: ReturnType<typeof supabase.channel> | null = null
 
-    supabase
-      .from('notifications')
-      .select('*')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false })
-      .limit(MAX_ITEMS)
-      .then(({ data }) => {
-        if (active && data) setItems(data as NotificationRow[])
-      })
+    ;(async () => {
+      // Garantir que realtime tem o JWT do usuario para respeitar RLS
+      const { data: { session } } = await supabase.auth.getSession()
+      if (session?.access_token) {
+        supabase.realtime.setAuth(session.access_token)
+      }
 
-    const channel = supabase
-      .channel(`notifications:${userId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'notifications',
-          filter: `user_id=eq.${userId}`,
-        },
-        (payload) => {
-          const n = payload.new as NotificationRow
-          setItems((prev) => [n, ...prev].slice(0, MAX_ITEMS))
-          toast.success(n.title, { description: n.body ?? undefined })
-        }
-      )
-      .subscribe()
+      const { data } = await supabase
+        .from('notifications')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(MAX_ITEMS)
+      if (active && data) setItems(data as NotificationRow[])
+
+      channel = supabase
+        .channel(`notifications:${userId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'notifications',
+            filter: `user_id=eq.${userId}`,
+          },
+          (payload) => {
+            const n = payload.new as NotificationRow
+            setItems((prev) => {
+              if (prev.some((p) => p.id === n.id)) return prev
+              return [n, ...prev].slice(0, MAX_ITEMS)
+            })
+            toast.success(n.title, { description: n.body ?? undefined })
+          }
+        )
+        .subscribe()
+    })()
 
     return () => {
       active = false
-      supabase.removeChannel(channel)
+      if (channel) supabase.removeChannel(channel)
     }
   }, [userId])
 
