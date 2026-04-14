@@ -98,6 +98,11 @@ export default function GuiaDetailPage({ params }: Props) {
   const [cobrarPendentes, setCobrarPendentes] = useState<Array<{ date: string; start: string; end: string; checked: boolean; photoSequence?: number; _showPhotoPicker?: boolean }>>([])
   const [cobrarLoadingPendentes, setCobrarLoadingPendentes] = useState(false)
 
+  // Bioface public link polling
+  const [biofaceWaiting, setBiofaceWaiting] = useState(false)
+  const biofaceBaselineRef = useRef<number>(0)
+  const biofacePollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
   // Excluir cobrancas states
   const [excluindo, setExcluindo] = useState(false)
   const [excluirLogs, setExcluirLogs] = useState<ImportLog[]>([])
@@ -124,23 +129,27 @@ export default function GuiaDetailPage({ params }: Props) {
   const [cproPatientLoading, setCproPatientLoading] = useState(false)
 
   // Buscar fotos existentes quando guia com numero_carteira carrega
-  function fetchPhotos(carteira: string) {
-    fetch(`/api/biometria/foto/${encodeURIComponent(carteira)}`)
-      .then((r) => r.json())
-      .then((data: { exists: boolean; fotos?: Array<{ sequence: number; url: string; token_used_at?: string | null }> }) => {
-        if (data.exists && data.fotos) {
-          setPatientPhotos(data.fotos)
-          setCobrarHasFoto(data.fotos.length > 0)
-          // Auto-selecionar se so tem 1 foto
-          if (data.fotos.length === 1) setSelectedPhotoSeq(data.fotos[0].sequence)
-          else setSelectedPhotoSeq(null)
-        } else {
-          setPatientPhotos([])
-          setCobrarHasFoto(false)
-          setSelectedPhotoSeq(null)
-        }
-      })
-      .catch(() => { setPatientPhotos([]); setCobrarHasFoto(false); setSelectedPhotoSeq(null) })
+  async function fetchPhotos(carteira: string): Promise<number> {
+    try {
+      const r = await fetch(`/api/biometria/foto/${encodeURIComponent(carteira)}`)
+      const data = await r.json() as { exists: boolean; fotos?: Array<{ sequence: number; url: string; token_used_at?: string | null }> }
+      if (data.exists && data.fotos) {
+        setPatientPhotos(data.fotos)
+        setCobrarHasFoto(data.fotos.length > 0)
+        if (data.fotos.length === 1) setSelectedPhotoSeq(data.fotos[0].sequence)
+        else setSelectedPhotoSeq(null)
+        return data.fotos.length
+      }
+      setPatientPhotos([])
+      setCobrarHasFoto(false)
+      setSelectedPhotoSeq(null)
+      return 0
+    } catch {
+      setPatientPhotos([])
+      setCobrarHasFoto(false)
+      setSelectedPhotoSeq(null)
+      return 0
+    }
   }
 
   useEffect(() => {
@@ -150,6 +159,42 @@ export default function GuiaDetailPage({ params }: Props) {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [guia?.status, guia?.numero_carteira])
+
+  // Polling apos envio do link bioface: detecta quando a foto do paciente chega
+  useEffect(() => {
+    if (!biofaceWaiting || !guia?.numero_carteira) return
+
+    const carteira = guia.numero_carteira
+    let stopped = false
+
+    biofacePollRef.current = setInterval(async () => {
+      if (stopped) return
+      const count = await fetchPhotos(carteira)
+      if (count > biofaceBaselineRef.current) {
+        stopped = true
+        if (biofacePollRef.current) clearInterval(biofacePollRef.current)
+        biofacePollRef.current = null
+        setBiofaceWaiting(false)
+        toast.success('Foto recebida do paciente!')
+      }
+    }, 3000)
+
+    // Timeout de 5 min para evitar polling infinito
+    const timeoutId = setTimeout(() => {
+      stopped = true
+      if (biofacePollRef.current) clearInterval(biofacePollRef.current)
+      biofacePollRef.current = null
+      setBiofaceWaiting(false)
+    }, 5 * 60 * 1000)
+
+    return () => {
+      stopped = true
+      if (biofacePollRef.current) clearInterval(biofacePollRef.current)
+      biofacePollRef.current = null
+      clearTimeout(timeoutId)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [biofaceWaiting, guia?.numero_carteira])
 
   async function handleCapturarFoto(base64: string) {
     if (!guia) return
@@ -1164,6 +1209,9 @@ export default function GuiaDetailPage({ params }: Props) {
                   if (data.url) {
                     await navigator.clipboard.writeText(data.url)
                     toast.success('Link copiado! Envie ao paciente via WhatsApp.')
+                    // Inicia polling: registra contagem atual como baseline e aguarda nova foto
+                    biofaceBaselineRef.current = patientPhotos.length
+                    setBiofaceWaiting(true)
                   }
                 } catch (err) {
                   toast.error(err instanceof Error ? err.message : 'Erro ao gerar link')
@@ -1177,7 +1225,7 @@ export default function GuiaDetailPage({ params }: Props) {
               )}
             >
               <Link2 className="w-4 h-4" />
-              Enviar LINK Bioface
+              {biofaceWaiting ? 'Aguardando foto...' : 'Enviar LINK Bioface'}
             </button>
           </div>
 
