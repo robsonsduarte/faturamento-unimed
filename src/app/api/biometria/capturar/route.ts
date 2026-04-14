@@ -25,7 +25,8 @@ export async function POST(request: NextRequest) {
       parsed.data.guia_id,
       parsed.data.photo_base64,
       auth.user.id,
-      parsed.data.sequence
+      parsed.data.sequence,
+      { operatorId: auth.user.id, processingStatus: 'skipped' }
     )
 
     if (!result.success) {

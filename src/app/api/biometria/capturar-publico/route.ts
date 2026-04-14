@@ -205,8 +205,15 @@ export async function POST(request: NextRequest) {
       .update({ lgpd_consent_at: lgpdConsentAt, lgpd_ip: ip })
       .eq('id', guia_id)
 
-    // Captura publica: sem usuario autenticado, captured_by fica NULL
-    const result = await salvarFotoBiometria(guia_id, photo_base64, null)
+    // Captura publica: captured_by fica NULL; operator_id (do JWT) permite
+    // notificar o operador dono do link e o pipeline N8N rotear a notificacao.
+    const result = await salvarFotoBiometria(
+      guia_id,
+      photo_base64,
+      null,
+      undefined,
+      { operatorId: payload.operator_id ?? null, processingStatus: 'pending_ai' }
+    )
 
     if (!result.success) {
       const status = result.error === 'Limite de 5 fotos atingido' ? 422 : 400
@@ -236,7 +243,7 @@ export async function POST(request: NextRequest) {
       if (recipients.length > 0) {
         const rows = recipients.map((uid) => ({
           user_id: uid,
-          type: 'bioface_foto_recebida',
+          type: 'bioface_received',
           title: 'Foto bioface recebida',
           body: `${guia?.paciente ?? 'Paciente'} enviou a foto (guia ${guia?.guide_number ?? ''})`.trim(),
           guia_id: guia_id,

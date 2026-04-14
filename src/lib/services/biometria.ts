@@ -16,7 +16,8 @@ export async function salvarFotoBiometria(
   guiaId: string,
   photoBase64: string,
   userId: string | null,
-  sequence?: number
+  sequence?: number,
+  options?: { operatorId?: string | null; processingStatus?: 'pending_ai' | 'skipped' }
 ): Promise<{ success: boolean; photo_path?: string; sequence?: number; error?: string }> {
   const db = getServiceClient()
 
@@ -84,19 +85,20 @@ export async function salvarFotoBiometria(
   }
 
   // Upsert no banco (UNIQUE numero_carteira + sequence)
+  const row: Record<string, unknown> = {
+    numero_carteira: guia.numero_carteira,
+    paciente_nome: guia.paciente ?? 'Desconhecido',
+    photo_path: photoPath,
+    sequence: targetSequence,
+    captured_by: userId,
+    updated_at: new Date().toISOString(),
+  }
+  if (options?.operatorId !== undefined) row.operator_id = options.operatorId
+  if (options?.processingStatus) row.processing_status = options.processingStatus
+
   const { error: dbErr } = await db
     .from('biometria_fotos')
-    .upsert(
-      {
-        numero_carteira: guia.numero_carteira,
-        paciente_nome: guia.paciente ?? 'Desconhecido',
-        photo_path: photoPath,
-        sequence: targetSequence,
-        captured_by: userId,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: 'numero_carteira,sequence' }
-    )
+    .upsert(row, { onConflict: 'numero_carteira,sequence' })
 
   if (dbErr) {
     return { success: false, error: `Erro ao registrar foto: ${dbErr.message}` }
