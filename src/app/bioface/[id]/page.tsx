@@ -62,6 +62,7 @@ export default function BiofacePage({
   const [isPortrait, setIsPortrait] = useState(false)
   const [capturing, setCapturing] = useState(false)
   const [faceDetected, setFaceDetected] = useState(false)
+  const [capturedPhoto, setCapturedPhoto] = useState<string | null>(null)
 
   const videoRef = useRef<HTMLVideoElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
@@ -222,6 +223,7 @@ export default function BiofacePage({
 
       streamRef.current?.getTracks().forEach((t) => t.stop())
       streamRef.current = null
+      setCapturedPhoto(photo_base64)
       setScreen('success')
     } catch (err: unknown) {
       setErrorMsg(err instanceof Error ? err.message : 'Erro ao enviar foto')
@@ -256,8 +258,24 @@ export default function BiofacePage({
     return (
       <div style={styles.centered}>
         <div style={styles.successIcon}>✓</div>
-        <h2 style={styles.title}>Foto enviada com sucesso!</h2>
+        <h2 style={styles.title}>Foto capturada com sucesso!</h2>
+        {capturedPhoto && (
+          <img
+            src={capturedPhoto}
+            alt="Foto capturada"
+            style={styles.photoPreview}
+          />
+        )}
         <p style={styles.mutedText}>Voce pode fechar esta janela.</p>
+        <button
+          onClick={() => {
+            setCapturedPhoto(null)
+            setScreen('camera')
+          }}
+          style={{ ...styles.btn, ...styles.btnSecondary }}
+        >
+          Capturar outra foto
+        </button>
       </div>
     )
   }
@@ -564,6 +582,21 @@ const styles: Record<string, React.CSSProperties> = {
     backgroundColor: '#334155',
     color: '#64748b',
     cursor: 'not-allowed',
+  },
+  btnSecondary: {
+    backgroundColor: 'transparent',
+    color: '#10b981',
+    border: '1px solid #10b981',
+    maxWidth: 280,
+  },
+  photoPreview: {
+    width: '100%',
+    maxWidth: 320,
+    aspectRatio: '565 / 317',
+    objectFit: 'cover',
+    borderRadius: '0.75rem',
+    border: '2px solid #22c55e',
+    boxShadow: '0 0 20px rgba(34, 197, 94, 0.2)',
   },
   title: {
     fontSize: '1.25rem',
