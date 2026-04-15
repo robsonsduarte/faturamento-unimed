@@ -53,3 +53,10 @@ scripts/scrap-guia-saw.mjs
 
 # Inbox
 inbox/
+
+# DUOS Framework
+.duos-core/local/
+.claude/settings.local.json
+.DS_Store
+node_modules/
+docs/workflows/client_secret_*.json

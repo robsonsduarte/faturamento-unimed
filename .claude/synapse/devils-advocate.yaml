@@ -1,9 +1,0 @@
-agent: devils-advocate
-codename: SHADOW
-state: idle
-task: null
-started: null
-last_transition: null
-transitions: []
-blocked_by: null
-notes: null

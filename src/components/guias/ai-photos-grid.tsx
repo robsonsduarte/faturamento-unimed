@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { CheckCircle, Download, Sparkles, Star, UserPlus, Trash2, Maximize2 } from 'lucide-react'
+import { Download, Sparkles, UserPlus, Trash2, Maximize2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
@@ -25,7 +25,6 @@ interface Props {
 export function AIPhotosGrid({ guiaId, patientSlotsUsed = [], onPromoted }: Props) {
   const [photos, setPhotos] = useState<AIPhoto[]>([])
   const [loading, setLoading] = useState(true)
-  const [selecting, setSelecting] = useState<string | null>(null)
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null)
   const [promoteFor, setPromoteFor] = useState<AIPhoto | null>(null)
   const [promoteTargetSeq, setPromoteTargetSeq] = useState<number | null>(null)
@@ -67,22 +66,6 @@ export function AIPhotosGrid({ guiaId, patientSlotsUsed = [], onPromoted }: Prop
     return () => { supabase.removeChannel(channel) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [guiaId])
-
-  async function handleSelect(id: string) {
-    setSelecting(id)
-    // Optimistic
-    setPhotos((prev) => prev.map((p) => ({ ...p, selected: p.id === id })))
-    try {
-      const r = await fetch(`/api/patient-photos/${id}/select`, { method: 'POST' })
-      if (!r.ok) throw new Error('fail')
-      toast.success('Foto favorita atualizada')
-    } catch {
-      toast.error('Erro ao selecionar')
-      fetchPhotos()
-    } finally {
-      setSelecting(null)
-    }
-  }
 
   async function handlePromote() {
     if (!promoteFor || !promoteTargetSeq) return
@@ -154,7 +137,7 @@ export function AIPhotosGrid({ guiaId, patientSlotsUsed = [], onPromoted }: Prop
             </span>
           </div>
           <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-            Clique para ampliar · estrela = favorita · + = usar como foto do paciente
+            Clique para ampliar · + = usar como foto do paciente
           </p>
         </div>
 
@@ -162,35 +145,12 @@ export function AIPhotosGrid({ guiaId, patientSlotsUsed = [], onPromoted }: Prop
           {photos.map((p, idx) => (
             <div
               key={p.id}
-              className={cn(
-                'aspect-[3/4] rounded-lg border-2 overflow-hidden relative cursor-pointer transition-all group',
-                p.selected
-                  ? 'border-[var(--color-primary)] ring-2 ring-[var(--color-primary)]/30'
-                  : 'border-[var(--color-border)] hover:border-[var(--color-primary)]/50'
-              )}
+              className="aspect-[3/4] rounded-lg border-2 overflow-hidden relative cursor-pointer transition-all group border-[var(--color-border)] hover:border-[var(--color-primary)]/50"
               style={{ background: 'var(--color-surface)' }}
               onClick={() => setLightboxIndex(idx)}
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={p.url} alt={p.background_name} className="w-full h-full object-cover" />
-
-              {p.selected && (
-                <div
-                  className="absolute inset-0 flex items-center justify-center pointer-events-none"
-                  style={{ background: 'rgba(16, 185, 129, 0.18)' }}
-                >
-                  <CheckCircle className="w-8 h-8 text-white drop-shadow-lg" />
-                </div>
-              )}
-
-              {selecting === p.id && (
-                <div
-                  className="absolute inset-0 flex items-center justify-center"
-                  style={{ background: 'rgba(0,0,0,0.4)' }}
-                >
-                  <div className="animate-pulse text-white text-xs">Salvando...</div>
-                </div>
-              )}
 
               {/* Action toolbar (hover) */}
               <div
@@ -205,18 +165,6 @@ export function AIPhotosGrid({ guiaId, patientSlotsUsed = [], onPromoted }: Prop
                   style={{ background: 'rgba(0,0,0,0.55)', color: 'white' }}
                 >
                   <Maximize2 className="w-3 h-3" />
-                </button>
-                <button
-                  type="button"
-                  onClick={(e) => { e.stopPropagation(); if (!p.selected) handleSelect(p.id) }}
-                  title={p.selected ? 'Favorita' : 'Marcar como favorita'}
-                  className="p-1 rounded"
-                  style={{
-                    background: p.selected ? 'rgba(245, 158, 11, 0.85)' : 'rgba(0,0,0,0.55)',
-                    color: 'white',
-                  }}
-                >
-                  <Star className={cn('w-3 h-3', p.selected && 'fill-white')} />
                 </button>
                 <button
                   type="button"

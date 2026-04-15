@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useCallback } from 'react'
+import { useEffect, useState, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { X, ChevronLeft, ChevronRight, Download } from 'lucide-react'
 
 export interface LightboxPhoto {
@@ -19,6 +20,9 @@ interface Props {
 export function PhotoLightbox({ photos, index, onClose, onIndexChange }: Props) {
   const total = photos.length
   const current = photos[index]
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => { setMounted(true) }, [])
 
   const prev = useCallback(() => {
     if (total < 2) return
@@ -40,11 +44,11 @@ export function PhotoLightbox({ photos, index, onClose, onIndexChange }: Props) 
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose, prev, next])
 
-  if (!current) return null
+  if (!current || !mounted) return null
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center"
+      className="fixed inset-0 z-[9999] flex items-center justify-center"
       style={{ background: 'rgba(0,0,0,0.88)' }}
       onClick={onClose}
     >
@@ -109,6 +113,7 @@ export function PhotoLightbox({ photos, index, onClose, onIndexChange }: Props) 
           <ChevronRight className="w-8 h-8" />
         </button>
       )}
-    </div>
+    </div>,
+    document.body
   )
 }

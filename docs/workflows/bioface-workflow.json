@@ -1,0 +1,716 @@
+{
+  "name": "Bioface — Troca de Fundo com Consistência Facial",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "bioface-processed",
+        "responseMode": "onReceived",
+        "responseCode": 200,
+        "options": {
+          "rawBody": false
+        },
+        "headerAuth": {
+          "name": "x-api-key",
+          "value": "={{ $env.N8N_WEBHOOK_SECRET }}"
+        }
+      },
+      "id": "node-01-webhook",
+      "name": "01 — Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0],
+      "webhookId": "bioface-processed"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================\n// 02 — Extrair dados + Validar API Key + Idempotência\n// ============================\n\nconst headers = $input.first().json.headers;\nconst body = $input.first().json.body;\n\n// Validar x-api-key\nconst expectedKey = $env.N8N_WEBHOOK_SECRET;\nconst receivedKey = headers['x-api-key'] || headers['X-Api-Key'];\n\nif (!receivedKey || receivedKey !== expectedKey) {\n  throw new Error('Unauthorized: x-api-key inválida ou ausente');\n}\n\nconst record = body.record;\n\nif (!record || !record.id) {\n  throw new Error('Payload inválido: record.id ausente');\n}\n\n// Filtrar: só processar fotos de captura pública (captured_by IS NULL)\nif (record.captured_by !== null && record.captured_by !== undefined) {\n  // Captura manual pelo operador — não processar\n  return [];\n}\n\n// Filtrar: só processar se status é pending_ai\nif (record.processing_status !== 'pending_ai') {\n  // Já processado ou em andamento — abort silencioso\n  return [];\n}\n\nreturn [{\n  json: {\n    record_id: record.id,\n    guia_id: record.guia_id,\n    numero_carteira: record.numero_carteira,\n    storage_path: record.storage_path,\n    operator_id: record.operator_id,\n    sequence: record.sequence,\n    created_at: record.created_at\n  }\n}];"
+      },
+      "id": "node-02-extract",
+      "name": "02 — Extrair Dados e Validar",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [220, 0]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/biometria_fotos?id=eq.{{ $json.record_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "Bearer {{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "Prefer", "value": "return=minimal" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"processing_status\": \"processing\",\n  \"n8n_started_at\": \"{{ $now.toISO() }}\"\n}",
+        "options": {}
+      },
+      "id": "node-03-status-processing",
+      "name": "03 — Status → processing",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [440, 0],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/storage/v1/object/sign/biometria/{{ $('02 — Extrair Dados e Validar').item.json.storage_path }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "Bearer {{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{ \"expiresIn\": 300 }",
+        "options": {}
+      },
+      "id": "node-04a-signed-url",
+      "name": "04a — Obter Signed URL",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [660, 0],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.SUPABASE_URL }}/storage/v1{{ $json.signedURL }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "Bearer {{ $env.SUPABASE_SERVICE_KEY }}" }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "id": "node-04b-download-image",
+      "name": "04b — Download Imagem Original",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [880, 0],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "jsCode": "// Converter binário para base64 para enviar ao remove.bg\nconst binaryData = $input.first().binary;\nif (!binaryData || !binaryData.data) {\n  throw new Error('Imagem binária não encontrada no input');\n}\n\n// Acessar o buffer binário\nconst buffer = await this.helpers.getBinaryDataBuffer(0, 'data');\nconst base64Image = buffer.toString('base64');\n\n// Preservar dados do contexto\nconst context = $('02 — Extrair Dados e Validar').first().json;\n\nreturn [{\n  json: {\n    image_base64: base64Image,\n    ...context\n  }\n}];"
+      },
+      "id": "node-04c-to-base64",
+      "name": "04c — Converter para Base64",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1100, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.remove.bg/v1.0/removebg",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "X-Api-Key", "value": "={{ $env.REMOVEBG_API_KEY }}" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            { "name": "image_file_b64", "value": "={{ $json.image_base64 }}" },
+            { "name": "size", "value": "auto" },
+            { "name": "format", "value": "png" },
+            { "name": "type", "value": "person" }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "id": "node-05-removebg",
+      "name": "05 — Remove.bg",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1320, 0],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "jsCode": "// Converter cutout PNG para base64\nconst buffer = await this.helpers.getBinaryDataBuffer(0, 'data');\nconst cutoutBase64 = buffer.toString('base64');\n\nconst context = $('02 — Extrair Dados e Validar').first().json;\n\nreturn [{\n  json: {\n    cutout_base64: cutoutBase64,\n    ...context\n  }\n}];"
+      },
+      "id": "node-05b-cutout-base64",
+      "name": "05b — Cutout para Base64",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1540, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "x-api-key", "value": "={{ $env.ANTHROPIC_API_KEY }}" },
+            { "name": "anthropic-version", "value": "2023-06-01" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"claude-sonnet-4-6\",\n  \"max_tokens\": 512,\n  \"system\": \"Você é um avaliador de qualidade de fotos para uso em documentos médicos. Responda SOMENTE com JSON válido, sem markdown, sem backticks.\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": [\n        {\n          \"type\": \"image\",\n          \"source\": {\n            \"type\": \"base64\",\n            \"media_type\": \"image/png\",\n            \"data\": \"{{ $json.cutout_base64 }}\"\n          }\n        },\n        {\n          \"type\": \"text\",\n          \"text\": \"Analise esta foto de selfie. Retorne APENAS JSON válido:\\n{\\n  \\\"face_detected\\\": boolean,\\n  \\\"face_centered\\\": boolean,\\n  \\\"face_coverage_percent\\\": number,\\n  \\\"lighting_score\\\": number (1-10),\\n  \\\"occlusion\\\": boolean,\\n  \\\"occlusion_type\\\": null | \\\"sunglasses\\\" | \\\"mask\\\" | \\\"hand\\\" | \\\"hat\\\",\\n  \\\"quality_score\\\": number (1-10),\\n  \\\"approved\\\": boolean,\\n  \\\"rejection_reason\\\": null | string (em português, mensagem amigável ao paciente)\\n}\"\n        }\n      ]\n    }\n  ]\n}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "node-06-claude-vision",
+      "name": "06 — Claude Vision Quality Check",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1760, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parsear resposta do Claude Vision\nconst response = $input.first().json;\n\nlet qualityData;\ntry {\n  const textContent = response.content.find(c => c.type === 'text');\n  if (!textContent) throw new Error('Resposta Claude sem conteúdo text');\n  \n  // Limpar possíveis backticks\n  const cleanJson = textContent.text.replace(/```json\\n?|```\\n?/g, '').trim();\n  qualityData = JSON.parse(cleanJson);\n} catch (e) {\n  throw new Error(`Falha ao parsear resposta Claude Vision: ${e.message}`);\n}\n\nconst context = $('02 — Extrair Dados e Validar').first().json;\nconst cutoutBase64 = $('05b — Cutout para Base64').first().json.cutout_base64;\n\nreturn [{\n  json: {\n    ...qualityData,\n    cutout_base64: cutoutBase64,\n    ...context\n  }\n}];"
+      },
+      "id": "node-06b-parse-quality",
+      "name": "06b — Parsear Quality Check",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1980, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "quality-check",
+              "leftValue": "={{ $json.quality_score }}",
+              "rightValue": "={{ Number($env.QUALITY_THRESHOLD) || 7 }}",
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            },
+            {
+              "id": "face-detected",
+              "leftValue": "={{ $json.face_detected }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "node-07-if-quality",
+      "name": "07 — Quality >= Threshold?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [2200, 0]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/biometria_fotos?id=eq.{{ $json.record_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "Bearer {{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "Prefer", "value": "return=minimal" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"processing_status\": \"quality_rejected\",\n  \"quality_score\": {{ $json.quality_score }},\n  \"quality_reason\": \"{{ $json.rejection_reason || 'Qualidade insuficiente' }}\",\n  \"n8n_completed_at\": \"{{ $now.toISO() }}\"\n}",
+        "options": {}
+      },
+      "id": "node-07a-reject-status",
+      "name": "07a — Status → quality_rejected",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2420, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/notifications",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "Bearer {{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "Prefer", "value": "return=minimal" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"user_id\": \"{{ $('06b — Parsear Quality Check').item.json.operator_id }}\",\n  \"type\": \"ai_quality_rejected\",\n  \"title\": \"Foto rejeitada\",\n  \"body\": \"{{ $('06b — Parsear Quality Check').item.json.rejection_reason || 'Qualidade insuficiente para processamento' }}\",\n  \"guia_id\": \"{{ $('06b — Parsear Quality Check').item.json.guia_id }}\"\n}",
+        "options": {}
+      },
+      "id": "node-07b-reject-notify",
+      "name": "07b — Notificar Rejeição",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2640, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.replicate.com/v1/predictions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "Bearer {{ $env.REPLICATE_API_TOKEN }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"version\": \"7de2ea26c616d5bf2245ad0d5e24f0ff9ea204b7d29c7b9bbcde0cecc60794e3\",\n  \"input\": {\n    \"image\": \"data:image/png;base64,{{ $json.cutout_base64 }}\",\n    \"upscale\": 2,\n    \"face_upsample\": true,\n    \"background_enhance\": false,\n    \"codeformer_fidelity\": 0.7\n  }\n}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "node-08a-codeformer-start",
+      "name": "08a — CodeFormer (Start)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2420, -200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Polling para aguardar resultado do Replicate\nconst predictionUrl = $input.first().json.urls.get;\nconst replicateToken = $env.REPLICATE_API_TOKEN;\n\nlet attempts = 0;\nconst maxAttempts = 30;\nconst pollInterval = 3000; // 3s\n\nwhile (attempts < maxAttempts) {\n  const response = await this.helpers.httpRequest({\n    method: 'GET',\n    url: predictionUrl,\n    headers: {\n      'Authorization': `Bearer ${replicateToken}`\n    }\n  });\n\n  if (response.status === 'succeeded') {\n    const context = $('06b — Parsear Quality Check').first().json;\n    return [{\n      json: {\n        enhanced_url: response.output,\n        quality_score: context.quality_score,\n        record_id: context.record_id,\n        guia_id: context.guia_id,\n        numero_carteira: context.numero_carteira,\n        operator_id: context.operator_id,\n        cutout_base64: context.cutout_base64\n      }\n    }];\n  }\n\n  if (response.status === 'failed' || response.status === 'canceled') {\n    // Fallback: usar cutout sem enhancement\n    console.log('CodeFormer falhou, usando cutout original como fallback');\n    const context = $('06b — Parsear Quality Check').first().json;\n    return [{\n      json: {\n        enhanced_url: null,\n        use_cutout_fallback: true,\n        quality_score: context.quality_score,\n        record_id: context.record_id,\n        guia_id: context.guia_id,\n        numero_carteira: context.numero_carteira,\n        operator_id: context.operator_id,\n        cutout_base64: context.cutout_base64\n      }\n    }];\n  }\n\n  attempts++;\n  await new Promise(resolve => setTimeout(resolve, pollInterval));\n}\n\n// Timeout: usar fallback\nconsole.log('CodeFormer timeout, usando cutout original');\nconst context = $('06b — Parsear Quality Check').first().json;\nreturn [{\n  json: {\n    enhanced_url: null,\n    use_cutout_fallback: true,\n    quality_score: context.quality_score,\n    record_id: context.record_id,\n    guia_id: context.guia_id,\n    numero_carteira: context.numero_carteira,\n    operator_id: context.operator_id,\n    cutout_base64: context.cutout_base64\n  }\n}];"
+      },
+      "id": "node-08b-codeformer-poll",
+      "name": "08b — CodeFormer (Poll)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2640, -200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Baixar imagem enhanced do Replicate OU usar cutout como fallback\nconst input = $input.first().json;\nlet subjectBase64;\n\nif (input.use_cutout_fallback || !input.enhanced_url) {\n  // Fallback: usar cutout original\n  subjectBase64 = input.cutout_base64;\n} else {\n  // Baixar imagem enhanced\n  const enhancedUrl = input.enhanced_url;\n  const response = await this.helpers.httpRequest({\n    method: 'GET',\n    url: enhancedUrl,\n    encoding: 'arraybuffer',\n    returnFullResponse: true\n  });\n  subjectBase64 = Buffer.from(response.body).toString('base64');\n}\n\nreturn [{\n  json: {\n    subject_base64: subjectBase64,\n    record_id: input.record_id,\n    guia_id: input.guia_id,\n    numero_carteira: input.numero_carteira,\n    operator_id: input.operator_id,\n    quality_score: input.quality_score\n  }\n}];"
+      },
+      "id": "node-08c-download-enhanced",
+      "name": "08c — Download Enhanced / Fallback",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2860, -200]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://www.googleapis.com/drive/v3/files",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "Bearer {{ $credential.googleDriveOAuth2Api.accessToken }}" }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "q", "value": "'{{ $env.BACKGROUNDS_DRIVE_FOLDER_ID }}' in parents and mimeType contains 'image/' and trashed = false" },
+            { "name": "fields", "value": "files(id,name,mimeType)" },
+            { "name": "pageSize", "value": "20" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-09-drive-list",
+      "name": "09 — Listar Fundos (Drive)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [3080, -200],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "CONFIGURE_ME",
+          "name": "Google Drive OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Preparar array de fundos para o loop\nconst files = $input.first().json.files;\nconst context = $('08c — Download Enhanced / Fallback').first().json;\n\nif (!files || files.length === 0) {\n  throw new Error('Nenhum fundo encontrado na pasta do Google Drive');\n}\n\nreturn files.map(file => ({\n  json: {\n    bg_file_id: file.id,\n    bg_file_name: file.name,\n    bg_mime_type: file.mimeType,\n    bg_name_no_ext: file.name.replace(/\\.[^/.]+$/, ''),\n    subject_base64: context.subject_base64,\n    record_id: context.record_id,\n    guia_id: context.guia_id,\n    numero_carteira: context.numero_carteira,\n    operator_id: context.operator_id,\n    quality_score: context.quality_score,\n    total_backgrounds: files.length\n  }\n}));"
+      },
+      "id": "node-09b-prep-loop",
+      "name": "09b — Preparar Loop de Fundos",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3300, -200]
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "node-10-split",
+      "name": "10 — Split In Batches",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [3520, -200]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://www.googleapis.com/drive/v3/files/{{ $json.bg_file_id }}?alt=media",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "Bearer {{ $credential.googleDriveOAuth2Api.accessToken }}" }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          },
+          "timeout": 15000
+        }
+      },
+      "id": "node-11-download-bg",
+      "name": "11 — Download Fundo",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [3740, -200],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "CONFIGURE_ME",
+          "name": "Google Drive OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================\n// 12 — Composição com Sharp\n// ============================\nconst sharp = require('sharp');\n\nconst context = $('10 — Split In Batches').first().json;\nconst bgBuffer = await this.helpers.getBinaryDataBuffer(0, 'data');\nconst subjectBuffer = Buffer.from(context.subject_base64, 'base64');\n\nconst OUTPUT_W = Number($env.OUTPUT_WIDTH) || 800;\nconst OUTPUT_H = Number($env.OUTPUT_HEIGHT) || 1000;\nconst QUALITY = Number($env.OUTPUT_JPEG_QUALITY) || 90;\nconst TOP_OFFSET = Number($env.SUBJECT_TOP_OFFSET_PERCENT) || 15;\nconst SCALE = Number($env.SUBJECT_SCALE_PERCENT) || 85;\n\n// Redimensionar sujeito\nconst subjectResized = await sharp(subjectBuffer)\n  .resize(\n    Math.floor(OUTPUT_W * SCALE / 100),\n    Math.floor(OUTPUT_H * SCALE / 100),\n    { fit: 'inside', withoutEnlargement: false }\n  )\n  .toBuffer();\n\nconst subjectMeta = await sharp(subjectResized).metadata();\nconst left = Math.floor((OUTPUT_W - subjectMeta.width) / 2);\nconst top = Math.floor(OUTPUT_H * TOP_OFFSET / 100);\n\n// Compor\nconst composed = await sharp(bgBuffer)\n  .resize(OUTPUT_W, OUTPUT_H, { fit: 'cover' })\n  .composite([{\n    input: subjectResized,\n    left,\n    top,\n    blend: 'over'\n  }])\n  .jpeg({ quality: QUALITY })\n  .toBuffer();\n\nconst composedBase64 = composed.toString('base64');\nconst bgNameNoExt = context.bg_name_no_ext;\nconst storagePath = `patients/${context.guia_id}/photos/${context.record_id}/${bgNameNoExt}.jpg`;\n\nreturn [{\n  json: {\n    composed_base64: composedBase64,\n    storage_path: storagePath,\n    bg_name_no_ext: bgNameNoExt,\n    record_id: context.record_id,\n    guia_id: context.guia_id,\n    numero_carteira: context.numero_carteira,\n    operator_id: context.operator_id,\n    quality_score: context.quality_score,\n    total_backgrounds: context.total_backgrounds\n  }\n}];"
+      },
+      "id": "node-12-compose",
+      "name": "12 — Composição Sharp",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3960, -200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/storage/v1/object/patients/{{ $json.storage_path }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "Bearer {{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Content-Type", "value": "image/jpeg" },
+            { "name": "x-upsert", "value": "true" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "body": "={{ Buffer.from($json.composed_base64, 'base64') }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "node-13-upload-storage",
+      "name": "13 — Upload Supabase Storage",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [4180, -200],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "jsCode": "// Preparar dados para acumular no loop\nconst context = $('12 — Composição Sharp').first().json;\n\nconst publicUrl = `${$env.SUPABASE_URL}/storage/v1/object/public/patients/${context.storage_path}`;\n\nreturn [{\n  json: {\n    photo_record: {\n      biometria_foto_id: context.record_id,\n      guia_id: context.guia_id,\n      numero_carteira: context.numero_carteira,\n      operator_id: context.operator_id,\n      background_name: context.bg_name_no_ext,\n      storage_path: `patients/${context.storage_path}`,\n      public_url: publicUrl,\n      status: 'ready'\n    },\n    record_id: context.record_id,\n    guia_id: context.guia_id,\n    operator_id: context.operator_id,\n    quality_score: context.quality_score,\n    total_backgrounds: context.total_backgrounds\n  }\n}];"
+      },
+      "id": "node-13b-prep-record",
+      "name": "13b — Preparar Photo Record",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [4400, -200]
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "destinationFieldName": "all_photos",
+        "include": "allFieldsExceptThose",
+        "options": {}
+      },
+      "id": "node-14-aggregate",
+      "name": "14 — Aggregate Resultados",
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [4620, -200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Construir array de registros para INSERT batch\nconst items = $input.first().json.all_photos;\nconst records = items.map(item => item.photo_record);\nconst meta = items[0]; // pegar metadata do primeiro item\n\nreturn [{\n  json: {\n    records: records,\n    record_id: meta.record_id,\n    guia_id: meta.guia_id,\n    operator_id: meta.operator_id,\n    quality_score: meta.quality_score,\n    total_photos: records.length\n  }\n}];"
+      },
+      "id": "node-14b-prep-insert",
+      "name": "14b — Preparar INSERT Batch",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [4840, -200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/patient_photos",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "Bearer {{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "Prefer", "value": "return=minimal" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.records) }}",
+        "options": {}
+      },
+      "id": "node-15-insert-photos",
+      "name": "15 — INSERT patient_photos",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [5060, -200],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/biometria_fotos?id=eq.{{ $('14b — Preparar INSERT Batch').item.json.record_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "Bearer {{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "Prefer", "value": "return=minimal" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"processing_status\": \"completed\",\n  \"quality_score\": {{ $('14b — Preparar INSERT Batch').item.json.quality_score }},\n  \"n8n_completed_at\": \"{{ $now.toISO() }}\"\n}",
+        "options": {}
+      },
+      "id": "node-16-status-completed",
+      "name": "16 — Status → completed",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [5280, -200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/notifications",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "Bearer {{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "Prefer", "value": "return=minimal" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"user_id\": \"{{ $('14b — Preparar INSERT Batch').item.json.operator_id }}\",\n  \"type\": \"ai_photos_ready\",\n  \"title\": \"Fotos com fundo prontas\",\n  \"body\": \"{{ $('14b — Preparar INSERT Batch').item.json.total_photos }} fotos processadas para {{ $('14b — Preparar INSERT Batch').item.json.numero_carteira }}\",\n  \"guia_id\": \"{{ $('14b — Preparar INSERT Batch').item.json.guia_id }}\"\n}",
+        "options": {}
+      },
+      "id": "node-17-notify-success",
+      "name": "17 — Notificar Sucesso",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [5500, -200]
+    }
+  ],
+  "connections": {
+    "01 — Webhook Trigger": {
+      "main": [
+        [{ "node": "02 — Extrair Dados e Validar", "type": "main", "index": 0 }]
+      ]
+    },
+    "02 — Extrair Dados e Validar": {
+      "main": [
+        [{ "node": "03 — Status → processing", "type": "main", "index": 0 }]
+      ]
+    },
+    "03 — Status → processing": {
+      "main": [
+        [{ "node": "04a — Obter Signed URL", "type": "main", "index": 0 }]
+      ]
+    },
+    "04a — Obter Signed URL": {
+      "main": [
+        [{ "node": "04b — Download Imagem Original", "type": "main", "index": 0 }]
+      ]
+    },
+    "04b — Download Imagem Original": {
+      "main": [
+        [{ "node": "04c — Converter para Base64", "type": "main", "index": 0 }]
+      ]
+    },
+    "04c — Converter para Base64": {
+      "main": [
+        [{ "node": "05 — Remove.bg", "type": "main", "index": 0 }]
+      ]
+    },
+    "05 — Remove.bg": {
+      "main": [
+        [{ "node": "05b — Cutout para Base64", "type": "main", "index": 0 }]
+      ]
+    },
+    "05b — Cutout para Base64": {
+      "main": [
+        [{ "node": "06 — Claude Vision Quality Check", "type": "main", "index": 0 }]
+      ]
+    },
+    "06 — Claude Vision Quality Check": {
+      "main": [
+        [{ "node": "06b — Parsear Quality Check", "type": "main", "index": 0 }]
+      ]
+    },
+    "06b — Parsear Quality Check": {
+      "main": [
+        [{ "node": "07 — Quality >= Threshold?", "type": "main", "index": 0 }]
+      ]
+    },
+    "07 — Quality >= Threshold?": {
+      "main": [
+        [{ "node": "08a — CodeFormer (Start)", "type": "main", "index": 0 }],
+        [{ "node": "07a — Status → quality_rejected", "type": "main", "index": 0 }]
+      ]
+    },
+    "07a — Status → quality_rejected": {
+      "main": [
+        [{ "node": "07b — Notificar Rejeição", "type": "main", "index": 0 }]
+      ]
+    },
+    "08a — CodeFormer (Start)": {
+      "main": [
+        [{ "node": "08b — CodeFormer (Poll)", "type": "main", "index": 0 }]
+      ]
+    },
+    "08b — CodeFormer (Poll)": {
+      "main": [
+        [{ "node": "08c — Download Enhanced / Fallback", "type": "main", "index": 0 }]
+      ]
+    },
+    "08c — Download Enhanced / Fallback": {
+      "main": [
+        [{ "node": "09 — Listar Fundos (Drive)", "type": "main", "index": 0 }]
+      ]
+    },
+    "09 — Listar Fundos (Drive)": {
+      "main": [
+        [{ "node": "09b — Preparar Loop de Fundos", "type": "main", "index": 0 }]
+      ]
+    },
+    "09b — Preparar Loop de Fundos": {
+      "main": [
+        [{ "node": "10 — Split In Batches", "type": "main", "index": 0 }]
+      ]
+    },
+    "10 — Split In Batches": {
+      "main": [
+        [{ "node": "11 — Download Fundo", "type": "main", "index": 0 }],
+        [{ "node": "14 — Aggregate Resultados", "type": "main", "index": 0 }]
+      ]
+    },
+    "11 — Download Fundo": {
+      "main": [
+        [{ "node": "12 — Composição Sharp", "type": "main", "index": 0 }]
+      ]
+    },
+    "12 — Composição Sharp": {
+      "main": [
+        [{ "node": "13 — Upload Supabase Storage", "type": "main", "index": 0 }]
+      ]
+    },
+    "13 — Upload Supabase Storage": {
+      "main": [
+        [{ "node": "13b — Preparar Photo Record", "type": "main", "index": 0 }]
+      ]
+    },
+    "13b — Preparar Photo Record": {
+      "main": [
+        [{ "node": "10 — Split In Batches", "type": "main", "index": 0 }]
+      ]
+    },
+    "14 — Aggregate Resultados": {
+      "main": [
+        [{ "node": "14b — Preparar INSERT Batch", "type": "main", "index": 0 }]
+      ]
+    },
+    "14b — Preparar INSERT Batch": {
+      "main": [
+        [{ "node": "15 — INSERT patient_photos", "type": "main", "index": 0 }]
+      ]
+    },
+    "15 — INSERT patient_photos": {
+      "main": [
+        [{ "node": "16 — Status → completed", "type": "main", "index": 0 }]
+      ]
+    },
+    "16 — Status → completed": {
+      "main": [
+        [{ "node": "17 — Notificar Sucesso", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": "CONFIGURE_ERROR_WORKFLOW_ID"
+  },
+  "staticData": null,
+  "tags": [
+    { "name": "bioface" },
+    { "name": "ConsultorioPro" },
+    { "name": "produção" }
+  ]
+}

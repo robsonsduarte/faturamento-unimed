@@ -1,0 +1,196 @@
+{
+  "name": "Bioface — Error Handler",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "error-01-trigger",
+      "name": "E1 — Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extrair dados do erro e do contexto da execução que falhou\nconst errorData = $input.first().json;\n\n// Tentar extrair record_id e operator_id do workflow que falhou\nlet recordId = null;\nlet operatorId = null;\nlet guiaId = null;\nlet errorMessage = 'Erro desconhecido no processamento';\nlet numeroCameira = '';\n\ntry {\n  // O error trigger traz o execution data\n  const execution = errorData.execution;\n  errorMessage = errorData.execution?.error?.message || errorMessage;\n  \n  // Tentar encontrar nos resultados dos nós\n  const nodeResults = execution?.data?.resultData?.runData;\n  \n  if (nodeResults) {\n    // Procurar no nó de extração de dados\n    const extractNode = nodeResults['02 — Extrair Dados e Validar'];\n    if (extractNode && extractNode[0]?.data?.main?.[0]?.[0]?.json) {\n      const extracted = extractNode[0].data.main[0][0].json;\n      recordId = extracted.record_id;\n      operatorId = extracted.operator_id;\n      guiaId = extracted.guia_id;\n      numeroCameira = extracted.numero_carteira || '';\n    }\n  }\n} catch (e) {\n  // Se não conseguir extrair, continua com o que tem\n  console.log('Erro ao extrair contexto:', e.message);\n}\n\nreturn [{\n  json: {\n    record_id: recordId,\n    operator_id: operatorId,\n    guia_id: guiaId,\n    numero_carteira: numeroCameira,\n    error_message: errorMessage,\n    execution_id: errorData.execution?.id,\n    workflow_name: errorData.workflow?.name\n  }\n}];"
+      },
+      "id": "error-01b-parse",
+      "name": "E1b — Parsear Erro",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [220, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "has-record-id",
+              "leftValue": "={{ $json.record_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "error-02-if-record",
+      "name": "E2 — Tem record_id?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [440, 0]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/biometria_fotos?id=eq.{{ $json.record_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "Bearer {{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "Prefer", "value": "return=minimal" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"processing_status\": \"failed\",\n  \"n8n_error\": \"{{ $json.error_message.substring(0, 500) }}\",\n  \"n8n_completed_at\": \"{{ $now.toISO() }}\"\n}",
+        "options": {}
+      },
+      "id": "error-03-update-status",
+      "name": "E3 — Status → failed",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [660, -100],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "has-operator-id",
+              "leftValue": "={{ $('E1b — Parsear Erro').item.json.operator_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "error-04-if-operator",
+      "name": "E4 — Tem operator_id?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [880, -100]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/notifications",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "Bearer {{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "Prefer", "value": "return=minimal" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"user_id\": \"{{ $('E1b — Parsear Erro').item.json.operator_id }}\",\n  \"type\": \"ai_processing_failed\",\n  \"title\": \"Erro no processamento IA\",\n  \"body\": \"Falha ao processar foto de {{ $('E1b — Parsear Erro').item.json.numero_carteira || 'paciente' }}. Tente reprocessar.\",\n  \"guia_id\": \"{{ $('E1b — Parsear Erro').item.json.guia_id }}\"\n}",
+        "options": {}
+      },
+      "id": "error-05-notify-operator",
+      "name": "E5 — Notificar Operador",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1100, -200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/sendMessage",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"chat_id\": \"{{ $env.TELEGRAM_ALERTS_CHAT_ID }}\",\n  \"parse_mode\": \"HTML\",\n  \"text\": \"🚨 <b>Bioface — Erro no Processamento</b>\\n\\n<b>Workflow:</b> {{ $('E1b — Parsear Erro').item.json.workflow_name || 'Bioface' }}\\n<b>Execution:</b> {{ $('E1b — Parsear Erro').item.json.execution_id || 'N/A' }}\\n<b>Record ID:</b> {{ $('E1b — Parsear Erro').item.json.record_id || 'N/A' }}\\n<b>Carteira:</b> {{ $('E1b — Parsear Erro').item.json.numero_carteira || 'N/A' }}\\n\\n<b>Erro:</b>\\n<code>{{ $('E1b — Parsear Erro').item.json.error_message.substring(0, 300) }}</code>\\n\\n<i>{{ $now.toISO() }}</i>\"\n}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "error-06-telegram",
+      "name": "E6 — Alerta Telegram",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1320, 0]
+    }
+  ],
+  "connections": {
+    "E1 — Error Trigger": {
+      "main": [
+        [{ "node": "E1b — Parsear Erro", "type": "main", "index": 0 }]
+      ]
+    },
+    "E1b — Parsear Erro": {
+      "main": [
+        [{ "node": "E2 — Tem record_id?", "type": "main", "index": 0 }]
+      ]
+    },
+    "E2 — Tem record_id?": {
+      "main": [
+        [{ "node": "E3 — Status → failed", "type": "main", "index": 0 }],
+        [{ "node": "E6 — Alerta Telegram", "type": "main", "index": 0 }]
+      ]
+    },
+    "E3 — Status → failed": {
+      "main": [
+        [{ "node": "E4 — Tem operator_id?", "type": "main", "index": 0 }]
+      ]
+    },
+    "E4 — Tem operator_id?": {
+      "main": [
+        [{ "node": "E5 — Notificar Operador", "type": "main", "index": 0 }],
+        [{ "node": "E6 — Alerta Telegram", "type": "main", "index": 0 }]
+      ]
+    },
+    "E5 — Notificar Operador": {
+      "main": [
+        [{ "node": "E6 — Alerta Telegram", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true
+  },
+  "tags": [
+    { "name": "bioface" },
+    { "name": "error-handler" },
+    { "name": "ConsultorioPro" }
+  ]
+}
