@@ -15,6 +15,7 @@ import type { GuideStatus } from '@/lib/constants'
 import type { ImportLog } from '@/lib/types'
 import { CameraCapture } from '@/components/shared/camera-capture'
 import { AIPhotosGrid } from '@/components/guias/ai-photos-grid'
+import { PhotoLightbox } from '@/components/shared/photo-lightbox'
 import { toast } from 'sonner'
 
 interface Props {
@@ -43,6 +44,7 @@ export default function GuiaDetailPage({ params }: Props) {
   const [bioResolving, setBioResolving] = useState(false)
   const [bioLogs, setBioLogs] = useState<ImportLog[]>([])
   const [selectedPhotoSeq, setSelectedPhotoSeq] = useState<number | null>(null)
+  const [patientLightboxIndex, setPatientLightboxIndex] = useState<number | null>(null)
 
   // Token WhatsApp states
   const [tokenMode, setTokenMode] = useState<'none' | 'biometria' | 'whatsapp'>('none')
@@ -1279,13 +1281,19 @@ export default function GuiaDetailPage({ params }: Props) {
                           <div
                             key={seq}
                             className={cn(
-                              'aspect-video rounded-lg border-2 overflow-hidden relative cursor-pointer transition-all',
+                              'aspect-video rounded-lg border-2 overflow-hidden relative cursor-pointer transition-all group',
                               photo && isSelected
                                 ? 'border-[var(--color-primary)] ring-2 ring-[var(--color-primary)]/30'
                                 : 'border-[var(--color-border)]'
                             )}
                             style={{ background: 'var(--color-surface)' }}
-                            onClick={() => { if (photo) setSelectedPhotoSeq(isSelected ? null : seq) }}
+                            onClick={() => {
+                              if (!photo) return
+                              const sorted = patientPhotos.slice().sort((a, b) => a.sequence - b.sequence)
+                              const idx = sorted.findIndex((p) => p.sequence === seq)
+                              if (idx >= 0) setPatientLightboxIndex(idx)
+                              setSelectedPhotoSeq(seq)
+                            }}
                           >
                             {photo ? (
                               <>
@@ -1301,18 +1309,49 @@ export default function GuiaDetailPage({ params }: Props) {
                                   </span>
                                 )}
                                 {isSelected && (
-                                  <div className="absolute inset-0 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.25)' }}>
+                                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none" style={{ background: 'rgba(0,0,0,0.25)' }}>
                                     <CheckCircle className="w-6 h-6 text-white drop-shadow-lg" />
                                   </div>
                                 )}
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); setCaptureSlot(seq) }}
-                                  title="Refazer foto"
-                                  className="absolute bottom-1 right-1 flex items-center justify-center rounded p-0.5"
-                                  style={{ background: 'rgba(0,0,0,0.55)', color: 'var(--color-text-muted)' }}
-                                >
-                                  <RotateCw className="w-3 h-3" />
-                                </button>
+                                <div className="absolute bottom-1 right-1 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); setCaptureSlot(seq) }}
+                                    title="Refazer foto"
+                                    className="flex items-center justify-center rounded p-0.5"
+                                    style={{ background: 'rgba(0,0,0,0.65)', color: 'white' }}
+                                  >
+                                    <RotateCw className="w-3 h-3" />
+                                  </button>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      if (!guia?.numero_carteira) return
+                                      const carteira = guia.numero_carteira
+                                      setConfirmModal({
+                                        show: true,
+                                        message: `Excluir a foto do slot ${seq}?`,
+                                        onConfirm: () => {
+                                          fetch(`/api/biometria/foto/${encodeURIComponent(carteira)}?sequence=${seq}`, { method: 'DELETE' })
+                                            .then(async (r) => {
+                                              if (!r.ok) {
+                                                const d = await r.json().catch(() => ({})) as { error?: string }
+                                                throw new Error(d.error ?? 'Erro')
+                                              }
+                                              await fetchPhotos(carteira)
+                                              toast.success(`Foto ${seq} excluida`)
+                                            })
+                                            .catch((err) => toast.error(err instanceof Error ? err.message : 'Erro ao excluir'))
+                                          setConfirmModal({ show: false, message: '', onConfirm: () => {} })
+                                        },
+                                      })
+                                    }}
+                                    title="Excluir foto"
+                                    className="flex items-center justify-center rounded p-0.5"
+                                    style={{ background: 'rgba(220, 38, 38, 0.85)', color: 'white' }}
+                                  >
+                                    <Trash2 className="w-3 h-3" />
+                                  </button>
+                                </div>
                               </>
                             ) : (
                               <button
@@ -1625,7 +1664,29 @@ export default function GuiaDetailPage({ params }: Props) {
       )}
 
       {/* Fotos com fundo IA — aparece quando ha patient_photos para essa guia */}
-      <AIPhotosGrid guiaId={guia.id} />
+      <AIPhotosGrid
+        guiaId={guia.id}
+        numeroCarteira={guia.numero_carteira}
+        patientSlotsUsed={patientPhotos.map((p) => p.sequence)}
+        onPromoted={() => { if (guia.numero_carteira) fetchPhotos(guia.numero_carteira) }}
+      />
+
+      {/* Lightbox das fotos do paciente */}
+      {patientLightboxIndex !== null && patientPhotos.length > 0 && (
+        <PhotoLightbox
+          photos={patientPhotos
+            .slice()
+            .sort((a, b) => a.sequence - b.sequence)
+            .map((p) => ({
+              url: p.url,
+              label: `Foto ${p.sequence}`,
+              downloadName: `paciente_${guia.numero_carteira ?? 'foto'}_${p.sequence}.jpg`,
+            }))}
+          index={patientLightboxIndex}
+          onClose={() => setPatientLightboxIndex(null)}
+          onIndexChange={(i) => setPatientLightboxIndex(i)}
+        />
+      )}
 
       {/* Cobrar Atendimentos — apenas para guias PENDENTE */}
       {guia.status === 'PENDENTE' && (
