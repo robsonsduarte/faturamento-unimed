@@ -26,7 +26,7 @@ export function AIPhotosGrid({ guiaId }: Props) {
 
   async function fetchPhotos() {
     try {
-      const r = await fetch(`/api/patient-photos/${guiaId}`)
+      const r = await fetch(`/api/patient-photos?guiaId=${guiaId}`)
       if (!r.ok) return
       const data = await r.json() as { photos?: AIPhoto[] }
       setPhotos(data.photos ?? [])

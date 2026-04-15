@@ -9,10 +9,6 @@ function getServiceClient() {
   )
 }
 
-interface Props {
-  params: Promise<{ guiaId: string }>
-}
-
 interface PatientPhotoRow {
   id: string
   background_name: string
@@ -22,15 +18,16 @@ interface PatientPhotoRow {
 }
 
 /**
- * GET /api/patient-photos/[guiaId]
+ * GET /api/patient-photos?guiaId=XXX
  * Lista fotos IA da guia com signed URLs (1h).
  */
-export async function GET(_request: NextRequest, { params }: Props) {
+export async function GET(request: NextRequest) {
   try {
     const auth = await requireAuth()
     if (isAuthError(auth)) return auth.response
 
-    const { guiaId } = await params
+    const { searchParams } = new URL(request.url)
+    const guiaId = searchParams.get('guiaId')
     if (!guiaId) return NextResponse.json({ error: 'guiaId obrigatorio' }, { status: 400 })
 
     const db = getServiceClient()
