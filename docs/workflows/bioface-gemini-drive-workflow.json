@@ -1,0 +1,787 @@
+{
+  "name": "Bioface \u2014 Gemini Nano Banana (Drive Backgrounds)",
+  "nodes": [
+    {
+      "id": "n01",
+      "name": "01 \u2014 Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "bioface-processed",
+        "responseMode": "onReceived",
+        "responseCode": 200,
+        "options": {
+          "rawBody": false
+        }
+      },
+      "webhookId": "ac06301b-72dd-4be3-a060-77a7611ad2b3"
+    },
+    {
+      "id": "n02",
+      "name": "02 \u2014 Extrair",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        200,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const headers = $input.first().json.headers;\nconst body = $input.first().json.body;\nconst expected = '<N8N_WEBHOOK_SECRET>';\nconst received = headers['x-api-key'] || headers['X-Api-Key'];\nif (!received || received !== expected) throw new Error('Unauthorized');\nconst record = body.record;\nif (!record || !record.id) throw new Error('Payload invalido');\nif (record.captured_by !== null && record.captured_by !== undefined) return [];\nif (!record.operator_id) return [];\nif (record.processing_status !== 'pending_ai') return [];\nreturn [{json: {\n  record_id: record.id,\n  guia_id: record.guia_id || null,\n  numero_carteira: record.numero_carteira,\n  photo_path: record.photo_path,\n  operator_id: record.operator_id,\n  sequence: record.sequence,\n}}];"
+      }
+    },
+    {
+      "id": "n02b",
+      "name": "02b \u2014 Resolver guia_id",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        300,
+        0
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "=https://mnrrjslmxcxcismwyaha.supabase.co/rest/v1/guias?numero_carteira=eq.{{ $json.numero_carteira }}&select=id,numero_carteira&order=created_at.desc&limit=1",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "<SUPABASE_SERVICE_KEY>"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer <SUPABASE_SERVICE_KEY>"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "n02c",
+      "name": "02c \u2014 Merge guia_id",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        350,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const resp = $input.first().json;\nconst ctx = $(\"02 \u2014 Extrair\").first().json;\nconst guia_id = ctx.guia_id || resp?.id || null;\nif (!guia_id) {\n  console.log(\"[bioface] Nenhuma guia encontrada para\", ctx.numero_carteira);\n  return [];\n}\nreturn [{json: {...ctx, guia_id}}];"
+      }
+    },
+    {
+      "id": "n03",
+      "name": "03 \u2014 Status processing",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        400,
+        0
+      ],
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://mnrrjslmxcxcismwyaha.supabase.co/rest/v1/biometria_fotos?id=eq.{{ $json.record_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "<SUPABASE_SERVICE_KEY>"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer <SUPABASE_SERVICE_KEY>"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({processing_status:'processing', n8n_started_at:$now.toISO()}) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "n04",
+      "name": "04 \u2014 Signed URL (paciente)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        600,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://mnrrjslmxcxcismwyaha.supabase.co/storage/v1/object/sign/biometria/{{ $('02 \u2014 Extrair').item.json.photo_path }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "<SUPABASE_SERVICE_KEY>"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer <SUPABASE_SERVICE_KEY>"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"expiresIn\": 300}",
+        "options": {}
+      }
+    },
+    {
+      "id": "n05",
+      "name": "05 \u2014 Download (paciente)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        800,
+        0
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "=https://mnrrjslmxcxcismwyaha.supabase.co/storage/v1{{ $json.signedURL }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "n06",
+      "name": "06 \u2014 Base64 paciente",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1000,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const bin = await this.helpers.getBinaryDataBuffer(0, \"data\");\nconst b64 = Buffer.from(bin).toString(\"base64\");\nconst ctx = $(\"02c \u2014 Merge guia_id\").first().json;\nreturn [{json: {...ctx, patient_base64: b64}}];"
+      }
+    },
+    {
+      "id": "n07",
+      "name": "07 \u2014 Listar Fundos (Drive)",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        1200,
+        0
+      ],
+      "parameters": {
+        "resource": "fileFolder",
+        "returnAll": true,
+        "filter": {
+          "folderId": {
+            "__rl": true,
+            "value": "1g8RUJVDu6ja1ShW0eSXW5dIjkUTQnjQN",
+            "mode": "id"
+          }
+        },
+        "options": {}
+      },
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "G4InVzR5v9RWNF27",
+          "name": "Google Drive robsonsduarte"
+        }
+      }
+    },
+    {
+      "id": "n07b",
+      "name": "07b \u2014 Random 5",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1300,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// Embaralha os items e pega 5 aleatorios\nconst items = $input.all();\nconst shuffled = [...items];\nfor (let i = shuffled.length - 1; i > 0; i--) {\n  const j = Math.floor(Math.random() * (i + 1));\n  [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];\n}\nconst picked = shuffled.slice(0, 5);\nconsole.log('[bioface] Total files:', items.length, '| Picked:', picked.length, '| Names:', picked.map(p => p.json.name));\nreturn picked;"
+      }
+    },
+    {
+      "id": "n08",
+      "name": "08 \u2014 Preparar loop",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1400,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst ctx = $('06 \u2014 Base64 paciente').first().json;\n// items each has Drive file metadata\nreturn items.map(it => ({\n  json: {\n    ...ctx,\n    bg_file_id: it.json.id,\n    bg_file_name: it.json.name,\n    bg_name_no_ext: (it.json.name || 'bg').replace(/\\.[^.]+$/, '').toLowerCase().replace(/[^a-z0-9-]/g, '-'),\n  }\n}));"
+      }
+    },
+    {
+      "id": "n09",
+      "name": "09 \u2014 Split",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        1600,
+        0
+      ],
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      }
+    },
+    {
+      "id": "n10",
+      "name": "10 \u2014 Download Fundo (Drive)",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        1800,
+        0
+      ],
+      "parameters": {
+        "operation": "download",
+        "resource": "file",
+        "fileId": {
+          "__rl": true,
+          "value": "={{ $json.bg_file_id }}",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "G4InVzR5v9RWNF27",
+          "name": "Google Drive robsonsduarte"
+        }
+      }
+    },
+    {
+      "id": "n11",
+      "name": "11 \u2014 Base64 fundo",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2000,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const bin = await this.helpers.getBinaryDataBuffer(0, 'data');\nconst b64 = Buffer.from(bin).toString('base64');\nconst ctx = $('09 \u2014 Split').item.json;\nreturn [{json: {...ctx, bg_base64: b64}}];"
+      }
+    },
+    {
+      "id": "n12",
+      "name": "12 \u2014 Gemini",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2200,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=<GEMINI_API_KEY>",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  contents: [{\n    parts: [\n      { inline_data: { mime_type: 'image/jpeg', data: $json.patient_base64 } },\n      { inline_data: { mime_type: 'image/jpeg', data: $json.bg_base64 } },\n      { text: 'Compose image 1 (the person) into the environment of image 2 (the background scene). Place the person naturally in the foreground of the scene. Preserve the exact face, hair, identity and clothing of the person from image 1 unchanged. Match the lighting, color temperature and shadows of image 2 so the person looks like they naturally belong in that environment. Portrait framing, professional quality, photorealistic result.' }\n    ]\n  }]\n}) }}",
+        "options": {
+          "timeout": 60000
+        }
+      }
+    },
+    {
+      "id": "n13",
+      "name": "13 \u2014 Extract",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2400,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const resp = $input.first().json;\nconst parts = resp.candidates?.[0]?.content?.parts || [];\nconst imgPart = parts.find(p => p.inlineData);\nif (!imgPart) throw new Error('Gemini sem imagem: ' + JSON.stringify(resp).slice(0,300));\nconst ctx = $('11 \u2014 Base64 fundo').item.json;\nconst path = `${ctx.guia_id}/${ctx.record_id}/${ctx.bg_name_no_ext}.jpg`;\nconst binBuf = Buffer.from(imgPart.inlineData.data, 'base64');\nreturn [{\n  json: {\n    record_id: ctx.record_id,\n    guia_id: ctx.guia_id,\n    numero_carteira: ctx.numero_carteira,\n    operator_id: ctx.operator_id,\n    bg_name: ctx.bg_name_no_ext,\n    storage_path: path\n  },\n  binary: { data: await this.helpers.prepareBinaryData(binBuf, ctx.bg_name_no_ext + '.jpg', 'image/jpeg') }\n}];"
+      }
+    },
+    {
+      "id": "n14",
+      "name": "14 \u2014 Upload",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2600,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://mnrrjslmxcxcismwyaha.supabase.co/storage/v1/object/patients/{{ $json.storage_path }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "<SUPABASE_SERVICE_KEY>"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer <SUPABASE_SERVICE_KEY>"
+            },
+            {
+              "name": "Content-Type",
+              "value": "image/jpeg"
+            },
+            {
+              "name": "x-upsert",
+              "value": "true"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "binaryData",
+        "specifyBody": "binaryData",
+        "inputDataFieldName": "data",
+        "options": {}
+      }
+    },
+    {
+      "id": "n15",
+      "name": "15 \u2014 Prep record",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2800,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const ctx = $('13 \u2014 Extract').item.json;\nreturn [{json: {\n  record: {\n    biometria_foto_id: ctx.record_id,\n    guia_id: ctx.guia_id,\n    numero_carteira: ctx.numero_carteira,\n    operator_id: ctx.operator_id,\n    background_name: ctx.bg_name,\n    storage_path: `patients/${ctx.storage_path}`,\n    public_url: '',\n    status: 'ready'\n  },\n  _ctx: {record_id: ctx.record_id, guia_id: ctx.guia_id, operator_id: ctx.operator_id, numero_carteira: ctx.numero_carteira}\n}}];"
+      }
+    },
+    {
+      "id": "n16",
+      "name": "16 \u2014 Aggregate",
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        3000,
+        0
+      ],
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "options": {}
+      }
+    },
+    {
+      "id": "n17",
+      "name": "17 \u2014 Prep Insert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3200,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const items = $input.first().json.data;\nconst records = items.map(i => i.record);\nconst ctx = items[0]._ctx;\nreturn [{json: {records, record_id: ctx.record_id, guia_id: ctx.guia_id, operator_id: ctx.operator_id, numero_carteira: ctx.numero_carteira, total: records.length}}];"
+      }
+    },
+    {
+      "id": "n18",
+      "name": "18 \u2014 Insert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3400,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://mnrrjslmxcxcismwyaha.supabase.co/rest/v1/patient_photos",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "<SUPABASE_SERVICE_KEY>"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer <SUPABASE_SERVICE_KEY>"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.records) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "n19",
+      "name": "19 \u2014 Status completed",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3600,
+        0
+      ],
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://mnrrjslmxcxcismwyaha.supabase.co/rest/v1/biometria_fotos?id=eq.{{ $('17 \u2014 Prep Insert').item.json.record_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "<SUPABASE_SERVICE_KEY>"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer <SUPABASE_SERVICE_KEY>"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({processing_status:'completed', n8n_completed_at:$now.toISO()}) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "n20",
+      "name": "20 \u2014 Notify",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3800,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://mnrrjslmxcxcismwyaha.supabase.co/rest/v1/notifications",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "<SUPABASE_SERVICE_KEY>"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer <SUPABASE_SERVICE_KEY>"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n      user_id: $('17 \u2014 Prep Insert').item.json.operator_id,\n      type: 'ai_photos_ready',\n      title: 'Fotos com fundo prontas',\n      body: `${$('17 \u2014 Prep Insert').item.json.total} fotos processadas para ${$('17 \u2014 Prep Insert').item.json.numero_carteira}`,\n      guia_id: $('17 \u2014 Prep Insert').item.json.guia_id\n    }) }}",
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "01 \u2014 Webhook": {
+      "main": [
+        [
+          {
+            "node": "02 \u2014 Extrair",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "02 \u2014 Extrair": {
+      "main": [
+        [
+          {
+            "node": "02b \u2014 Resolver guia_id",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "03 \u2014 Status processing": {
+      "main": [
+        [
+          {
+            "node": "04 \u2014 Signed URL (paciente)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "04 \u2014 Signed URL (paciente)": {
+      "main": [
+        [
+          {
+            "node": "05 \u2014 Download (paciente)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "05 \u2014 Download (paciente)": {
+      "main": [
+        [
+          {
+            "node": "06 \u2014 Base64 paciente",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "06 \u2014 Base64 paciente": {
+      "main": [
+        [
+          {
+            "node": "07 \u2014 Listar Fundos (Drive)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "07 \u2014 Listar Fundos (Drive)": {
+      "main": [
+        [
+          {
+            "node": "07b \u2014 Random 5",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "08 \u2014 Preparar loop": {
+      "main": [
+        [
+          {
+            "node": "09 \u2014 Split",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "09 \u2014 Split": {
+      "main": [
+        [
+          {
+            "node": "16 \u2014 Aggregate",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "10 \u2014 Download Fundo (Drive)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "10 \u2014 Download Fundo (Drive)": {
+      "main": [
+        [
+          {
+            "node": "11 \u2014 Base64 fundo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "11 \u2014 Base64 fundo": {
+      "main": [
+        [
+          {
+            "node": "12 \u2014 Gemini",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "12 \u2014 Gemini": {
+      "main": [
+        [
+          {
+            "node": "13 \u2014 Extract",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "13 \u2014 Extract": {
+      "main": [
+        [
+          {
+            "node": "14 \u2014 Upload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "14 \u2014 Upload": {
+      "main": [
+        [
+          {
+            "node": "15 \u2014 Prep record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "15 \u2014 Prep record": {
+      "main": [
+        [
+          {
+            "node": "09 \u2014 Split",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "16 \u2014 Aggregate": {
+      "main": [
+        [
+          {
+            "node": "17 \u2014 Prep Insert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "17 \u2014 Prep Insert": {
+      "main": [
+        [
+          {
+            "node": "18 \u2014 Insert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "18 \u2014 Insert": {
+      "main": [
+        [
+          {
+            "node": "19 \u2014 Status completed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "19 \u2014 Status completed": {
+      "main": [
+        [
+          {
+            "node": "20 \u2014 Notify",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "07b \u2014 Random 5": {
+      "main": [
+        [
+          {
+            "node": "08 \u2014 Preparar loop",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "02b \u2014 Resolver guia_id": {
+      "main": [
+        [
+          {
+            "node": "02c \u2014 Merge guia_id",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "02c \u2014 Merge guia_id": {
+      "main": [
+        [
+          {
+            "node": "03 \u2014 Status processing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
