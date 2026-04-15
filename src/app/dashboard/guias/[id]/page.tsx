@@ -14,6 +14,7 @@ import { GUIDE_STATUS_FLOW, GUIDE_STATUS_TERMINAL } from '@/lib/constants'
 import type { GuideStatus } from '@/lib/constants'
 import type { ImportLog } from '@/lib/types'
 import { CameraCapture } from '@/components/shared/camera-capture'
+import { AIPhotosGrid } from '@/components/guias/ai-photos-grid'
 import { toast } from 'sonner'
 
 interface Props {
@@ -1622,6 +1623,9 @@ export default function GuiaDetailPage({ params }: Props) {
           </div>
         </div>
       )}
+
+      {/* Fotos com fundo IA — aparece quando ha patient_photos para essa guia */}
+      <AIPhotosGrid guiaId={guia.id} />
 
       {/* Cobrar Atendimentos — apenas para guias PENDENTE */}
       {guia.status === 'PENDENTE' && (
