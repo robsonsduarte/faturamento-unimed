@@ -184,6 +184,76 @@
       }
     },
     {
+      "id": "n06b",
+      "name": "06b \u2014 Drive Ref Search",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        1050,
+        100
+      ],
+      "parameters": {
+        "resource": "fileFolder",
+        "returnAll": false,
+        "limit": 1,
+        "filter": {
+          "folderId": {
+            "__rl": true,
+            "value": "12UmmcCT8OHABU_zp-fICzGelG7zFuKy3",
+            "mode": "id"
+          },
+          "fileName": "foto_referencia.png",
+          "whatToSearch": "files"
+        },
+        "options": {}
+      },
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "G4InVzR5v9RWNF27",
+          "name": "Google Drive robsonsduarte"
+        }
+      }
+    },
+    {
+      "id": "n06c",
+      "name": "06c \u2014 Download Ref",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        1100,
+        100
+      ],
+      "parameters": {
+        "operation": "download",
+        "resource": "file",
+        "fileId": {
+          "__rl": true,
+          "value": "={{ $json.id }}",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "G4InVzR5v9RWNF27",
+          "name": "Google Drive robsonsduarte"
+        }
+      }
+    },
+    {
+      "id": "n06d",
+      "name": "06d \u2014 Merge Ref",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1150,
+        100
+      ],
+      "parameters": {
+        "jsCode": "const bin = await this.helpers.getBinaryDataBuffer(0, 'data');\nconst b64 = Buffer.from(bin).toString('base64');\nconst ctx = $('06 \u2014 Base64 paciente').first().json;\nreturn [{json: {...ctx, ref_base64: b64}}];"
+      }
+    },
+    {
       "id": "n07",
       "name": "07 \u2014 Listar Fundos (Drive)",
       "type": "n8n-nodes-base.googleDrive",
@@ -234,7 +304,7 @@
         0
       ],
       "parameters": {
-        "jsCode": "const items = $input.all();\nconst ctx = $('06 \u2014 Base64 paciente').first().json;\n// items each has Drive file metadata\nreturn items.map(it => ({\n  json: {\n    ...ctx,\n    bg_file_id: it.json.id,\n    bg_file_name: it.json.name,\n    bg_name_no_ext: (it.json.name || 'bg').replace(/\\.[^.]+$/, '').toLowerCase().replace(/[^a-z0-9-]/g, '-'),\n  }\n}));"
+        "jsCode": "const items = $input.all();\nconst ctx = $('06d \u2014 Merge Ref').first().json;\nreturn items.map(it => ({\n  json: {\n    ...ctx,\n    bg_file_id: it.json.id,\n    bg_file_name: it.json.name,\n    bg_name_no_ext: (it.json.name || 'bg').replace(/\\.[^.]+$/, '').toLowerCase().replace(/[^a-z0-9-]/g, '-'),\n  }\n}));"
       }
     },
     {
@@ -313,7 +383,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({\n  contents: [{\n    parts: [\n      { inline_data: { mime_type: 'image/jpeg', data: $json.patient_base64 } },\n      { inline_data: { mime_type: 'image/jpeg', data: $json.bg_base64 } },\n      { text: 'Compose image 1 (the person) into the environment of image 2 (the background scene). Place the person naturally in the foreground of the scene. Preserve the exact face, hair, identity and clothing of the person from image 1 unchanged. Match the lighting, color temperature and shadows of image 2 so the person looks like they naturally belong in that environment. Portrait framing, professional quality, photorealistic result.' }\n    ]\n  }]\n}) }}",
+        "jsonBody": "={{ JSON.stringify({\n  contents: [{\n    parts: [\n      { inline_data: { mime_type: \"image/jpeg\", data: $json.patient_base64 } },\n      { inline_data: { mime_type: \"image/jpeg\", data: $json.bg_base64 } },\n      { inline_data: { mime_type: \"image/png\", data: $json.ref_base64 } },\n      { text: \"Componha uma imagem da seguinte forma: Pessoa da imagem 1 no ambiente da imagem 2, no formato e proporcoes de biometria facial da imagem 3. Mantenha a pessoa da imagem 1 e o ambiente da imagem 2 identicos, ajustando apenas na composicao da imagem final a perspectiva e iluminacao para que pareca que foi tirada no ambiente. A camera utilizada foi uma webcam logitech c270.\" }\n    ]\n  }],\n  generationConfig: {\n    temperature: 0.4,\n    candidateCount: 1\n  }\n}) }}",
         "options": {
           "timeout": 60000
         }
@@ -590,7 +660,7 @@
       "main": [
         [
           {
-            "node": "07 \u2014 Listar Fundos (Drive)",
+            "node": "06b \u2014 Drive Ref Search",
             "type": "main",
             "index": 0
           }
@@ -774,6 +844,39 @@
         [
           {
             "node": "03 \u2014 Status processing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "06b \u2014 Drive Ref Search": {
+      "main": [
+        [
+          {
+            "node": "06c \u2014 Download Ref",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "06c \u2014 Download Ref": {
+      "main": [
+        [
+          {
+            "node": "06d \u2014 Merge Ref",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "06d \u2014 Merge Ref": {
+      "main": [
+        [
+          {
+            "node": "07 \u2014 Listar Fundos (Drive)",
             "type": "main",
             "index": 0
           }
