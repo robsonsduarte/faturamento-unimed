@@ -137,7 +137,7 @@ export async function POST(request: NextRequest) {
         try { controller.enqueue(enc.encode(`: hb${' '.repeat(2048)}\n\n`)) } catch { /* closed */ }
       }, 1000)
       const send = async (type: string, message: string) => {
-        controller.enqueue(enc.encode(sseEvent(type, message)))
+        controller.enqueue(enc.encode(':' + ' '.repeat(2048) + '\n\n' + sseEvent(type, message)))
         // Yield ao event loop para flush HTTP (evita buffering durante operacoes longas)
         await new Promise<void>((r) => setImmediate(r))
       }
@@ -147,7 +147,7 @@ export async function POST(request: NextRequest) {
       const timeoutMs = (3 + numProcs * 5) * 60 * 1000
       const timeout = setTimeout(() => {
         try {
-          controller.enqueue(enc.encode(sseEvent('error', `Timeout: operacao excedeu ${Math.round(timeoutMs / 60000)} minutos`)))
+          controller.enqueue(enc.encode(':' + ' '.repeat(2048) + '\n\n' + sseEvent('error', `Timeout: operacao excedeu ${Math.round(timeoutMs / 60000)} minutos`)))
           controller.close()
         } catch { /**/ }
       }, timeoutMs)

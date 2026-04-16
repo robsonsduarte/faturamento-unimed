@@ -68,13 +68,13 @@ export async function POST(request: NextRequest) {
         try { controller.enqueue(enc.encode(`: hb${' '.repeat(2048)}\n\n`)) } catch { /* closed */ }
       }, 1000)
       const send = async (type: string, message: string) => {
-        controller.enqueue(enc.encode(sseEvent(type, message)))
+        controller.enqueue(enc.encode(':' + ' '.repeat(2048) + '\n\n' + sseEvent(type, message)))
         await new Promise<void>((r) => setImmediate(r))
       }
 
       const streamTimeout = setTimeout(() => {
         try {
-          controller.enqueue(enc.encode(sseEvent('error', 'Timeout: operacao excedeu 5 minutos')))
+          controller.enqueue(enc.encode(':' + ' '.repeat(2048) + '\n\n' + sseEvent('error', 'Timeout: operacao excedeu 5 minutos')))
           controller.close()
         } catch { /* already closed */ }
       }, 5 * 60 * 1000)
@@ -229,7 +229,7 @@ export async function POST(request: NextRequest) {
         )
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'Erro inesperado'
-        controller.enqueue(enc.encode(sseEvent('error', `Erro fatal: ${msg}`)))
+        controller.enqueue(enc.encode(':' + ' '.repeat(2048) + '\n\n' + sseEvent('error', `Erro fatal: ${msg}`)))
       } finally {
         clearTimeout(streamTimeout)
         clearInterval(heartbeat)

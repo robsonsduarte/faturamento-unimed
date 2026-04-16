@@ -86,14 +86,14 @@ export async function POST(request: NextRequest) {
         try { controller.enqueue(enc.encode(`: hb${' '.repeat(2048)}\n\n`)) } catch { /* closed */ }
       }, 1000)
       const send = async (type: string, message: string, guide_number?: string, extra?: Record<string, unknown>) => {
-        controller.enqueue(enc.encode(sseEvent(type, message, guide_number, extra)))
+        controller.enqueue(enc.encode(':' + ' '.repeat(2048) + '\n\n' + sseEvent(type, message, guide_number, extra)))
         await new Promise<void>((r) => setImmediate(r))
       }
 
       // Global stream timeout — kills the stream if it exceeds STREAM_TIMEOUT_MS
       const streamTimeout = setTimeout(() => {
         try {
-          controller.enqueue(enc.encode(sseEvent('error', `Timeout: importacao excedeu ${STREAM_TIMEOUT_MS / 60_000} minutos`)))
+          controller.enqueue(enc.encode(':' + ' '.repeat(2048) + '\n\n' + sseEvent('error', `Timeout: importacao excedeu ${STREAM_TIMEOUT_MS / 60_000} minutos`)))
           controller.close()
         } catch { /* already closed */ }
       }, STREAM_TIMEOUT_MS)
@@ -434,7 +434,7 @@ export async function POST(request: NextRequest) {
         )
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'Erro inesperado'
-        controller.enqueue(enc.encode(sseEvent('error', `Erro fatal: ${msg}`)))
+        controller.enqueue(enc.encode(':' + ' '.repeat(2048) + '\n\n' + sseEvent('error', `Erro fatal: ${msg}`)))
       } finally {
         clearTimeout(streamTimeout)
         clearInterval(heartbeat)

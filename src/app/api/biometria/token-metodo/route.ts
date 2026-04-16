@@ -51,13 +51,13 @@ export async function POST(request: NextRequest) {
         try { controller.enqueue(enc.encode(`: hb${' '.repeat(2048)}\n\n`)) } catch { /* closed */ }
       }, 1000)
       const send = async (data: Record<string, unknown>) => {
-        controller.enqueue(enc.encode(sseEvent(data)))
+        controller.enqueue(enc.encode(':' + ' '.repeat(2048) + '\n\n' + sseEvent(data)))
         await new Promise<void>((r) => setImmediate(r))
       }
 
       const timeout = setTimeout(() => {
         try {
-          controller.enqueue(enc.encode(sseEvent({ type: 'error', message: 'Timeout' })))
+          controller.enqueue(enc.encode(':' + ' '.repeat(2048) + '\n\n' + sseEvent({ type: 'error', message: 'Timeout' })))
           controller.close()
         } catch { /**/ }
       }, 2 * 60 * 1000)
