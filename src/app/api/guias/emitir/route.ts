@@ -67,8 +67,9 @@ export async function POST(request: NextRequest) {
       const heartbeat = setInterval(() => {
         try { controller.enqueue(enc.encode(`: hb${' '.repeat(2048)}\n\n`)) } catch { /* closed */ }
       }, 1000)
-      const send = (type: string, message: string) => {
+      const send = async (type: string, message: string) => {
         controller.enqueue(enc.encode(sseEvent(type, message)))
+        await new Promise<void>((r) => setImmediate(r))
       }
 
       const streamTimeout = setTimeout(() => {
@@ -81,7 +82,7 @@ export async function POST(request: NextRequest) {
       const db = getServiceClient()
 
       try {
-        send('processing', 'Iniciando emissao de guia...')
+        await send('processing', 'Iniciando emissao de guia...')
 
         // ─── Credenciais SAW ─────────────────────────────────────
         const { data: sawCred } = await db
@@ -96,7 +97,7 @@ export async function POST(request: NextRequest) {
         if (sawCred) {
           sawCredentials = sawCred as SawCredentials
         } else {
-          send('info', 'Credenciais per-user nao encontradas. Usando config global...')
+          await send('info', 'Credenciais per-user nao encontradas. Usando config global...')
           const { data: sawInteg, error: sawIntegErr } = await db
             .from('integracoes')
             .select('config, ativo')
@@ -104,14 +105,14 @@ export async function POST(request: NextRequest) {
             .single()
 
           if (sawIntegErr || !sawInteg?.ativo) {
-            send('error', 'Credenciais SAW nao configuradas. Acesse Configuracoes > Credenciais SAW ou Integracoes.')
+            await send('error', 'Credenciais SAW nao configuradas. Acesse Configuracoes > Credenciais SAW ou Integracoes.')
             controller.close()
             return
           }
 
           const globalConfig = sawInteg.config as Record<string, string>
           if (!globalConfig.usuario || !globalConfig.senha || !globalConfig.login_url) {
-            send('error', 'Config SAW global incompleta: usuario, senha e login_url sao obrigatorios.')
+            await send('error', 'Config SAW global incompleta: usuario, senha e login_url sao obrigatorios.')
             controller.close()
             return
           }
@@ -129,7 +130,7 @@ export async function POST(request: NextRequest) {
         }
 
         // ─── Sessao SAW ──────────────────────────────────────────
-        send('processing', 'Verificando sessao SAW...')
+        await send('processing', 'Verificando sessao SAW...')
 
         const { data: existingSession } = await db
           .from('saw_sessions')
@@ -146,10 +147,10 @@ export async function POST(request: NextRequest) {
           : null
 
         if (sessionCookies) {
-          send('processing', 'Validando sessao salva no SAW...')
+          await send('processing', 'Validando sessao salva no SAW...')
           const valid = await getSawClient().validateSession(user.id, sessionCookies)
           if (!valid) {
-            send('info', 'Sessao salva expirou no SAW. Fazendo novo login...')
+            await send('info', 'Sessao salva expirou no SAW. Fazendo novo login...')
             sessionCookies = null
             await db
               .from('saw_sessions')
@@ -160,7 +161,7 @@ export async function POST(request: NextRequest) {
         }
 
         if (!sessionCookies) {
-          send('processing', 'Fazendo login no SAW...')
+          await send('processing', 'Fazendo login no SAW...')
 
           const loginResult = await getSawClient().login(user.id, {
             login_url: sawCredentials.login_url,
@@ -169,7 +170,7 @@ export async function POST(request: NextRequest) {
           })
 
           if (!loginResult.success) {
-            send('error', `Falha ao autenticar no SAW: ${loginResult.error ?? 'Verifique as credenciais.'}`)
+            await send('error', `Falha ao autenticar no SAW: ${loginResult.error ?? 'Verifique as credenciais.'}`)
             controller.close()
             return
           }
@@ -183,13 +184,13 @@ export async function POST(request: NextRequest) {
             expires_at: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
           })
 
-          send('success', 'Login no SAW realizado com sucesso.')
+          await send('success', 'Login no SAW realizado com sucesso.')
         } else {
-          send('success', 'Sessao SAW validada e ativa.')
+          await send('success', 'Sessao SAW validada e ativa.')
         }
 
         // ─── Emitir guia ─────────────────────────────────────────
-        send('processing', `Emitindo guia — carteira ${body.carteira}, profissional ${body.profissional!.nome}...`)
+        await send('processing', `Emitindo guia — carteira ${body.carteira}, profissional ${body.profissional!.nome}...`)
 
         const result = await getSawClient().createGuide(
           user.id,
@@ -201,11 +202,11 @@ export async function POST(request: NextRequest) {
             quantidade: body.quantidade!,
             indicacaoClinica: body.indicacao_clinica || undefined,
           },
-          (step, msg) => send('processing', `[${step}] ${msg}`),
+          async (step, msg) => { await send('processing', `[${step}] ${msg}`) },
         )
 
         if (!result.success) {
-          send('error', result.error ?? 'Falha ao emitir guia no SAW.')
+          await send('error', result.error ?? 'Falha ao emitir guia no SAW.')
           controller.close()
           return
         }
@@ -213,7 +214,7 @@ export async function POST(request: NextRequest) {
         // ─── Sucesso ─────────────────────────────────────────────
         const guideLabel = result.guideNumber ? `guia ${result.guideNumber}` : 'guia emitida (numero nao extraido)'
         const pacienteLabel = result.paciente ? ` — paciente: ${result.paciente.split(' ')[0]}` : ''
-        send('success', `${guideLabel}${pacienteLabel} criada com sucesso.`)
+        await send('success', `${guideLabel}${pacienteLabel} criada com sucesso.`)
 
         controller.enqueue(
           enc.encode(

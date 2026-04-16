@@ -136,15 +136,20 @@ export async function POST(request: NextRequest) {
       const heartbeat = setInterval(() => {
         try { controller.enqueue(enc.encode(`: hb${' '.repeat(2048)}\n\n`)) } catch { /* closed */ }
       }, 1000)
-      const send = (type: string, message: string) => {
+      const send = async (type: string, message: string) => {
         controller.enqueue(enc.encode(sseEvent(type, message)))
+        // Yield ao event loop para flush HTTP (evita buffering durante operacoes longas)
+        await new Promise<void>((r) => setImmediate(r))
       }
 
       // Timeout proporcional: 5min por procedimento (com retries) + 3min base
       const numProcs = body.atendimentos?.length ?? 5
       const timeoutMs = (3 + numProcs * 5) * 60 * 1000
       const timeout = setTimeout(() => {
-        try { send('error', `Timeout: operacao excedeu ${Math.round(timeoutMs / 60000)} minutos`); controller.close() } catch { /**/ }
+        try {
+          controller.enqueue(enc.encode(sseEvent('error', `Timeout: operacao excedeu ${Math.round(timeoutMs / 60000)} minutos`)))
+          controller.close()
+        } catch { /**/ }
       }, timeoutMs)
 
       const db = getServiceClient()
@@ -152,17 +157,17 @@ export async function POST(request: NextRequest) {
 
       try {
         // 1. Buscar guia
-        send('processing', '[1/5] Buscando dados da guia...')
+        await send('processing', '[1/5] Buscando dados da guia...')
         const { data: guia } = await db
           .from('guias')
           .select('id, guide_number, paciente, numero_carteira, procedimentos_realizados, quantidade_autorizada')
           .eq('id', body.guia_id)
           .single()
 
-        if (!guia) { send('error', 'Guia nao encontrada'); controller.close(); return }
+        if (!guia) { await send('error', 'Guia nao encontrada'); controller.close(); return }
 
         // 2. Buscar procedimentos ja realizados no SAW (datas)
-        send('processing', '[2/5] Buscando procedimentos ja realizados...')
+        await send('processing', '[2/5] Buscando procedimentos ja realizados...')
         const { data: procRealizados } = await db
           .from('procedimentos')
           .select('data_execucao')
@@ -176,13 +181,13 @@ export async function POST(request: NextRequest) {
         let atendimentos: Array<{ date: string; start: string; end: string; photoSequence?: number }>
 
         if (body.atendimentos && body.atendimentos.length > 0) {
-          send('processing', `[3/5] ${body.atendimentos.length} atendimento(s) selecionado(s)`)
+          await send('processing', `[3/5] ${body.atendimentos.length} atendimento(s) selecionado(s)`)
           atendimentos = body.atendimentos
         } else {
           // Fallback: buscar todos os pendentes do CPro
-          send('processing', '[3/5] Buscando procedimentos pendentes no CPro...')
+          await send('processing', '[3/5] Buscando procedimentos pendentes no CPro...')
           const { data: cproInteg } = await db.from('integracoes').select('config, ativo').eq('slug', 'cpro').single()
-          if (!cproInteg?.ativo) { send('error', 'CPro nao configurado'); controller.close(); return }
+          if (!cproInteg?.ativo) { await send('error', 'CPro nao configurado'); controller.close(); return }
           const cproCfg = cproInteg.config as Record<string, string>
           const pendentes = await fetchPendingFromCpro(guia.guide_number, realizedDates, cproCfg)
           atendimentos = pendentes.map((p) => ({
@@ -193,13 +198,13 @@ export async function POST(request: NextRequest) {
         }
 
         if (atendimentos.length === 0) {
-          send('info', 'Nenhum procedimento pendente encontrado.')
+          await send('info', 'Nenhum procedimento pendente encontrado.')
           controller.close(); return
         }
-        send('success', `[3/5] ${atendimentos.length} procedimento(s) para cobrar`)
+        await send('success', `[3/5] ${atendimentos.length} procedimento(s) para cobrar`)
 
         // 4. Login SAW
-        send('processing', '[4/5] Verificando sessao SAW...')
+        await send('processing', '[4/5] Verificando sessao SAW...')
         const { data: sawCred } = await db.from('saw_credentials').select('*').eq('user_id', user.id).eq('ativo', true).single()
 
         let loginUrl: string, usuario: string, senha: string
@@ -208,7 +213,7 @@ export async function POST(request: NextRequest) {
           loginUrl = cred.login_url; usuario = cred.usuario; senha = cred.senha
         } else {
           const { data: integ } = await db.from('integracoes').select('config, ativo').eq('slug', 'saw').single()
-          if (!integ?.ativo) { send('error', 'Credenciais SAW nao configuradas'); controller.close(); return }
+          if (!integ?.ativo) { await send('error', 'Credenciais SAW nao configuradas'); controller.close(); return }
           const cfg = integ.config as Record<string, string>
           loginUrl = cfg.login_url; usuario = cfg.usuario; senha = cfg.senha
         }
@@ -221,21 +226,21 @@ export async function POST(request: NextRequest) {
         let cookies: SawCookie[] | null = session?.cookies as SawCookie[] | null
 
         if (!cookies) {
-          send('processing', '[4/5] Fazendo login no SAW...')
+          await send('processing', '[4/5] Fazendo login no SAW...')
           const loginResult = await getSawClient().login(user.id, { login_url: loginUrl, usuario, senha })
-          if (!loginResult.success) { send('error', `Login falhou: ${loginResult.error}`); controller.close(); return }
+          if (!loginResult.success) { await send('error', `Login falhou: ${loginResult.error}`); controller.close(); return }
           cookies = loginResult.cookies
           await db.from('saw_sessions').insert({
             user_id: user.id, cookies, valida: true,
             expires_at: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
           })
-          send('success', '[4/5] Login SAW realizado.')
+          await send('success', '[4/5] Login SAW realizado.')
         } else {
-          send('success', '[4/5] Sessao SAW ativa.')
+          await send('success', '[4/5] Sessao SAW ativa.')
         }
 
         // 5. Cobrar um a um com verificacao + retry
-        send('processing', `[5/5] Iniciando cobranca de ${atendimentos.length} atendimento(s)...`)
+        await send('processing', `[5/5] Iniciando cobranca de ${atendimentos.length} atendimento(s)...`)
 
         // Ler procedimentos_realizados ANTES do inicio
         let realizadosAntes = guia.procedimentos_realizados ?? 0
@@ -247,7 +252,7 @@ export async function POST(request: NextRequest) {
             ? readInicial.data['procedimentosRealizados'] as number
             : realizadosAntes
           realizadosAntes = sawRealizados
-          send('info', `Procedimentos ja realizados no SAW: ${realizadosAntes}`)
+          await send('info', `Procedimentos ja realizados no SAW: ${realizadosAntes}`)
         }
 
         let totalCobrados = 0
@@ -270,7 +275,7 @@ export async function POST(request: NextRequest) {
             }
           }
           if (!photoBase64) {
-            send('error', `${stepLabel} Foto do paciente nao encontrada para atendimento ${dataDisplay}.`)
+            await send('error', `${stepLabel} Foto do paciente nao encontrada para atendimento ${dataDisplay}.`)
             pipelineAbortado = true
             break
           }
@@ -291,24 +296,24 @@ export async function POST(request: NextRequest) {
 
           for (let retry = 0; retry <= MAX_RETRIES; retry++) {
             const tentativaLabel = retry > 0 ? ` (tentativa ${retry + 1}/3)` : ''
-            send('processing', `${stepLabel} Cobrando ${dataDisplay}${tentativaLabel}...`)
+            await send('processing', `${stepLabel} Cobrando ${dataDisplay}${tentativaLabel}...`)
 
             // Cobrar 1 procedimento
             const result = await getSawClient().executarProcedimentos(
               user.id, cookies, guia.guide_number, photoBase64, [proc],
-              (step, msg) => send('processing', `${stepLabel} ${msg}`)
+              async (step, msg) => { await send('processing', `${stepLabel} ${msg}`) }
             )
 
             if (!result.success && result.totalExecutado === 0) {
-              send('info', `${stepLabel} Execucao retornou erro: ${result.error ?? 'sem detalhes'}`)
+              await send('info', `${stepLabel} Execucao retornou erro: ${result.error ?? 'sem detalhes'}`)
               if (retry < MAX_RETRIES) {
-                send('info', `${stepLabel} Tentando novamente...`)
+                await send('info', `${stepLabel} Tentando novamente...`)
                 continue
               }
             }
 
             // Verificar: reimportar guia e checar se procedimentos_realizados aumentou
-            send('processing', `${stepLabel} Verificando cobranca de ${dataDisplay}...`)
+            await send('processing', `${stepLabel} Verificando cobranca de ${dataDisplay}...`)
             const readAfter = await getSawClient().readGuide(user.id, cookies, guia.guide_number)
 
             if (readAfter.success && readAfter.data) {
@@ -321,20 +326,20 @@ export async function POST(request: NextRequest) {
                 realizadosAntes = realizadosDepois
                 totalCobrados++
                 cobradoComSucesso = true
-                send('success', `${stepLabel} Atendimento ${dataDisplay} confirmado! (realizados: ${realizadosDepois})`)
+                await send('success', `${stepLabel} Atendimento ${dataDisplay} confirmado! (realizados: ${realizadosDepois})`)
                 break
               } else {
                 if (retry < MAX_RETRIES) {
-                  send('info', `${stepLabel} Cobranca de ${dataDisplay} nao confirmada (realizados: ${realizadosDepois}, esperado: >${realizadosAntes}). Tentando novamente...`)
+                  await send('info', `${stepLabel} Cobranca de ${dataDisplay} nao confirmada (realizados: ${realizadosDepois}, esperado: >${realizadosAntes}). Tentando novamente...`)
                 } else {
-                  send('error', `${stepLabel} Cobranca de ${dataDisplay} nao confirmada apos ${MAX_RETRIES + 1} tentativas. Pipeline encerrado.`)
+                  await send('error', `${stepLabel} Cobranca de ${dataDisplay} nao confirmada apos ${MAX_RETRIES + 1} tentativas. Pipeline encerrado.`)
                 }
               }
             } else {
               if (retry < MAX_RETRIES) {
-                send('info', `${stepLabel} Falha ao verificar guia: ${readAfter.error ?? 'erro desconhecido'}. Tentando novamente...`)
+                await send('info', `${stepLabel} Falha ao verificar guia: ${readAfter.error ?? 'erro desconhecido'}. Tentando novamente...`)
               } else {
-                send('error', `${stepLabel} Falha ao verificar guia apos ${MAX_RETRIES + 1} tentativas. Pipeline encerrado.`)
+                await send('error', `${stepLabel} Falha ao verificar guia apos ${MAX_RETRIES + 1} tentativas. Pipeline encerrado.`)
               }
             }
           }
@@ -347,7 +352,7 @@ export async function POST(request: NextRequest) {
 
         // Reimportacao real: salvar dados atualizados no banco
         if (lastReadData) {
-          send('processing', 'Salvando dados atualizados no banco...')
+          await send('processing', 'Salvando dados atualizados no banco...')
 
           const sawData = lastReadData
           const orNull = (v: unknown): unknown =>
@@ -465,22 +470,22 @@ export async function POST(request: NextRequest) {
 
             const { error: procError } = await db.from('procedimentos').insert(procRows)
             if (procError) {
-              send('info', `Falha ao salvar procedimentos: ${procError.message}`)
+              await send('info', `Falha ao salvar procedimentos: ${procError.message}`)
             } else {
-              send('success', `${procRows.length} procedimento(s) realizado(s) salvos no banco`)
+              await send('success', `${procRows.length} procedimento(s) realizado(s) salvos no banco`)
             }
           }
 
-          send('success', `Guia atualizada: status=${finalStatus}, realizados=${procedimentosRealizados}`)
+          await send('success', `Guia atualizada: status=${finalStatus}, realizados=${procedimentosRealizados}`)
         }
 
         if (pipelineAbortado) {
-          send('error', `Pipeline encerrado: ${totalCobrados}/${atendimentos.length} atendimento(s) cobrado(s). Verifique os atendimentos restantes manualmente.`)
+          await send('error', `Pipeline encerrado: ${totalCobrados}/${atendimentos.length} atendimento(s) cobrado(s). Verifique os atendimentos restantes manualmente.`)
         } else {
-          send('success', `Concluido: ${totalCobrados}/${atendimentos.length} atendimento(s) cobrado(s) com sucesso!`)
+          await send('success', `Concluido: ${totalCobrados}/${atendimentos.length} atendimento(s) cobrado(s) com sucesso!`)
         }
       } catch (err) {
-        send('error', `Erro fatal: ${err instanceof Error ? err.message : 'Erro desconhecido'}`)
+        await send('error', `Erro fatal: ${err instanceof Error ? err.message : 'Erro desconhecido'}`)
       } finally {
         clearTimeout(timeout)
         clearInterval(heartbeat)

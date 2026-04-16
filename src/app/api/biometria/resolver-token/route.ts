@@ -50,13 +50,14 @@ export async function POST(request: NextRequest) {
       const heartbeat = setInterval(() => {
         try { controller.enqueue(enc.encode(`: hb${' '.repeat(2048)}\n\n`)) } catch { /* closed */ }
       }, 1000)
-      const send = (type: string, message: string) => {
+      const send = async (type: string, message: string) => {
         controller.enqueue(enc.encode(sseEvent(type, message)))
+        await new Promise<void>((r) => setImmediate(r))
       }
 
       const streamTimeout = setTimeout(() => {
         try {
-          send('error', 'Timeout: resolucao excedeu 5 minutos')
+          controller.enqueue(enc.encode(sseEvent('error', 'Timeout: resolucao excedeu 5 minutos')))
           controller.close()
         } catch { /* already closed */ }
       }, 5 * 60 * 1000)
@@ -65,7 +66,7 @@ export async function POST(request: NextRequest) {
 
       try {
         // Buscar guia
-        send('processing', 'Buscando dados da guia...')
+        await send('processing', 'Buscando dados da guia...')
         const { data: guia, error: guiaErr } = await db
           .from('guias')
           .select('id, guide_number, paciente, numero_carteira')
@@ -73,34 +74,34 @@ export async function POST(request: NextRequest) {
           .single()
 
         if (guiaErr || !guia) {
-          send('error', 'Guia nao encontrada')
+          await send('error', 'Guia nao encontrada')
           controller.close()
           return
         }
 
         if (!guia.numero_carteira) {
-          send('error', 'Guia sem numero de carteira')
+          await send('error', 'Guia sem numero de carteira')
           controller.close()
           return
         }
 
         // Buscar foto do paciente (pela sequence escolhida ou aleatoria)
         const chosenSequence = parsed.data.photo_sequence ?? null
-        send('processing', `[1/9] Buscando foto do paciente${chosenSequence ? ` (foto ${chosenSequence})` : ''}...`)
+        await send('processing', `[1/9] Buscando foto do paciente${chosenSequence ? ` (foto ${chosenSequence})` : ''}...`)
         const photoBase64 = chosenSequence
           ? await buscarFotoBase64PorSequence(guia.numero_carteira, chosenSequence)
           : await buscarFotoBase64(guia.numero_carteira)
 
         if (!photoBase64) {
-          send('error', 'Foto do paciente nao encontrada. Capture a foto primeiro.')
+          await send('error', 'Foto do paciente nao encontrada. Capture a foto primeiro.')
           controller.close()
           return
         }
 
-        send('success', `[1/9] Foto encontrada para ${guia.paciente?.split(' ')[0] ?? 'paciente'}`)
+        await send('success', `[1/9] Foto encontrada para ${guia.paciente?.split(' ')[0] ?? 'paciente'}`)
 
         // Buscar credenciais SAW do usuario
-        send('processing', '[2/9] Verificando sessao SAW...')
+        await send('processing', '[2/9] Verificando sessao SAW...')
         const { data: sawCred } = await db
           .from('saw_credentials')
           .select('*')
@@ -125,7 +126,7 @@ export async function POST(request: NextRequest) {
             .single()
 
           if (!integ?.ativo) {
-            send('error', 'Credenciais SAW nao configuradas.')
+            await send('error', 'Credenciais SAW nao configuradas.')
             controller.close()
             return
           }
@@ -153,14 +154,14 @@ export async function POST(request: NextRequest) {
         if (cookies) {
           const valid = await getSawClient().validateSession(user.id, cookies)
           if (!valid) {
-            send('info', '[2/9] Sessao expirou. Refazendo login...')
+            await send('info', '[2/9] Sessao expirou. Refazendo login...')
             cookies = null
             await db.from('saw_sessions').update({ valida: false }).eq('user_id', user.id).eq('valida', true)
           }
         }
 
         if (!cookies) {
-          send('processing', '[2/9] Fazendo login no SAW...')
+          await send('processing', '[2/9] Fazendo login no SAW...')
           const loginResult = await getSawClient().login(user.id, {
             login_url: loginUrl,
             usuario,
@@ -168,7 +169,7 @@ export async function POST(request: NextRequest) {
           })
 
           if (!loginResult.success) {
-            send('error', `Login SAW falhou: ${loginResult.error}`)
+            await send('error', `Login SAW falhou: ${loginResult.error}`)
             controller.close()
             return
           }
@@ -181,31 +182,31 @@ export async function POST(request: NextRequest) {
             expires_at: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
           })
 
-          send('success', '[2/9] Login SAW realizado.')
+          await send('success', '[2/9] Login SAW realizado.')
         } else {
-          send('success', '[2/9] Sessao SAW ativa.')
+          await send('success', '[2/9] Sessao SAW ativa.')
         }
 
         // Resolver token via Playwright (com progresso SSE)
-        send('processing', `[3/9] Abrindo guia ${guia.guide_number}...`)
+        await send('processing', `[3/9] Abrindo guia ${guia.guide_number}...`)
         const result = await getSawClient().resolveToken(
           user.id,
           cookies,
           guia.guide_number,
           photoBase64,
-          (step, msg) => {
+          async (step, msg) => {
             const isError = msg.toLowerCase().includes('erro') || msg.toLowerCase().includes('falha') || msg.toLowerCase().includes('nao encontrad')
-            send(isError ? 'error' : 'processing', `[${step}] ${msg.trim()}`)
+            await send(isError ? 'error' : 'processing', `[${step}] ${msg.trim()}`)
           }
         )
 
         if (!result.success) {
-          send('error', `Falha ao resolver token: ${result.error}`)
+          await send('error', `Falha ao resolver token: ${result.error}`)
           controller.close()
           return
         }
 
-        send('success', '[9/9] Biometria autenticada com sucesso!')
+        await send('success', '[9/9] Biometria autenticada com sucesso!')
 
         // Marcar guia
         await db
@@ -227,11 +228,11 @@ export async function POST(request: NextRequest) {
         }
 
         // Reimportar guia via funcao compartilhada
-        send('processing', '[9/9] Reimportando guia (SAW + CPro)...')
+        await send('processing', '[9/9] Reimportando guia (SAW + CPro)...')
         try {
           const readResult = await getSawClient().readGuide(user.id, cookies, guia.guide_number)
           if (!readResult.success || !readResult.data) {
-            send('info', `Reimportacao SAW falhou (${readResult.error}). Reimporte manualmente.`)
+            await send('info', `Reimportacao SAW falhou (${readResult.error}). Reimporte manualmente.`)
           } else {
             const { data: integ } = await db.from('integracoes').select('config, ativo').eq('slug', 'cpro').single()
             const cproCfg = integ?.ativo ? (integ.config as CproConfig) : null
@@ -241,24 +242,24 @@ export async function POST(request: NextRequest) {
               guideNumber: guia.guide_number,
               cproConfig: cproCfg,
               forceTokenBiometrico: true,
-              log: (type, message) => send(type === 'error' ? 'error' : type === 'success' ? 'success' : 'info', message),
+              log: async (type, message) => { await send(type === 'error' ? 'error' : type === 'success' ? 'success' : 'info', message) },
             })
 
             if (result.success) {
-              send('success', `[9/9] Guia reimportada! Status: ${result.status}`)
+              await send('success', `[9/9] Guia reimportada! Status: ${result.status}`)
             } else {
-              send('error', `Reimportacao falhou: ${result.error}`)
+              await send('error', `Reimportacao falhou: ${result.error}`)
             }
           }
         } catch (importErr) {
           const importMsg = importErr instanceof Error ? importErr.message : 'Erro desconhecido'
-          send('info', `Reimportacao falhou (${importMsg}). Reimporte manualmente.`)
+          await send('info', `Reimportacao falhou (${importMsg}). Reimporte manualmente.`)
         }
 
-        send('success', 'Processo concluido!')
+        await send('success', 'Processo concluido!')
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'Erro inesperado'
-        send('error', `Erro fatal: ${msg}`)
+        await send('error', `Erro fatal: ${msg}`)
       } finally {
         clearTimeout(streamTimeout)
         clearInterval(heartbeat)

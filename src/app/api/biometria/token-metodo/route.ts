@@ -50,24 +50,28 @@ export async function POST(request: NextRequest) {
       const heartbeat = setInterval(() => {
         try { controller.enqueue(enc.encode(`: hb${' '.repeat(2048)}\n\n`)) } catch { /* closed */ }
       }, 1000)
-      const send = (data: Record<string, unknown>) => {
+      const send = async (data: Record<string, unknown>) => {
         controller.enqueue(enc.encode(sseEvent(data)))
+        await new Promise<void>((r) => setImmediate(r))
       }
 
       const timeout = setTimeout(() => {
-        try { send({ type: 'error', message: 'Timeout' }); controller.close() } catch { /**/ }
+        try {
+          controller.enqueue(enc.encode(sseEvent({ type: 'error', message: 'Timeout' })))
+          controller.close()
+        } catch { /**/ }
       }, 2 * 60 * 1000)
 
       const db = getServiceClient()
 
       try {
         // 1. Buscar guia
-        send({ type: 'processing', message: 'Buscando dados da guia...' })
+        await send({ type: 'processing', message: 'Buscando dados da guia...' })
         const { data: guia } = await db.from('guias').select('id, guide_number, paciente, numero_carteira').eq('id', body.guia_id).single()
-        if (!guia) { send({ type: 'error', message: 'Guia nao encontrada' }); controller.close(); return }
+        if (!guia) { await send({ type: 'error', message: 'Guia nao encontrada' }); controller.close(); return }
 
         // 2. Login SAW
-        send({ type: 'processing', message: 'Verificando sessao SAW...' })
+        await send({ type: 'processing', message: 'Verificando sessao SAW...' })
         const { data: sawCred } = await db.from('saw_credentials').select('*').eq('user_id', user.id).eq('ativo', true).single()
 
         let loginUrl: string, usuario: string, senha: string
@@ -75,7 +79,7 @@ export async function POST(request: NextRequest) {
           const c = sawCred as SawCredentials; loginUrl = c.login_url; usuario = c.usuario; senha = c.senha
         } else {
           const { data: integ } = await db.from('integracoes').select('config, ativo').eq('slug', 'saw').single()
-          if (!integ?.ativo) { send({ type: 'error', message: 'Credenciais SAW nao configuradas' }); controller.close(); return }
+          if (!integ?.ativo) { await send({ type: 'error', message: 'Credenciais SAW nao configuradas' }); controller.close(); return }
           const cfg = integ.config as Record<string, string>; loginUrl = cfg.login_url; usuario = cfg.usuario; senha = cfg.senha
         }
 
@@ -84,14 +88,14 @@ export async function POST(request: NextRequest) {
         let cookies: SawCookie[] | null = session?.cookies as SawCookie[] | null
 
         if (!cookies) {
-          send({ type: 'processing', message: 'Fazendo login no SAW...' })
+          await send({ type: 'processing', message: 'Fazendo login no SAW...' })
           const loginResult = await getSawClient().login(user.id, { login_url: loginUrl, usuario, senha })
-          if (!loginResult.success) { send({ type: 'error', message: `Login falhou: ${loginResult.error}` }); controller.close(); return }
+          if (!loginResult.success) { await send({ type: 'error', message: `Login falhou: ${loginResult.error}` }); controller.close(); return }
           cookies = loginResult.cookies
           await db.from('saw_sessions').insert({ user_id: user.id, cookies, valida: true, expires_at: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString() })
-          send({ type: 'success', message: 'Login SAW realizado.' })
+          await send({ type: 'success', message: 'Login SAW realizado.' })
         } else {
-          send({ type: 'success', message: 'Sessao SAW ativa.' })
+          await send({ type: 'success', message: 'Sessao SAW ativa.' })
         }
 
         // 2.5 Buscar data de nascimento do paciente (para justificativa BioFace)
@@ -119,28 +123,28 @@ export async function POST(request: NextRequest) {
         } catch { /* */ }
 
         // 3. Abrir pagina de token (com retry se sessao expirou)
-        send({ type: 'processing', message: 'Abrindo guia no SAW...' })
+        await send({ type: 'processing', message: 'Abrindo guia no SAW...' })
         let result = await getSawClient().openTokenPage(user.id, cookies, guia.guide_number, dataNascimento)
 
         // Se sessao expirou, refazer login e tentar de novo
         if (!result.success && result.error?.includes('expirou')) {
-          send({ type: 'processing', message: 'Sessao expirou. Refazendo login...' })
+          await send({ type: 'processing', message: 'Sessao expirou. Refazendo login...' })
           await db.from('saw_sessions').update({ valida: false }).eq('user_id', user.id).eq('valida', true)
           const relogin = await getSawClient().login(user.id, { login_url: loginUrl, usuario, senha })
-          if (!relogin.success) { send({ type: 'error', message: `Re-login falhou: ${relogin.error}` }); controller.close(); return }
+          if (!relogin.success) { await send({ type: 'error', message: `Re-login falhou: ${relogin.error}` }); controller.close(); return }
           cookies = relogin.cookies
           await db.from('saw_sessions').insert({ user_id: user.id, cookies, valida: true, expires_at: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString() })
-          send({ type: 'success', message: 'Re-login realizado.' })
+          await send({ type: 'success', message: 'Re-login realizado.' })
 
           result = await getSawClient().openTokenPage(user.id, cookies, guia.guide_number, dataNascimento)
         }
 
         if (!result.success) {
           if (result.tokenAlreadyResolved) {
-            send({ type: 'result', success: true, tokenAlreadyResolved: true })
+            await send({ type: 'result', success: true, tokenAlreadyResolved: true })
             controller.close(); return
           }
-          send({ type: 'error', message: result.error ?? 'Erro ao abrir token' }); controller.close(); return
+          await send({ type: 'error', message: result.error ?? 'Erro ao abrir token' }); controller.close(); return
         }
 
         if (body.method === 'sms') {
@@ -149,7 +153,7 @@ export async function POST(request: NextRequest) {
           // openTokenPage já clicou radio SMS para revelar o select, extraiu, e voltou para Aplicativo
           // Precisamos clicar SMS de novo e extrair
 
-          send({ type: 'processing', message: 'Selecionando SMS no SAW...' })
+          await send({ type: 'processing', message: 'Selecionando SMS no SAW...' })
 
           // Clicar radio SMS pelo texto (nao por posicao fixa — a ordem pode mudar)
           const entry = getSawClient().getTokenSession(result.sessionId!)
@@ -178,7 +182,7 @@ export async function POST(request: NextRequest) {
             }
           }
 
-          send({ type: 'processing', message: 'Extraindo telefones do SAW...' })
+          await send({ type: 'processing', message: 'Extraindo telefones do SAW...' })
           const smsPhones = await getSawClient().getTokenPagePhones(result.sessionId!)
 
           // Buscar telefone WhatsApp do CPro
@@ -205,7 +209,7 @@ export async function POST(request: NextRequest) {
             }
           } catch { /**/ }
 
-          send({
+          await send({
             type: 'result',
             method: 'sms',
             sessionId: result.sessionId,
@@ -217,13 +221,13 @@ export async function POST(request: NextRequest) {
           })
         } else {
           // 5b. App: selecionar Aplicativo no SAW + buscar telefone CPro + enviar WhatsApp
-          send({ type: 'processing', message: 'Selecionando Aplicativo no SAW...' })
+          await send({ type: 'processing', message: 'Selecionando Aplicativo no SAW...' })
           const methodResult = await getSawClient().selectTokenMethod(result.sessionId!, 'aplicativo')
           if (!methodResult.success) {
-            send({ type: 'error', message: methodResult.error ?? 'Erro ao selecionar Aplicativo' }); controller.close(); return
+            await send({ type: 'error', message: methodResult.error ?? 'Erro ao selecionar Aplicativo' }); controller.close(); return
           }
 
-          send({ type: 'processing', message: 'Buscando telefone do paciente...' })
+          await send({ type: 'processing', message: 'Buscando telefone do paciente...' })
 
           let patientPhone = ''
           try {
@@ -252,7 +256,7 @@ export async function POST(request: NextRequest) {
           let whatsappSent = false
           let requestId = ''
           if (patientPhone) {
-            send({ type: 'processing', message: `Enviando WhatsApp para ${patientPhone.replace(/^55(\d{2})(\d+)/, '($1) $2')}...` })
+            await send({ type: 'processing', message: `Enviando WhatsApp para ${patientPhone.replace(/^55(\d{2})(\d+)/, '($1) $2')}...` })
             const evolutionUrl = process.env.EVOLUTION_API_URL ?? ''
             const evolutionKey = process.env.EVOLUTION_API_KEY ?? ''
             const instanceName = process.env.EVOLUTION_INSTANCE ?? 'Espaço Dedicare'
@@ -286,7 +290,7 @@ export async function POST(request: NextRequest) {
             }
           }
 
-          send({
+          await send({
             type: 'result',
             method: 'aplicativo',
             sessionId: result.sessionId,
@@ -298,7 +302,7 @@ export async function POST(request: NextRequest) {
           })
         }
       } catch (err) {
-        send({ type: 'error', message: err instanceof Error ? err.message : 'Erro interno' })
+        await send({ type: 'error', message: err instanceof Error ? err.message : 'Erro interno' })
       } finally {
         clearTimeout(timeout)
         clearInterval(heartbeat)

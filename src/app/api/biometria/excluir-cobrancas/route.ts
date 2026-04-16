@@ -72,15 +72,19 @@ export async function POST(request: NextRequest) {
       const heartbeat = setInterval(() => {
         try { controller.enqueue(enc.encode(`: hb${' '.repeat(2048)}\n\n`)) } catch { /* closed */ }
       }, 1000)
-      const send = (type: string, message: string) => {
+      const send = async (type: string, message: string) => {
         controller.enqueue(enc.encode(sseEvent(type, message)))
+        await new Promise<void>((r) => setImmediate(r))
       }
 
       // Timeout proporcional: 3min base + 2min por item
       const numItems = body.modo === 'all' ? 1 : (body.execucao_ids?.length ?? 1)
       const timeoutMs = (3 + numItems * 2) * 60 * 1000
       const timeout = setTimeout(() => {
-        try { send('error', `Timeout: operacao excedeu ${Math.round(timeoutMs / 60000)} minutos`); controller.close() } catch { /**/ }
+        try {
+          controller.enqueue(enc.encode(sseEvent('error', `Timeout: operacao excedeu ${Math.round(timeoutMs / 60000)} minutos`)))
+          controller.close()
+        } catch { /**/ }
       }, timeoutMs)
 
       const db = getServiceClient()
@@ -88,17 +92,17 @@ export async function POST(request: NextRequest) {
 
       try {
         // 1. Buscar guia
-        send('processing', '[1/5] Buscando dados da guia...')
+        await send('processing', '[1/5] Buscando dados da guia...')
         const { data: guia } = await db
           .from('guias')
           .select('id, guide_number, paciente, numero_carteira, procedimentos_realizados, quantidade_autorizada')
           .eq('id', body.guia_id)
           .single()
 
-        if (!guia) { send('error', 'Guia nao encontrada'); controller.close(); return }
+        if (!guia) { await send('error', 'Guia nao encontrada'); controller.close(); return }
 
         // 2. Credenciais SAW
-        send('processing', '[2/5] Verificando sessao SAW...')
+        await send('processing', '[2/5] Verificando sessao SAW...')
         const { data: sawCred } = await db.from('saw_credentials').select('*').eq('user_id', user.id).eq('ativo', true).single()
 
         let loginUrl: string, usuario: string, senha: string
@@ -107,7 +111,7 @@ export async function POST(request: NextRequest) {
           loginUrl = cred.login_url; usuario = cred.usuario; senha = cred.senha
         } else {
           const { data: integ } = await db.from('integracoes').select('config, ativo').eq('slug', 'saw').single()
-          if (!integ?.ativo) { send('error', 'Credenciais SAW nao configuradas'); controller.close(); return }
+          if (!integ?.ativo) { await send('error', 'Credenciais SAW nao configuradas'); controller.close(); return }
           const cfg = integ.config as Record<string, string>
           loginUrl = cfg.login_url; usuario = cfg.usuario; senha = cfg.senha
         }
@@ -121,24 +125,24 @@ export async function POST(request: NextRequest) {
         let cookies: SawCookie[] | null = session?.cookies as SawCookie[] | null
 
         if (!cookies) {
-          send('processing', '[2/5] Fazendo login no SAW...')
+          await send('processing', '[2/5] Fazendo login no SAW...')
           const loginResult = await getSawClient().login(user.id, { login_url: loginUrl, usuario, senha })
-          if (!loginResult.success) { send('error', `Login falhou: ${loginResult.error}`); controller.close(); return }
+          if (!loginResult.success) { await send('error', `Login falhou: ${loginResult.error}`); controller.close(); return }
           cookies = loginResult.cookies
           await db.from('saw_sessions').insert({
             user_id: user.id, cookies, valida: true,
             expires_at: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
           })
-          send('success', '[2/5] Login SAW realizado.')
+          await send('success', '[2/5] Login SAW realizado.')
         } else {
-          send('success', '[2/5] Sessao SAW ativa.')
+          await send('success', '[2/5] Sessao SAW ativa.')
         }
 
         // 4. readGuide inicial — ler estado atual do SAW
-        send('processing', '[3/5] Lendo estado atual da guia no SAW...')
+        await send('processing', '[3/5] Lendo estado atual da guia no SAW...')
         const readInicial = await getSawClient().readGuide(user.id, cookies, guia.guide_number)
         if (!readInicial.success || !readInicial.data) {
-          send('error', `Falha ao ler guia inicial: ${readInicial.error ?? 'sem detalhes'}`)
+          await send('error', `Falha ao ler guia inicial: ${readInicial.error ?? 'sem detalhes'}`)
           controller.close(); return
         }
 
@@ -147,11 +151,11 @@ export async function POST(request: NextRequest) {
           : (guia.procedimentos_realizados ?? 0)
 
         if (realizadosAntes === 0) {
-          send('info', 'Guia nao possui cobrancas para excluir.')
+          await send('info', 'Guia nao possui cobrancas para excluir.')
           controller.close(); return
         }
 
-        send('success', `[3/5] ${realizadosAntes} cobranca(s) atualmente no SAW`)
+        await send('success', `[3/5] ${realizadosAntes} cobranca(s) atualmente no SAW`)
 
         let lastReadData: Record<string, unknown> | null = readInicial.data
         let totalExcluidos = 0
@@ -159,19 +163,19 @@ export async function POST(request: NextRequest) {
 
         if (body.modo === 'all') {
           // ─── Modo all: 1 call + verificacao ──────────────
-          send('processing', `[4/5] Removendo todas as ${realizadosAntes} cobranca(s)...`)
+          await send('processing', `[4/5] Removendo todas as ${realizadosAntes} cobranca(s)...`)
 
           const result = await getSawClient().excluirExecucoes(
             user.id, cookies, guia.guide_number, 'all', undefined,
-            (_step, msg) => send('processing', `[4/5] ${msg}`)
+            async (_step, msg) => { await send('processing', `[4/5] ${msg}`) },
           )
 
           if (!result.success) {
-            send('error', `Falha ao remover todas: ${result.error ?? 'sem detalhes'}`)
+            await send('error', `Falha ao remover todas: ${result.error ?? 'sem detalhes'}`)
             pipelineAbortado = true
           } else {
             // Verificar via readGuide
-            send('processing', `[4/5] Verificando remocao...`)
+            await send('processing', `[4/5] Verificando remocao...`)
             const readAfter = await getSawClient().readGuide(user.id, cookies, guia.guide_number)
             if (readAfter.success && readAfter.data) {
               lastReadData = readAfter.data
@@ -181,21 +185,21 @@ export async function POST(request: NextRequest) {
 
               if (realizadosDepois === 0) {
                 totalExcluidos = realizadosAntes
-                send('success', `[4/5] Todas as ${realizadosAntes} cobranca(s) removidas com sucesso!`)
+                await send('success', `[4/5] Todas as ${realizadosAntes} cobranca(s) removidas com sucesso!`)
               } else {
-                send('error', `[4/5] Remocao nao confirmada. Ainda restam ${realizadosDepois} cobranca(s) no SAW.`)
+                await send('error', `[4/5] Remocao nao confirmada. Ainda restam ${realizadosDepois} cobranca(s) no SAW.`)
                 pipelineAbortado = true
                 totalExcluidos = realizadosAntes - realizadosDepois
               }
             } else {
-              send('error', `[4/5] Falha ao verificar estado apos remocao: ${readAfter.error ?? 'erro'}`)
+              await send('error', `[4/5] Falha ao verificar estado apos remocao: ${readAfter.error ?? 'erro'}`)
               pipelineAbortado = true
             }
           }
         } else {
           // ─── Modo individual: loop com retry 2x ──────────
           const ids = body.execucao_ids ?? []
-          send('processing', `[4/5] Excluindo ${ids.length} cobranca(s) individualmente...`)
+          await send('processing', `[4/5] Excluindo ${ids.length} cobranca(s) individualmente...`)
 
           for (let i = 0; i < ids.length; i++) {
             const execId = ids[i]
@@ -205,23 +209,23 @@ export async function POST(request: NextRequest) {
 
             for (let retry = 0; retry <= MAX_RETRIES; retry++) {
               const tentativaLabel = retry > 0 ? ` (tentativa ${retry + 1}/3)` : ''
-              send('processing', `${stepLabel} Excluindo execucao ${execId}${tentativaLabel}...`)
+              await send('processing', `${stepLabel} Excluindo execucao ${execId}${tentativaLabel}...`)
 
               const result = await getSawClient().excluirExecucoes(
                 user.id, cookies, guia.guide_number, 'individual', [execId],
-                (_step, msg) => send('processing', `${stepLabel} ${msg}`)
+                async (_step, msg) => { await send('processing', `${stepLabel} ${msg}`) },
               )
 
               if (!result.success && result.totalExcluido === 0) {
-                send('info', `${stepLabel} Exclusao retornou erro: ${result.error ?? result.resultados[0]?.error ?? 'sem detalhes'}`)
+                await send('info', `${stepLabel} Exclusao retornou erro: ${result.error ?? result.resultados[0]?.error ?? 'sem detalhes'}`)
                 if (retry < MAX_RETRIES) {
-                  send('info', `${stepLabel} Tentando novamente...`)
+                  await send('info', `${stepLabel} Tentando novamente...`)
                   continue
                 }
               }
 
               // Verificar via readGuide: procedimentosRealizados diminuiu?
-              send('processing', `${stepLabel} Verificando exclusao...`)
+              await send('processing', `${stepLabel} Verificando exclusao...`)
               const readAfter = await getSawClient().readGuide(user.id, cookies, guia.guide_number)
 
               if (readAfter.success && readAfter.data) {
@@ -234,20 +238,20 @@ export async function POST(request: NextRequest) {
                   realizadosAntes = realizadosDepois
                   totalExcluidos++
                   excluidoComSucesso = true
-                  send('success', `${stepLabel} Execucao ${execId} removida! (realizados: ${realizadosDepois})`)
+                  await send('success', `${stepLabel} Execucao ${execId} removida! (realizados: ${realizadosDepois})`)
                   break
                 } else {
                   if (retry < MAX_RETRIES) {
-                    send('info', `${stepLabel} Remocao nao confirmada (realizados: ${realizadosDepois}, esperado: <${realizadosAntes}). Tentando novamente...`)
+                    await send('info', `${stepLabel} Remocao nao confirmada (realizados: ${realizadosDepois}, esperado: <${realizadosAntes}). Tentando novamente...`)
                   } else {
-                    send('error', `${stepLabel} Remocao de ${execId} nao confirmada apos ${MAX_RETRIES + 1} tentativas. Pipeline encerrado.`)
+                    await send('error', `${stepLabel} Remocao de ${execId} nao confirmada apos ${MAX_RETRIES + 1} tentativas. Pipeline encerrado.`)
                   }
                 }
               } else {
                 if (retry < MAX_RETRIES) {
-                  send('info', `${stepLabel} Falha ao verificar guia: ${readAfter.error ?? 'erro'}. Tentando novamente...`)
+                  await send('info', `${stepLabel} Falha ao verificar guia: ${readAfter.error ?? 'erro'}. Tentando novamente...`)
                 } else {
-                  send('error', `${stepLabel} Falha ao verificar guia apos ${MAX_RETRIES + 1} tentativas. Pipeline encerrado.`)
+                  await send('error', `${stepLabel} Falha ao verificar guia apos ${MAX_RETRIES + 1} tentativas. Pipeline encerrado.`)
                 }
               }
             }
@@ -261,7 +265,7 @@ export async function POST(request: NextRequest) {
 
         // 5. Reimportacao real: salvar dados atualizados no banco
         if (lastReadData) {
-          send('processing', '[5/5] Salvando dados atualizados no banco...')
+          await send('processing', '[5/5] Salvando dados atualizados no banco...')
 
           const sawData = lastReadData
           const orNull = (v: unknown): unknown =>
@@ -377,24 +381,24 @@ export async function POST(request: NextRequest) {
 
             const { error: procError } = await db.from('procedimentos').insert(procRows)
             if (procError) {
-              send('info', `Falha ao salvar procedimentos: ${procError.message}`)
+              await send('info', `Falha ao salvar procedimentos: ${procError.message}`)
             } else {
-              send('success', `${procRows.length} procedimento(s) restante(s) salvos no banco`)
+              await send('success', `${procRows.length} procedimento(s) restante(s) salvos no banco`)
             }
           } else {
-            send('success', 'Nenhum procedimento restante no banco')
+            await send('success', 'Nenhum procedimento restante no banco')
           }
 
-          send('success', `Guia atualizada: status=${finalStatus}, realizados=${procedimentosRealizados}`)
+          await send('success', `Guia atualizada: status=${finalStatus}, realizados=${procedimentosRealizados}`)
         }
 
         if (pipelineAbortado) {
-          send('error', `Pipeline encerrado: ${totalExcluidos} cobranca(s) excluida(s). Verifique o restante manualmente.`)
+          await send('error', `Pipeline encerrado: ${totalExcluidos} cobranca(s) excluida(s). Verifique o restante manualmente.`)
         } else {
-          send('success', `Concluido: ${totalExcluidos} cobranca(s) excluida(s) com sucesso!`)
+          await send('success', `Concluido: ${totalExcluidos} cobranca(s) excluida(s) com sucesso!`)
         }
       } catch (err) {
-        send('error', `Erro fatal: ${err instanceof Error ? err.message : 'Erro desconhecido'}`)
+        await send('error', `Erro fatal: ${err instanceof Error ? err.message : 'Erro desconhecido'}`)
       } finally {
         clearTimeout(timeout)
         clearInterval(heartbeat)

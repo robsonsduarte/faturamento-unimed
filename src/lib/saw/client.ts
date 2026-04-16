@@ -711,7 +711,7 @@ class SawClient {
     cookies: SawCookie[],
     numeroGuia: string,
     photoBase64: string,
-    onProgress?: (step: string, message: string) => void,
+    onProgress?: (step: string, message: string) => void | Promise<void>,
   ): Promise<{ success: boolean; error?: string; fallbackToToken?: boolean }> {
     return this.withLock(userId, async () => {
       let page: Page | null = null
@@ -724,7 +724,7 @@ class SawClient {
 
         const guiaUrl = `${SAW_BASE}/saw/tiss/SolicitacaoDeSPSADT40.do?method=consultarGuiaDeSPSADT&manterTISSSPSADT40DTO.tissSolicitacaoDeSPSADTDTO.numeroDaGuia=${encodeURIComponent(numeroGuia)}&manterTISSSPSADT40DTO.tissSolicitacaoDeSPSADTDTO.isConsultaNaGuia=true`
 
-        onProgress?.("3/9", ` Navegando para guia ${numeroGuia}`)
+        await onProgress?.("3/9", ` Navegando para guia ${numeroGuia}`)
         await page.goto(guiaUrl, { waitUntil: 'networkidle', timeout: 30_000 })
         await page.waitForTimeout(2000)
 
@@ -739,12 +739,12 @@ class SawClient {
         // === STEP 1: Verificar se biometria ja autenticada ===
         const alreadyAuth = await page.$('img[src*="biometriaAutenticadaface"]')
         if (alreadyAuth) {
-          onProgress?.("3/9", ` Biometria ja autenticada!`)
+          await onProgress?.("3/9", ` Biometria ja autenticada!`)
           return { success: true }
         }
 
         // === STEP 2: Clicar check-in e extrair URL BioFace ===
-        onProgress?.("4/9", ` Clicando check-in para gerar URL BioFace...`)
+        await onProgress?.("4/9", ` Clicando check-in para gerar URL BioFace...`)
 
         // Clicar usando a funcao JS do SAW ou o link
         await page.evaluate(() => {
@@ -775,25 +775,25 @@ class SawClient {
           return { success: false, error: `URL BioFace nao encontrada. URL atual: ${newUrl.substring(0, 80)}` }
         }
 
-        onProgress?.("4/9", ` BioFace URL extraida: ${biofaceUrl.substring(0, 100)}`)
+        await onProgress?.("4/9", ` BioFace URL extraida: ${biofaceUrl.substring(0, 100)}`)
 
         // === STEP 3: Abrir BioFace em pagina separada (tecnica do workflow n8n) ===
         biofacePage = await context.newPage()
         biofacePage.setDefaultTimeout(30_000)
 
-        onProgress?.("5/9", ` Abrindo BioFace em pagina separada...`)
+        await onProgress?.("5/9", ` Abrindo BioFace em pagina separada...`)
         await biofacePage.goto(biofaceUrl, { waitUntil: 'networkidle', timeout: 30_000 })
         await biofacePage.waitForTimeout(3000)
         await biofacePage.screenshot({ path: '/tmp/debug-resolvetoken-2-bioface-open.png', fullPage: false }).catch(() => {})
 
         // === STEP 4: Clicar "Capturar Foto" via mouse.click com boundingBox ===
-        onProgress?.("6/9", ` STEP 6 — clicando Capturar Foto...`)
+        await onProgress?.("6/9", ` STEP 6 — clicando Capturar Foto...`)
         const btnCapturar = await biofacePage.$('#id-botao-capturar')
         if (btnCapturar) {
           const box = await btnCapturar.boundingBox()
           if (box) {
             await biofacePage.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
-            onProgress?.("6/9", ` Capturar Foto clicado via mouse.click`)
+            await onProgress?.("6/9", ` Capturar Foto clicado via mouse.click`)
           }
         } else {
           // Fallback: clicar por texto
@@ -807,7 +807,7 @@ class SawClient {
         await biofacePage.screenshot({ path: '/tmp/debug-resolvetoken-3-after-capture.png', fullPage: false }).catch(() => {})
 
         // === STEP 5: Injetar foto no DOM (tecnica exata do workflow n8n) ===
-        onProgress?.("7/9", ` STEP 7 — injetando foto...`)
+        await onProgress?.("7/9", ` STEP 7 — injetando foto...`)
         const injected = await biofacePage.evaluate((b64: string) => {
           const results = document.getElementById('results')
           if (results) {
@@ -823,10 +823,10 @@ class SawClient {
 
         await biofacePage.waitForTimeout(1000)
         await biofacePage.screenshot({ path: '/tmp/debug-resolvetoken-4-after-inject.png', fullPage: false }).catch(() => {})
-        onProgress?.("7/9", ` Foto injetada com sucesso`)
+        await onProgress?.("7/9", ` Foto injetada com sucesso`)
 
         // === STEP 6: Mostrar e clicar "Autenticar Foto" via mouse.down/up ===
-        onProgress?.("8/9", ` STEP 8 — clicando Autenticar...`)
+        await onProgress?.("8/9", ` STEP 8 — clicando Autenticar...`)
 
         // Force display do botao
         await biofacePage.evaluate(() => {
@@ -851,7 +851,7 @@ class SawClient {
             await biofacePage.waitForTimeout(100)
             await biofacePage.mouse.up()
             authClicked = true
-            onProgress?.("8/9", ` Autenticar clicado via mouse.down/up`)
+            await onProgress?.("8/9", ` Autenticar clicado via mouse.down/up`)
           }
         }
 
@@ -874,7 +874,7 @@ class SawClient {
         }
 
         // === STEP 7: Aguardar TRIX processar (12s como no workflow) ===
-        onProgress?.("8/9", ` Aguardando TRIX processar (12s)...`)
+        await onProgress?.("8/9", ` Aguardando TRIX processar (12s)...`)
         await biofacePage.waitForTimeout(12_000)
         await biofacePage.screenshot({ path: '/tmp/debug-resolvetoken-5-after-auth.png', fullPage: false }).catch(() => {})
 
@@ -883,7 +883,7 @@ class SawClient {
         biofacePage = null
 
         // === STEP 8: Validar resultado no SAW (navegar de volta a guia) ===
-        onProgress?.("9/9", ` Validando resultado no SAW...`)
+        await onProgress?.("9/9", ` Validando resultado no SAW...`)
         await page.goto(guiaUrl, { waitUntil: 'networkidle', timeout: 30_000 })
         await page.waitForTimeout(3000)
         await page.screenshot({ path: '/tmp/debug-resolvetoken-6-validation.png', fullPage: false }).catch(() => {})
@@ -899,7 +899,7 @@ class SawClient {
         sawLog(`resolveToken: validacao — icone=${validacao.iconeVisivel}, btnCheckin=${validacao.btnVisivel}`)
 
         if (validacao.iconeVisivel && !validacao.btnVisivel) {
-          onProgress?.("9/9", ` SUCESSO — biometria confirmada no SAW!`)
+          await onProgress?.("9/9", ` SUCESSO — biometria confirmada no SAW!`)
           return { success: true }
         }
 
@@ -944,7 +944,7 @@ class SawClient {
       tecnica: string
       redAcresc: string
     }>,
-    onProgress?: (step: string, msg: string) => void,
+    onProgress?: (step: string, msg: string) => void | Promise<void>,
   ): Promise<{
     success: boolean
     totalExecutado: number
@@ -970,7 +970,7 @@ class SawClient {
 
         const guiaUrl = `${SAW_BASE}/saw/tiss/SolicitacaoDeSPSADT40.do?method=consultarGuiaDeSPSADT&manterTISSSPSADT40DTO.tissSolicitacaoDeSPSADTDTO.numeroDaGuia=${encodeURIComponent(numeroGuia)}&manterTISSSPSADT40DTO.tissSolicitacaoDeSPSADTDTO.isConsultaNaGuia=true`
 
-        onProgress?.('1', `Navegando para guia ${numeroGuia}...`)
+        await onProgress?.('1', `Navegando para guia ${numeroGuia}...`)
         await page.goto(guiaUrl, { waitUntil: 'networkidle', timeout: 30_000 })
         await page.waitForTimeout(2000)
 
@@ -985,13 +985,13 @@ class SawClient {
           return { success: false, totalExecutado: 0, totalEsperado: procedimentos.length, execucoes, error: 'Sessao SAW expirou.' }
         }
 
-        onProgress?.('1', `Guia aberta. ${procedimentos.length} procedimento(s) para cobrar.`)
+        await onProgress?.('1', `Guia aberta. ${procedimentos.length} procedimento(s) para cobrar.`)
         await page.screenshot({ path: '/tmp/debug-cobrar-0-guia.png', fullPage: false }).catch(() => {})
 
         for (let i = 0; i < procedimentos.length; i++) {
           const proc = procedimentos[i]
           const stepLabel = `${i + 1}/${procedimentos.length}`
-          onProgress?.(stepLabel, `Procedimento ${proc.data} — clicando "Realizar"...`)
+          await onProgress?.(stepLabel, `Procedimento ${proc.data} — clicando "Realizar"...`)
 
           try {
             // Step A: Clicar PRIMEIRO botao "Realizar" disponivel na lista de procedimentos
@@ -1002,7 +1002,7 @@ class SawClient {
             let btnToClick = realizarBtns.length >= 2 ? realizarBtns[1] : realizarBtns[0]
             // Se so tem 1 botao, usar ele
             if (!btnToClick || realizarBtns.length === 0) {
-              onProgress?.(stepLabel, `Botao "Realizar" nao disponivel — pode ja estar realizado.`)
+              await onProgress?.(stepLabel, `Botao "Realizar" nao disponivel — pode ja estar realizado.`)
               execucoes.push({ data: proc.data, success: false, error: 'Botao Realizar nao encontrado' })
               break
             }
@@ -1012,7 +1012,7 @@ class SawClient {
             await page.screenshot({ path: `/tmp/debug-cobrar-${i + 1}-apos-realizar.png`, fullPage: false }).catch(() => {})
 
             // Step B: Autenticar biometria no iframe BioFace
-            onProgress?.(stepLabel, `Autenticando biometria...`)
+            await onProgress?.(stepLabel, `Autenticando biometria...`)
 
             const bioFrameHandle = await page.$('iframe#iframeBioFacial, iframe[src*="bioface"]')
             const bioFrame = bioFrameHandle ? await bioFrameHandle.contentFrame() : null
@@ -1046,11 +1046,11 @@ class SawClient {
               // Aguardar SAW processar biometria e abrir form
               await page.waitForTimeout(3000)
             } else {
-              onProgress?.(stepLabel, `Iframe BioFace nao encontrado. Tentando continuar...`)
+              await onProgress?.(stepLabel, `Iframe BioFace nao encontrado. Tentando continuar...`)
             }
 
             // Step C: Aguardar formulario (nova pagina/popup) — polling tolerante
-            onProgress?.(stepLabel, `Aguardando formulario de realizacao...`)
+            await onProgress?.(stepLabel, `Aguardando formulario de realizacao...`)
 
             let formPage: Page | null = null
             const waitDeadline = Date.now() + 12_000
@@ -1074,14 +1074,14 @@ class SawClient {
 
               if (Date.now() - lastProgressAt >= 3000) {
                 const elapsed = Math.round((Date.now() - (waitDeadline - 12_000)) / 1000)
-                onProgress?.(stepLabel, `Aguardando formulario... (${elapsed}s)`)
+                await onProgress?.(stepLabel, `Aguardando formulario... (${elapsed}s)`)
                 lastProgressAt = Date.now()
               }
               await page.waitForTimeout(500)
             }
 
             if (!formPage) {
-              onProgress?.(stepLabel, `Formulario de realizacao nao abriu apos 12s.`)
+              await onProgress?.(stepLabel, `Formulario de realizacao nao abriu apos 12s.`)
               await page.screenshot({ path: `/tmp/debug-cobrar-${i + 1}-sem-form.png`, fullPage: true }).catch(() => {})
               execucoes.push({ data: proc.data, success: false, error: 'Formulario nao abriu' })
               await page.goto(guiaUrl, { waitUntil: 'networkidle', timeout: 30_000 }).catch(() => {})
@@ -1090,7 +1090,7 @@ class SawClient {
             }
 
             // Step D: Preencher formulario
-            onProgress?.(stepLabel, `Preenchendo formulario...`)
+            await onProgress?.(stepLabel, `Preenchendo formulario...`)
             await formPage.screenshot({ path: `/tmp/debug-cobrar-${i + 1}-form.png`, fullPage: false }).catch(() => {})
 
             // Formatar valores
@@ -1156,7 +1156,7 @@ class SawClient {
             await formPage.screenshot({ path: `/tmp/debug-cobrar-${i + 1}-form-filled.png`, fullPage: false }).catch(() => {})
 
             // Step E: Executar servico
-            onProgress?.(stepLabel, `Executando servico...`)
+            await onProgress?.(stepLabel, `Executando servico...`)
             await formPage.evaluate(() => {
               if (typeof (window as unknown as Record<string, unknown>).executarServico === 'function') {
                 ((window as unknown as Record<string, unknown>).executarServico as () => void)()
@@ -1166,7 +1166,7 @@ class SawClient {
             await page.waitForTimeout(2000)
 
             // Step F: Recarregar pagina principal
-            onProgress?.(stepLabel, `Procedimento executado! Recarregando...`)
+            await onProgress?.(stepLabel, `Procedimento executado! Recarregando...`)
             await page.reload({ waitUntil: 'networkidle' }).catch(() => {})
             await page.waitForTimeout(1000)
 
@@ -1177,11 +1177,11 @@ class SawClient {
 
             execucoes.push({ data: proc.data, success: true })
             totalExecutado++
-            onProgress?.(stepLabel, `Procedimento ${proc.data} cobrado com sucesso!`)
+            await onProgress?.(stepLabel, `Procedimento ${proc.data} cobrado com sucesso!`)
 
           } catch (procErr) {
             const msg = procErr instanceof Error ? procErr.message : 'Erro desconhecido'
-            onProgress?.(stepLabel, `Erro no procedimento ${proc.data}: ${msg}`)
+            await onProgress?.(stepLabel, `Erro no procedimento ${proc.data}: ${msg}`)
             execucoes.push({ data: proc.data, success: false, error: msg })
 
             // Tentar voltar para a guia para continuar com o proximo
@@ -1229,7 +1229,7 @@ class SawClient {
     numeroGuia: string,
     modo: 'all' | 'individual',
     execucaoIds: number[] | undefined,
-    onProgress?: (step: string, msg: string) => void,
+    onProgress?: (step: string, msg: string) => void | Promise<void>,
   ): Promise<{
     success: boolean
     totalExcluido: number
@@ -1257,7 +1257,7 @@ class SawClient {
 
         const guiaUrl = `${SAW_BASE}/saw/tiss/SolicitacaoDeSPSADT40.do?method=consultarGuiaDeSPSADT&manterTISSSPSADT40DTO.tissSolicitacaoDeSPSADTDTO.numeroDaGuia=${encodeURIComponent(numeroGuia)}&manterTISSSPSADT40DTO.tissSolicitacaoDeSPSADTDTO.isConsultaNaGuia=true`
 
-        onProgress?.('1', `Navegando para guia ${numeroGuia}...`)
+        await onProgress?.('1', `Navegando para guia ${numeroGuia}...`)
         await page.goto(guiaUrl, { waitUntil: 'networkidle', timeout: 30_000 })
         await page.waitForTimeout(1500)
 
@@ -1298,7 +1298,7 @@ class SawClient {
         }
 
         if (modo === 'all') {
-          onProgress?.('1', `Removendo todas as execucoes...`)
+          await onProgress?.('1', `Removendo todas as execucoes...`)
           try {
             await page.evaluate(() => {
               const fn = (window as unknown as Record<string, unknown>).removerProcedimentosExecutados
@@ -1318,10 +1318,10 @@ class SawClient {
 
             totalExcluido = 1
             resultados.push({ execucaoId: 'all', success: true })
-            onProgress?.('1', `Todas as execucoes removidas!`)
+            await onProgress?.('1', `Todas as execucoes removidas!`)
           } catch (err) {
             const msg = err instanceof Error ? err.message : 'Erro desconhecido'
-            onProgress?.('1', `Erro ao remover todas: ${msg}`)
+            await onProgress?.('1', `Erro ao remover todas: ${msg}`)
             resultados.push({ execucaoId: 'all', success: false, error: msg })
           }
         } else {
@@ -1329,7 +1329,7 @@ class SawClient {
           for (let i = 0; i < ids.length; i++) {
             const execId = ids[i]
             const stepLabel = `${i + 1}/${ids.length}`
-            onProgress?.(stepLabel, `Excluindo execucao ${execId}...`)
+            await onProgress?.(stepLabel, `Excluindo execucao ${execId}...`)
 
             try {
               const existsBefore = await page.evaluate((id: number) => {
@@ -1338,7 +1338,7 @@ class SawClient {
               }, execId)
 
               if (!existsBefore) {
-                onProgress?.(stepLabel, `Execucao ${execId} nao encontrada na pagina (ja removida?).`)
+                await onProgress?.(stepLabel, `Execucao ${execId} nao encontrada na pagina (ja removida?).`)
                 resultados.push({ execucaoId: execId, success: false, error: 'Nao encontrada no DOM' })
                 continue
               }
@@ -1362,16 +1362,16 @@ class SawClient {
               }, execId)
 
               if (stillExists) {
-                onProgress?.(stepLabel, `Execucao ${execId} ainda presente apos exclusao.`)
+                await onProgress?.(stepLabel, `Execucao ${execId} ainda presente apos exclusao.`)
                 resultados.push({ execucaoId: execId, success: false, error: 'Ainda presente no DOM' })
               } else {
                 totalExcluido++
                 resultados.push({ execucaoId: execId, success: true })
-                onProgress?.(stepLabel, `Execucao ${execId} removida!`)
+                await onProgress?.(stepLabel, `Execucao ${execId} removida!`)
               }
             } catch (err) {
               const msg = err instanceof Error ? err.message : 'Erro desconhecido'
-              onProgress?.(stepLabel, `Erro ao excluir ${execId}: ${msg}`)
+              await onProgress?.(stepLabel, `Erro ao excluir ${execId}: ${msg}`)
               resultados.push({ execucaoId: execId, success: false, error: msg })
 
               // Tentar voltar para a guia para continuar
@@ -1963,7 +1963,7 @@ class SawClient {
       quantidade: number
       indicacaoClinica?: string
     },
-    onProgress?: (step: string, message: string) => void,
+    onProgress?: (step: string, message: string) => void | Promise<void>,
   ): Promise<{ success: boolean; guideNumber?: string; paciente?: string; formData?: Record<string, unknown>; error?: string }> {
     return this.withLock(userId, async () => {
       let page: Page | null = null
@@ -1987,7 +1987,7 @@ class SawClient {
         })
 
         // ─── Step 2: Navigate to form ────────────────────────────
-        onProgress?.('1', 'Abrindo formulario de nova guia...')
+        await onProgress?.('1', 'Abrindo formulario de nova guia...')
         await page.goto(
           `${SAW_BASE}/saw/tiss/SolicitacaoDeSPSADT40.do?method=abrirTelaDeSolicitacaoDeSPSADT`,
           { waitUntil: 'networkidle', timeout: 60_000 },
@@ -2001,7 +2001,7 @@ class SawClient {
         sawLog('createGuide: formulario carregado')
 
         // ─── Step 4: Fill unimed "0865" + carteira ────────────────
-        onProgress?.('2', `Preenchendo carteira ${data.carteira}...`)
+        await onProgress?.('2', `Preenchendo carteira ${data.carteira}...`)
         const unimedField = page.locator('input[name*="beneficiario.unimed.codigo"]').first()
         await unimedField.fill('0865')
         await unimedField.press('Tab')
@@ -2025,7 +2025,7 @@ class SawClient {
           if (acaoBtn) acaoBtn.click()
         })
         sawLog('createGuide: AJAX disparado, aguardando 10s...')
-        onProgress?.('2', 'Consultando beneficiario no SAW (aguardando AJAX)...')
+        await onProgress?.('2', 'Consultando beneficiario no SAW (aguardando AJAX)...')
         await page.waitForTimeout(10_000)
 
         nomeBeneficiario = await page.evaluate(() => {
@@ -2038,7 +2038,7 @@ class SawClient {
         sawLog(`createGuide: beneficiario="${nomeBeneficiario}"`)
 
         // ─── Step 6: Handle biometria modal ─────────────────────
-        onProgress?.('3', 'Processando biometria...')
+        await onProgress?.('3', 'Processando biometria...')
         let hasBio = await page.evaluate(() => {
           const divs = document.querySelectorAll('div')
           for (const d of divs) {
@@ -2114,7 +2114,7 @@ class SawClient {
         }
 
         // ─── Step 7: Fill carater = "1" (Eletiva) ───────────────
-        onProgress?.('4', 'Preenchendo dados clinicos...')
+        await onProgress?.('4', 'Preenchendo dados clinicos...')
         await page.evaluate(() => {
           const s = document.querySelector('select[name*="caraterDeSolicitacao"]') as HTMLSelectElement | null
           if (s) { s.value = '1'; s.dispatchEvent(new Event('change', { bubbles: true })) }
@@ -2128,7 +2128,7 @@ class SawClient {
         await page.waitForTimeout(1000)
 
         // ─── Step 9: Fill procedimento (AFTER executante, field is readonly) ─────
-        onProgress?.('5', `Preenchendo procedimento ${data.procedimentoCodigo}...`)
+        await onProgress?.('5', `Preenchendo procedimento ${data.procedimentoCodigo}...`)
         await page.evaluate(() => {
           const t = document.querySelector('select[name*="procedimentosSolicitados[0].tipoTabela"]') as HTMLSelectElement | null
           if (t) { t.value = '22'; t.dispatchEvent(new Event('change', { bubbles: true })) }
@@ -2160,7 +2160,7 @@ class SawClient {
         sawLog(`createGuide: procedimento descricao="${procDesc}"`)
 
         // ─── Step 10: Fill tipo/regime (AFTER procedimento) ─────
-        onProgress?.('6', 'Preenchendo tipo/regime/indicacao...')
+        await onProgress?.('6', 'Preenchendo tipo/regime/indicacao...')
         await page.evaluate(() => {
           const set = (n: string, v: string) => {
             const s = document.querySelector(`select[name*="${n}"]`) as HTMLSelectElement | null
@@ -2192,7 +2192,7 @@ class SawClient {
         }, dataHoje)
 
         // ─── Step 12: Fill contratado solicitante ────────────────
-        onProgress?.('7', 'Preenchendo profissional solicitante...')
+        await onProgress?.('7', 'Preenchendo profissional solicitante...')
         await page.evaluate(() => {
           const set = (s: string, v: string) => {
             const el = document.querySelector(s) as HTMLInputElement | null
@@ -2285,7 +2285,7 @@ class SawClient {
         )
 
         // ─── Step 14: Fill contato ───────────────────────────────
-        onProgress?.('8', 'Preenchendo contato...')
+        await onProgress?.('8', 'Preenchendo contato...')
         await page.evaluate(() => {
           const email = document.querySelector('input[name="emailContatoBeneficiario"]') as HTMLInputElement | null
           if (email && (!email.value || email.value.includes('sememail'))) email.value = 'paciente@email.com'
@@ -2325,7 +2325,7 @@ class SawClient {
         sawLog(`createGuide: formData pre-submit capturado: ${JSON.stringify(preSubmitFormData ?? {}).substring(0, 200)}`)
 
         // ─── Step 15: Response interceptor before gravarGuia ────
-        onProgress?.('9', 'Gravando guia no SAW...')
+        await onProgress?.('9', 'Gravando guia no SAW...')
         let guideNumber = ''
 
         page.on('response', async (response) => {
@@ -2353,7 +2353,7 @@ class SawClient {
         } catch {
           // If navigation did not happen, re-fill profissional and retry
           sawLog('createGuide: nao navegou, re-preenchendo profissional e tentando novamente...')
-          onProgress?.('9', 'Guia nao salva, re-tentando apos dialog...')
+          await onProgress?.('9', 'Guia nao salva, re-tentando apos dialog...')
           await page.evaluate(
             (prof: { nome: string; conselho: string; numeroConselho: string; uf: string; cbo: string }) => {
               const set = (s: string, v: string) => {
@@ -2450,7 +2450,7 @@ class SawClient {
 
         if (guideNumber) {
           sawLog(`createGuide: numero da guia capturado: ${guideNumber}`)
-          onProgress?.('10', `Guia criada com sucesso: ${guideNumber}`)
+          await onProgress?.('10', `Guia criada com sucesso: ${guideNumber}`)
           return { success: true, guideNumber, paciente: nomeBeneficiario || undefined, formData: preSubmitFormData ?? undefined }
         }
 
@@ -2463,7 +2463,7 @@ class SawClient {
 
         if (hasSenha) {
           sawLog('createGuide: guia gravada (senha encontrada) mas numero nao capturado')
-          onProgress?.('10', 'Guia gravada com sucesso (numero sera capturado na importacao)')
+          await onProgress?.('10', 'Guia gravada com sucesso (numero sera capturado na importacao)')
           return { success: true, guideNumber: undefined, paciente: nomeBeneficiario || undefined, formData: preSubmitFormData ?? undefined }
         }
 

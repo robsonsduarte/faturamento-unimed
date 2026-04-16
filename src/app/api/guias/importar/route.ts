@@ -85,8 +85,9 @@ export async function POST(request: NextRequest) {
       const heartbeat = setInterval(() => {
         try { controller.enqueue(enc.encode(`: hb${' '.repeat(2048)}\n\n`)) } catch { /* closed */ }
       }, 1000)
-      const send = (type: string, message: string, guide_number?: string, extra?: Record<string, unknown>) => {
+      const send = async (type: string, message: string, guide_number?: string, extra?: Record<string, unknown>) => {
         controller.enqueue(enc.encode(sseEvent(type, message, guide_number, extra)))
+        await new Promise<void>((r) => setImmediate(r))
       }
 
       // Global stream timeout — kills the stream if it exceeds STREAM_TIMEOUT_MS
@@ -102,7 +103,7 @@ export async function POST(request: NextRequest) {
       const db = getServiceClient()
 
       try {
-        send('info', 'Iniciando importacao...')
+        await send('info', 'Iniciando importacao...')
 
         // Load SAW credentials: per-user first, fallback to global integracoes
         const { data: sawCred } = await db
@@ -118,7 +119,7 @@ export async function POST(request: NextRequest) {
           sawCredentials = sawCred as SawCredentials
         } else {
           // Fallback: busca config global da tabela integracoes
-          send('info', 'Credenciais per-user nao encontradas. Usando config global...')
+          await send('info', 'Credenciais per-user nao encontradas. Usando config global...')
           const { data: sawInteg, error: sawIntegErr } = await db
             .from('integracoes')
             .select('config, ativo')
@@ -126,14 +127,14 @@ export async function POST(request: NextRequest) {
             .single()
 
           if (sawIntegErr || !sawInteg?.ativo) {
-            send('error', 'Credenciais SAW nao configuradas. Acesse Configuracoes > Credenciais SAW ou Integracoes.')
+            await send('error', 'Credenciais SAW nao configuradas. Acesse Configuracoes > Credenciais SAW ou Integracoes.')
             controller.close()
             return
           }
 
           const globalConfig = sawInteg.config as Record<string, string>
           if (!globalConfig.usuario || !globalConfig.senha || !globalConfig.login_url) {
-            send('error', 'Config SAW global incompleta: usuario, senha e login_url sao obrigatorios.')
+            await send('error', 'Config SAW global incompleta: usuario, senha e login_url sao obrigatorios.')
             controller.close()
             return
           }
@@ -160,7 +161,7 @@ export async function POST(request: NextRequest) {
         const cproConfig = cproIntegracao?.config as CproConfig | undefined
 
         // Check/create SAW session for this user
-        send('processing', 'Verificando sessao SAW...')
+        await send('processing', 'Verificando sessao SAW...')
 
         const { data: existingSession } = await db
           .from('saw_sessions')
@@ -178,10 +179,10 @@ export async function POST(request: NextRequest) {
 
         // Validate cached session against SAW
         if (sessionCookies) {
-          send('processing', 'Validando sessao salva no SAW...')
+          await send('processing', 'Validando sessao salva no SAW...')
           const valid = await getSawClient().validateSession(user.id, sessionCookies)
           if (!valid) {
-            send('info', 'Sessao salva expirou no SAW. Fazendo novo login...')
+            await send('info', 'Sessao salva expirou no SAW. Fazendo novo login...')
             sessionCookies = null
             await db
               .from('saw_sessions')
@@ -192,7 +193,7 @@ export async function POST(request: NextRequest) {
         }
 
         if (!sessionCookies) {
-          send('processing', 'Fazendo login no SAW...')
+          await send('processing', 'Fazendo login no SAW...')
 
           const loginResult = await getSawClient().login(user.id, {
             login_url: sawCredentials.login_url,
@@ -201,7 +202,7 @@ export async function POST(request: NextRequest) {
           })
 
           if (!loginResult.success) {
-            send('error', `Falha ao autenticar no SAW: ${loginResult.error ?? 'Verifique as credenciais.'}`)
+            await send('error', `Falha ao autenticar no SAW: ${loginResult.error ?? 'Verifique as credenciais.'}`)
             controller.close()
             return
           }
@@ -215,9 +216,9 @@ export async function POST(request: NextRequest) {
             expires_at: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
           })
 
-          send('success', 'Login no SAW realizado com sucesso.')
+          await send('success', 'Login no SAW realizado com sucesso.')
         } else {
-          send('success', 'Sessao SAW validada e ativa.')
+          await send('success', 'Sessao SAW validada e ativa.')
         }
 
         const total = guideNumbers.length
@@ -265,7 +266,7 @@ export async function POST(request: NextRequest) {
         const reloginSaw = async (): Promise<boolean> => {
           try {
             await getSawClient().forceReconnect(user.id)
-            send('info', 'Reconexao realizada. Refazendo login no SAW...')
+            await send('info', 'Reconexao realizada. Refazendo login no SAW...')
 
             const loginResult = await getSawClient().login(user.id, {
               login_url: sawCredentials.login_url,
@@ -274,7 +275,7 @@ export async function POST(request: NextRequest) {
             })
 
             if (!loginResult.success) {
-              send('error', `Re-login SAW falhou: ${loginResult.error ?? 'Verifique as credenciais.'}`)
+              await send('error', `Re-login SAW falhou: ${loginResult.error ?? 'Verifique as credenciais.'}`)
               return false
             }
 
@@ -295,23 +296,23 @@ export async function POST(request: NextRequest) {
               expires_at: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
             })
 
-            send('success', 'Re-login SAW realizado com sucesso. Retomando importacao...')
+            await send('success', 'Re-login SAW realizado com sucesso. Retomando importacao...')
             return true
           } catch (reconnErr) {
             const reconnMsg = reconnErr instanceof Error ? reconnErr.message : 'Erro desconhecido'
-            send('error', `Falha ao reconectar/re-login: ${reconnMsg}`)
+            await send('error', `Falha ao reconectar/re-login: ${reconnMsg}`)
             return false
           }
         }
 
-        send('info', `Processando ${total} guia(s)...`)
+        await send('info', `Processando ${total} guia(s)...`)
 
         // Track per-guide outer retry count to prevent infinite loops
         const outerRetryCount = new Map<number, number>()
 
         for (let i = 0; i < guideNumbers.length; i++) {
           const guideNumber = guideNumbers[i]
-          send('processing', `[${i + 1}/${total}] Buscando guia ${guideNumber} no SAW...`, guideNumber)
+          await send('processing', `[${i + 1}/${total}] Buscando guia ${guideNumber} no SAW...`, guideNumber)
 
           try {
           let sawData: Record<string, unknown> | null = null
@@ -334,10 +335,10 @@ export async function POST(request: NextRequest) {
               // Log detalhado para SSE — diagnostico de mismatch
               const realizados = typeof sawData?.['procedimentosRealizados'] === 'number' ? sawData['procedimentosRealizados'] : 0
               const detalhes = Array.isArray(sawData?.['procedimentosDetalhes']) ? (sawData['procedimentosDetalhes'] as unknown[]).length : 0
-              send('info', `Guia ${guideNumber}: SAW retornou ${realizados} realizados, ${detalhes} detalhes extraidos`, guideNumber)
+              await send('info', `Guia ${guideNumber}: SAW retornou ${realizados} realizados, ${detalhes} detalhes extraidos`, guideNumber)
 
               if (realizados > 0 && detalhes === 0) {
-                send('error', `Guia ${guideNumber}: ALERTA — ${realizados} procedimentos no SAW mas 0 extraidos. Estrutura HTML pode ter mudado.`, guideNumber)
+                await send('error', `Guia ${guideNumber}: ALERTA — ${realizados} procedimentos no SAW mas 0 extraidos. Estrutura HTML pode ter mudado.`, guideNumber)
               }
 
               break
@@ -346,12 +347,12 @@ export async function POST(request: NextRequest) {
             const msg = sawResult.error ?? 'Erro desconhecido'
 
             if (isSessionError(msg) && attempt < MAX_RETRIES) {
-              send('info', `Guia ${guideNumber}: sessao fechada (${msg}). Reconectando... (tentativa ${attempt + 1}/${MAX_RETRIES})`, guideNumber)
+              await send('info', `Guia ${guideNumber}: sessao fechada (${msg}). Reconectando... (tentativa ${attempt + 1}/${MAX_RETRIES})`, guideNumber)
               await sleep(RETRY_DELAY_MS)
 
               const reloginOk = await reloginSaw()
               if (!reloginOk) {
-                send('error', `Guia ${guideNumber}: falha ao reconectar (tentativa ${attempt + 1}/${MAX_RETRIES}).`, guideNumber)
+                await send('error', `Guia ${guideNumber}: falha ao reconectar (tentativa ${attempt + 1}/${MAX_RETRIES}).`, guideNumber)
                 if (attempt === MAX_RETRIES - 1) {
                   errorCount++
                   break
@@ -362,12 +363,12 @@ export async function POST(request: NextRequest) {
 
             // Network/timeout errors: aguarda 30s e retenta sem relogin
             if (isNetworkError(msg) && attempt < MAX_RETRIES) {
-              send('info', `Guia ${guideNumber}: erro de rede/timeout (${msg}). Aguardando 30s... (tentativa ${attempt + 1}/${MAX_RETRIES})`, guideNumber)
+              await send('info', `Guia ${guideNumber}: erro de rede/timeout (${msg}). Aguardando 30s... (tentativa ${attempt + 1}/${MAX_RETRIES})`, guideNumber)
               await sleep(NETWORK_RETRY_DELAY_MS)
               continue
             }
 
-            send('error', `Guia ${guideNumber} falhou no SAW: ${msg}`, guideNumber)
+            await send('error', `Guia ${guideNumber} falhou no SAW: ${msg}`, guideNumber)
             errorCount++
             break
           }
@@ -387,13 +388,13 @@ export async function POST(request: NextRequest) {
             mesReferencia: mesReferencia ?? null,
             emissionFormData: body.emission_form_data ?? null,
             sawLogin: isEmission ? sawCredentials.usuario : undefined,
-            log: (type, message) => send(type, message, guideNumber),
+            log: async (type, message) => { await send(type, message, guideNumber) },
           })
 
           if (result.success) {
             successCount++
           } else {
-            send('error', `Guia ${guideNumber} falhou: ${result.error}`, guideNumber)
+            await send('error', `Guia ${guideNumber} falhou: ${result.error}`, guideNumber)
             errorCount++
           }
         } catch (guiaErr) {
@@ -404,7 +405,7 @@ export async function POST(request: NextRequest) {
 
           if (isSessionError(guiaMsg) && retries < MAX_RETRIES) {
             outerRetryCount.set(i, retries + 1)
-            send('info', `Guia ${guideNumber}: erro de sessao durante processamento (${guiaMsg}). Reconectando... (recuperacao ${retries + 1}/${MAX_RETRIES})`, guideNumber)
+            await send('info', `Guia ${guideNumber}: erro de sessao durante processamento (${guiaMsg}). Reconectando... (recuperacao ${retries + 1}/${MAX_RETRIES})`, guideNumber)
             await sleep(RETRY_DELAY_MS)
             const recovered = await reloginSaw()
             if (recovered) {
@@ -415,19 +416,19 @@ export async function POST(request: NextRequest) {
 
           if (isNetworkError(guiaMsg) && retries < MAX_RETRIES) {
             outerRetryCount.set(i, retries + 1)
-            send('info', `Guia ${guideNumber}: erro de rede/timeout (${guiaMsg}). Aguardando 30s... (recuperacao ${retries + 1}/${MAX_RETRIES})`, guideNumber)
+            await send('info', `Guia ${guideNumber}: erro de rede/timeout (${guiaMsg}). Aguardando 30s... (recuperacao ${retries + 1}/${MAX_RETRIES})`, guideNumber)
             await sleep(NETWORK_RETRY_DELAY_MS)
             i--
             continue
           }
 
-          send('error', `Guia ${guideNumber}: erro inesperado (${guiaMsg}) — pulando para proxima guia`, guideNumber)
+          await send('error', `Guia ${guideNumber}: erro inesperado (${guiaMsg}) — pulando para proxima guia`, guideNumber)
           errorCount++
         }
         }
 
         const elapsed = ((Date.now() - startTime) / 1000).toFixed(1)
-        send(
+        await send(
           successCount === total ? 'success' : errorCount === total ? 'error' : 'info',
           `Concluido: ${successCount}/${total} guias importadas em ${elapsed}s`
         )
