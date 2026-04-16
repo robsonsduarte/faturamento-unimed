@@ -80,6 +80,11 @@ export async function POST(request: NextRequest) {
   const stream = new ReadableStream({
     async start(controller) {
       const enc = new TextEncoder()
+      // Padding + heartbeat para destravar buffering de CF Tunnel (POST nao e auto-detectado como SSE)
+      controller.enqueue(enc.encode(':' + ' '.repeat(8192) + '\n\n'))
+      const heartbeat = setInterval(() => {
+        try { controller.enqueue(enc.encode(`: hb${' '.repeat(2048)}\n\n`)) } catch { /* closed */ }
+      }, 1000)
       const send = (type: string, message: string, guide_number?: string, extra?: Record<string, unknown>) => {
         controller.enqueue(enc.encode(sseEvent(type, message, guide_number, extra)))
       }
@@ -431,6 +436,7 @@ export async function POST(request: NextRequest) {
         controller.enqueue(enc.encode(sseEvent('error', `Erro fatal: ${msg}`)))
       } finally {
         clearTimeout(streamTimeout)
+        clearInterval(heartbeat)
         try { controller.close() } catch { /* already closed by timeout */ }
       }
     },

@@ -1049,30 +1049,40 @@ class SawClient {
               onProgress?.(stepLabel, `Iframe BioFace nao encontrado. Tentando continuar...`)
             }
 
-            // Step C: Aguardar formulario (nova pagina/popup)
+            // Step C: Aguardar formulario (nova pagina/popup) — polling tolerante
             onProgress?.(stepLabel, `Aguardando formulario de realizacao...`)
-            await page.waitForTimeout(2000)
 
-            // Procurar nova pagina aberta (popup de realizacao)
-            const pages = context.pages()
             let formPage: Page | null = null
+            const waitDeadline = Date.now() + 12_000
+            let lastProgressAt = Date.now()
 
-            for (const p of pages) {
-              const pUrl = p.url()
-              if (pUrl.includes('abrirTelaDeRealizarProcedimento') || pUrl.includes('RealizarProcedimento')) {
-                formPage = p
-                break
+            while (Date.now() < waitDeadline) {
+              for (const p of context.pages()) {
+                const pUrl = p.url()
+                if (pUrl.includes('abrirTelaDeRealizarProcedimento') || pUrl.includes('RealizarProcedimento')) {
+                  formPage = p
+                  break
+                }
               }
+
+              if (!formPage) {
+                const hasForm = await page.evaluate(() => !!document.getElementById('dataSolicitacaoProcedimento')).catch(() => false)
+                if (hasForm) formPage = page
+              }
+
+              if (formPage) break
+
+              if (Date.now() - lastProgressAt >= 3000) {
+                const elapsed = Math.round((Date.now() - (waitDeadline - 12_000)) / 1000)
+                onProgress?.(stepLabel, `Aguardando formulario... (${elapsed}s)`)
+                lastProgressAt = Date.now()
+              }
+              await page.waitForTimeout(500)
             }
 
-            // Fallback: verificar se o form abriu na mesma pagina
             if (!formPage) {
-              const hasForm = await page.evaluate(() => !!document.getElementById('dataSolicitacaoProcedimento')).catch(() => false)
-              if (hasForm) formPage = page
-            }
-
-            if (!formPage) {
-              onProgress?.(stepLabel, `Formulario de realizacao nao abriu.`)
+              onProgress?.(stepLabel, `Formulario de realizacao nao abriu apos 12s.`)
+              await page.screenshot({ path: `/tmp/debug-cobrar-${i + 1}-sem-form.png`, fullPage: true }).catch(() => {})
               execucoes.push({ data: proc.data, success: false, error: 'Formulario nao abriu' })
               await page.goto(guiaUrl, { waitUntil: 'networkidle', timeout: 30_000 }).catch(() => {})
               await page.waitForTimeout(2000)

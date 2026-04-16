@@ -782,6 +782,18 @@ export default function GuiaDetailPage({ params }: Props) {
     }
   }, [logs])
 
+  useEffect(() => {
+    if (cobrarEndRef.current) {
+      cobrarEndRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    }
+  }, [cobrarLogs])
+
+  useEffect(() => {
+    if (excluirEndRef.current) {
+      excluirEndRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    }
+  }, [excluirLogs])
+
   const handleReimport = async () => {
     if (!guia || reimporting) return
     setReimporting(true)

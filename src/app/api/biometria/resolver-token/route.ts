@@ -46,6 +46,10 @@ export async function POST(request: NextRequest) {
   const stream = new ReadableStream({
     async start(controller) {
       const enc = new TextEncoder()
+      controller.enqueue(enc.encode(':' + ' '.repeat(8192) + '\n\n'))
+      const heartbeat = setInterval(() => {
+        try { controller.enqueue(enc.encode(`: hb${' '.repeat(2048)}\n\n`)) } catch { /* closed */ }
+      }, 1000)
       const send = (type: string, message: string) => {
         controller.enqueue(enc.encode(sseEvent(type, message)))
       }
@@ -257,6 +261,7 @@ export async function POST(request: NextRequest) {
         send('error', `Erro fatal: ${msg}`)
       } finally {
         clearTimeout(streamTimeout)
+        clearInterval(heartbeat)
         try { controller.close() } catch { /* already closed */ }
       }
     },
