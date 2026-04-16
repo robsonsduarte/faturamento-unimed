@@ -100,6 +100,8 @@ export default function GuiaDetailPage({ params }: Props) {
   const [cobrarModalOpen, setCobrarModalOpen] = useState(false)
   const [cobrarPendentes, setCobrarPendentes] = useState<Array<{ date: string; start: string; end: string; checked: boolean; photoSequence?: number; _showPhotoPicker?: boolean }>>([])
   const [cobrarLoadingPendentes, setCobrarLoadingPendentes] = useState(false)
+  const [cobrarImportLogs, setCobrarImportLogs] = useState<ImportLog[]>([])
+  const cobrarImportEndRef = useRef<HTMLDivElement>(null)
 
   // Excluir cobrancas states
   const [excluindo, setExcluindo] = useState(false)
@@ -329,20 +331,29 @@ export default function GuiaDetailPage({ params }: Props) {
     setCobrarModalOpen(true)
     setCobrarLoadingPendentes(true)
     setCobrarPendentes([])
+    setCobrarImportLogs([])
     try {
-      // 1. Reimportar guia primeiro (atualizar dados do SAW)
-      toast.info('Reimportando guia para dados atualizados...')
+      // 1. Reimportar guia primeiro (atualizar dados do SAW) com logs SSE
       const importRes = await fetch('/api/guias/importar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ guide_numbers: [guia.guide_number] }),
       })
-      // Consumir SSE da reimportacao (aguardar conclusao)
       if (importRes.body) {
         const reader = importRes.body.getReader()
+        const decoder = new TextDecoder()
+        let buffer = ''
         while (true) {
-          const { done } = await reader.read()
+          const { done, value } = await reader.read()
           if (done) break
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split('\n\n')
+          buffer = lines.pop() ?? ''
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              try { setCobrarImportLogs((prev) => [...prev, JSON.parse(line.slice(6)) as ImportLog]) } catch { /**/ }
+            }
+          }
         }
       }
       await refetch()
@@ -793,6 +804,12 @@ export default function GuiaDetailPage({ params }: Props) {
       excluirEndRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
     }
   }, [excluirLogs])
+
+  useEffect(() => {
+    if (cobrarImportEndRef.current) {
+      cobrarImportEndRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    }
+  }, [cobrarImportLogs])
 
   const handleReimport = async () => {
     if (!guia || reimporting) return
@@ -1885,8 +1902,27 @@ export default function GuiaDetailPage({ params }: Props) {
 
             <div className="px-6 py-4 max-h-[400px] overflow-y-auto">
               {cobrarLoadingPendentes ? (
-                <div className="flex items-center justify-center py-8">
-                  <Loader2 className="w-5 h-5 animate-spin" style={{ color: 'var(--color-text-muted)' }} />
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                    <Loader2 className="w-3 h-3 animate-spin" style={{ color: 'var(--color-secondary)' }} />
+                    <span>Reimportando guia...</span>
+                  </div>
+                  <div className="p-3 rounded-lg max-h-[300px] overflow-y-auto space-y-1 border" style={{ background: '#0a0a0a', borderColor: 'var(--color-border)' }}>
+                    {cobrarImportLogs.length === 0 ? (
+                      <div className="text-xs font-mono" style={{ color: '#6b7280' }}>Aguardando stream...</div>
+                    ) : (
+                      cobrarImportLogs.map((log, i) => {
+                        const colorMap = { success: '#4ade80', error: '#f87171', processing: '#38bdf8', info: '#94a3b8' }
+                        return (
+                          <div key={i} className="flex items-start gap-2 font-mono text-xs leading-5">
+                            <span className="shrink-0 select-none" style={{ color: '#6b7280' }}>{log.timestamp}</span>
+                            <span style={{ color: colorMap[log.type] }}>{log.message}</span>
+                          </div>
+                        )
+                      })
+                    )}
+                    <div ref={cobrarImportEndRef} />
+                  </div>
                 </div>
               ) : cobrarPendentes.length === 0 ? (
                 <p className="text-sm text-center py-6" style={{ color: 'var(--color-text-muted)' }}>
